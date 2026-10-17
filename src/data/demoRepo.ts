@@ -11,6 +11,7 @@ import { allocatedByCharge, chargeTotal, leaseTenants, planCharges, tenantName }
 import { round2 } from '../domain/simulator.ts';
 import { todayParis } from '../domain/format.ts';
 import { EMPTY_SNAPSHOT, RepoError, type Repo, type SessionInfo, type Snapshot, type UpdateResult } from './repo.ts';
+import type { LeaseRevision } from './types.ts';
 import type {
   Allocation, Insert, Lease, OutboxMessage, Patch, Payment, Property, Receipt, Reminder, RentCharge, Scenario, Tables, TableName,
   TimelineEvent, UserSettings, VersionedTable,
@@ -22,13 +23,13 @@ const USER = '00000000-0000-4000-8000-000000000001';
 const SESSION: SessionInfo = { userId: USER, email: 'demo@immo-zen.local' };
 const DEMO_FILE_LIMIT = 2 * 1024 * 1024;
 
-type Db = { [K in TableName]: Tables[K][] } & { user_settings: UserSettings; receipts: Receipt[]; email_outbox: OutboxMessage[] };
+type Db = { [K in TableName]: Tables[K][] } & { user_settings: UserSettings; receipts: Receipt[]; email_outbox: OutboxMessage[]; lease_revisions: LeaseRevision[] };
 
 function emptyDb(): Db {
   return {
     properties: [], scenarios: [], pro_contacts: [], property_tasks: [], timeline_events: [], tenants: [], leases: [], lease_tenants: [],
     rent_charges: [], payments: [], payment_allocations: [], deposit_movements: [], reminders: [], documents: [], expenses: [],
-    receipts: [], email_outbox: [],
+    receipts: [], email_outbox: [], lease_revisions: [],
     user_settings: { user_id: USER, simulator_defaults: {}, ui_prefs: {}, rental_settings: {}, version: 1, updated_at: new Date().toISOString() },
   };
 }
@@ -113,6 +114,7 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
       // index unique (user_id, import_ref) du serveur
       if (rec.import_ref && db.expenses.some((e) => e.import_ref === rec.import_ref)) fail('Cette ligne de relevé a déjà été importée.');
     }
+    if (table === 'payments' && rec.import_ref && db.payments.some((p) => p.import_ref === rec.import_ref)) fail('Ce loyer a déjà été importé.');
     if (table === 'documents' && Number(rec.size_bytes) > DEMO_FILE_LIMIT) fail('Fichier trop volumineux pour le mode démonstration (2 Mo).');
   }
 
@@ -122,6 +124,7 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
     const total = chargeTotal(c);
     const paid = allocated(db, c.id);
     if (kind === 'quittance') {
+      if (inExtras(db, c.id)) fail('Cette somme figure déjà en rappel de charges sur une quittance.');
       const existing = db.receipts.find((r) => r.charge_id === c.id && r.kind === 'quittance' && !r.cancelled_at);
       if (existing) return existing;
       if (total <= 0 || paid < total) fail(`Quittance impossible : la période n’est pas intégralement réglée (${paid.toFixed(2).replace('.', ',')} € sur ${total.toFixed(2).replace('.', ',')} €).`);
@@ -148,6 +151,10 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
     };
     db.receipts.push(r);
     return r;
+  }
+
+  function inExtras(db: Db, chargeId: string) {
+    return db.receipts.some((r) => !r.cancelled_at && r.kind === 'quittance' && (r.extra_lines ?? []).some((x) => x.charge_id === chargeId));
   }
 
   function queueEmail(db: Db, m: Omit<OutboxMessage, 'id' | 'user_id' | 'status' | 'attempts' | 'last_error' | 'sent_at' | 'created_at'> & { dedupe: string }) {
@@ -246,7 +253,7 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
         properties: db.properties, scenarios: db.scenarios, contacts: db.pro_contacts, tasks: db.property_tasks, events: db.timeline_events,
         tenants: db.tenants, leases: db.leases, leaseTenants: db.lease_tenants, charges: db.rent_charges, payments: db.payments,
         allocations: db.payment_allocations, deposits: db.deposit_movements, receipts: db.receipts, reminders: db.reminders,
-        documents: db.documents, expenses: db.expenses, outbox: db.email_outbox, settings: db.user_settings, loadedAt: now(),
+        documents: db.documents, expenses: db.expenses, outbox: db.email_outbox, revisions: db.lease_revisions ?? [], settings: db.user_settings, loadedAt: now(),
       };
     },
     async insert(table, row) {
@@ -363,6 +370,52 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
       }
       write(db);
       return n;
+    },
+    async issueReceiptWithExtras(chargeId, extras) {
+      const db = read();
+      const c = db.rent_charges.find((x) => x.id === chargeId) ?? fail('Échéance introuvable.');
+      if (db.receipts.some((r) => r.charge_id === c.id && r.kind === 'quittance' && !r.cancelled_at) || inExtras(db, c.id))
+        fail('Une quittance existe déjà pour cette période : annulez-la pour en émettre une avec le rappel de charges.');
+      const lines = extras.map((id) => {
+        const x = db.rent_charges.find((y) => y.id === id);
+        if (!x || x.lease_id !== c.lease_id || x.id === c.id || x.kind === 'loyer') fail('Rappel de charges invalide (autre bail ou échéance de loyer).');
+        if (x!.cancelled_at) fail('Somme due annulée.');
+        if (allocated(db, x!.id) < chargeTotal(x!)) fail(`Le rappel « ${x!.label ?? 'Régularisation'} » n’est pas intégralement réglé.`);
+        if (inExtras(db, x!.id) || db.receipts.some((r) => r.charge_id === x!.id && r.kind === 'quittance' && !r.cancelled_at)) fail(`Le rappel « ${x!.label ?? 'Régularisation'} » figure déjà sur une quittance.`);
+        return { charge_id: x!.id, label: x!.label ?? 'Rappel de charges', amount: chargeTotal(x!) };
+      });
+      const r = issue(db, chargeId, 'quittance');
+      r.extra_lines = lines;
+      r.paid_amount = round2(r.paid_amount + lines.reduce((a, x) => a + x.amount, 0));
+      write(db);
+      return structuredClone(r);
+    },
+    async reviseRent(a) {
+      const db = read();
+      const l = db.leases.find((x) => x.id === a.leaseId) ?? fail('Bail introuvable.');
+      if (!l.irl_enabled) fail('La révision annuelle n’est pas prévue dans ce bail.');
+      const p = db.properties.find((x) => x.id === l.property_id);
+      if (p?.dpe === 'F' || p?.dpe === 'G') fail(`Logement classé ${p.dpe} au DPE : révision du loyer interdite (gel des loyers).`);
+      if (!(a.oldIndex > 0 && a.newIndex > 0)) fail('Indices IRL manquants.');
+      const addY = (d: string, n: number) => `${Number(d.slice(0, 4)) + n}${d.slice(4)}`;
+      if (a.effective < addY(l.start_date, 1)) fail('Première révision possible un an après le début du bail.');
+      let anniv = l.start_date;
+      while (addY(anniv, 1) <= a.effective) anniv = addY(anniv, 1);
+      if (l.last_revision_on && l.last_revision_on >= anniv) fail(`Le loyer a déjà été révisé le ${l.last_revision_on.split('-').reverse().join('/')} pour cette année de bail.`);
+      const newRent = round2(l.rent_hc * a.newIndex / a.oldIndex);
+      const old = l.rent_hc;
+      Object.assign(l, { rent_hc: newRent, irl_base_label: a.newLabel, irl_base_value: a.newIndex, last_revision_on: a.effective, version: l.version + 1, updated_at: now() });
+      let n = 0;
+      for (const c of db.rent_charges) {
+        const fullMonth = c.period_start.endsWith('-01') && c.period_end.slice(0, 7) === c.period_start.slice(0, 7) && Number(c.period_end.slice(8)) >= 28;
+        if (c.lease_id === l.id && c.kind === 'loyer' && !c.cancelled_at && c.period_start >= a.effective && fullMonth && allocated(db, c.id) === 0) { c.rent_amount = newRent; n++; }
+      }
+      const rev: LeaseRevision = { id: crypto.randomUUID(), user_id: USER, lease_id: l.id, effective_on: a.effective, old_rent: old, new_rent: newRent,
+        old_index_label: a.oldLabel, old_index: a.oldIndex, new_index_label: a.newLabel, new_index: a.newIndex, charges_updated: n, created_at: now() };
+      (db.lease_revisions ??= []).push(rev);
+      logEvent(db, { property_id: l.property_id, kind: 'note', summary: `Loyer révisé (IRL) : ${old.toFixed(2).replace('.', ',')} → ${newRent.toFixed(2).replace('.', ',')} à compter du ${a.effective.split('-').reverse().join('/')}`, data: { lease_id: l.id } });
+      write(db);
+      return structuredClone(rev);
     },
     async issueReceipt(chargeId, kind) {
       const db = read();

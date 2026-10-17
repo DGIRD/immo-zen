@@ -6,6 +6,7 @@ import { money2, todayParis } from '../domain/format.ts';
 import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, LOAN_FIELDS, loanInfo, rentWithCharges } from '../domain/property.ts';
 import { Button, NumberInput, PageHeader, Section, Select, TextArea, TextInput } from '../ui/components.tsx';
 import { navigate } from '../ui/router.ts';
+import { AddressFields } from '../ui/AddressFields.tsx';
 
 type Draft = Insert<Property> & { title: string };
 const NEW = '__new__';
@@ -102,9 +103,7 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
           <Select label="Type" value={draft.property_type ?? 'appartement'} onChange={(v) => set('property_type', (v ?? 'appartement') as PropertyType)} options={entries(TYPE_LABELS)} />
           <Select label="Statut d’acquisition" value={draft.status ?? 'repere'} onChange={(v) => set('status', (v ?? 'repere') as PropertyStatus)} options={statusOptions}
             hint={!owned && existing ? '« Acquis » transfère le bien dans Mes biens.' : undefined} />
-          <TextInput label="Adresse" wide value={draft.address} onChange={(v) => set('address', v || null)} maxLength={300} />
-          <TextInput label="Code postal" value={draft.zip} onChange={(v) => set('zip', v || null)} maxLength={12} />
-          <TextInput label="Ville" value={draft.city} onChange={(v) => set('city', v || null)} maxLength={120} />
+          <AddressFields value={draft} onChange={(a) => setDraft((d) => ({ ...d, ...a }))} />
           <NumberInput label="Surface" suffix="m²" value={draft.surface} onChange={(v) => set('surface', v)} error={errors.surface} />
           <NumberInput label="Pièces" value={draft.rooms} onChange={(v) => set('rooms', v === null ? null : Math.round(v))} error={errors.rooms} />
           <Select label="DPE renseigné" value={draft.dpe ?? null} onChange={(v) => set('dpe', v)} allowEmpty="Non renseigné" options={DPE_VALUES.map((d) => [d, d] as const)} />

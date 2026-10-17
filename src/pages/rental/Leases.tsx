@@ -1,3 +1,4 @@
+import { IRL_KEYS, IRL_VALUES, irlLabel, latestPublishedAt } from '../../domain/irl.ts';
 import { useMemo, useState } from 'react';
 import { useStore } from '../../data/store.tsx';
 import type { Insert, Lease, Tenant } from '../../data/types.ts';
@@ -266,7 +267,23 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
           <NumberInput label="Dépôt de garantie" suffix="€" value={d.deposit_amount} onChange={(v) => set('deposit_amount', v ?? 0)} error={errors.deposit_amount}
             hint="Suivi à part des loyers (encaissement et restitution dans la fiche du bail)." />
         </div>
-        <p className="muted small">Une révision de loyer s’applique aux échéances générées après la modification ; les échéances existantes ne changent pas.</p>
+        <p className="muted small">Une modification manuelle du loyer s’applique aux échéances générées ensuite. Pour la révision annuelle, utilisez « Réviser le loyer » dans la fiche du bail.</p>
+      </Section>
+
+      <Section title="Révision annuelle (IRL)">
+        <Checkbox label="Le bail prévoit une révision annuelle selon l’indice de référence des loyers (IRL)" checked={!!d.irl_enabled}
+          onChange={(v) => setD((x) => ({ ...x, irl_enabled: v, irl_base_label: x.irl_base_label ?? (v ? latestPublishedAt(x.start_date ?? todayParis()) : null), irl_base_value: x.irl_base_value ?? (v ? IRL_VALUES[latestPublishedAt(x.start_date ?? todayParis()) ?? ''] ?? null : null) }))} />
+        {d.irl_enabled && (
+          <div className="grid">
+            <Select label="IRL de référence du bail" value={d.irl_base_label ?? null} allowEmpty="Choisir…"
+              onChange={(v) => setD((x) => ({ ...x, irl_base_label: v, irl_base_value: v ? IRL_VALUES[v] ?? x.irl_base_value ?? null : null }))}
+              options={IRL_KEYS.map((k) => [k, `${irlLabel(k)} — ${String(IRL_VALUES[k]).replace('.', ',')}`] as const)}
+              hint="Trimestre et indice figurant au bail (le dernier publié à la signature) ou retenus à la dernière révision." />
+            <NumberInput label="Valeur de l’indice" value={d.irl_base_value ?? null} onChange={(v) => set('irl_base_value', v)} hint="Reprise de l’INSEE ; modifiable." />
+            <TextInput label="Dernière révision" type="date" value={d.last_revision_on ?? ''} onChange={(v) => set('last_revision_on', v || null)} hint="Si le loyer a déjà été révisé avant l’utilisation d’Immo-Zen." />
+          </div>
+        )}
+        <p className="muted small">Chaque année à la date anniversaire, « Réviser le loyer » (fiche du bail) calcule le nouveau loyer avec la variation annuelle de l’IRL. Révision interdite pour un logement classé F ou G au DPE.</p>
       </Section>
 
       <Section title="Quittances">

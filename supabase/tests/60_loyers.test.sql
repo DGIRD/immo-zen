@@ -1,0 +1,70 @@
+-- Tests SQL : import des loyers, révision IRL, rappel de charges sur quittance. Exécuté après 50_plateforme.test.sql.
+\set ON_ERROR_STOP on
+\set QUIET on
+\pset tuples_only on
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+
+insert into public.properties (id, title, status, city, dpe) values
+  ('aaaaaaaa-6666-0000-0000-000000000001', 'T2 révision', 'acquis', 'Paris', 'D'),
+  ('aaaaaaaa-6666-0000-0000-000000000002', 'Studio classé G', 'acquis', 'Paris', 'G');
+insert into public.tenants (id, last_name) values ('bbbbbbbb-6666-0000-0000-000000000001', 'Durand');
+insert into public.leases (id, property_id, start_date, rent_hc, charges_amount, payment_day) values
+  ('cccccccc-6666-0000-0000-000000000001', 'aaaaaaaa-6666-0000-0000-000000000001', '2024-02-01', 700, 50, 5),
+  ('cccccccc-6666-0000-0000-000000000002', 'aaaaaaaa-6666-0000-0000-000000000002', '2024-02-01', 500, 30, 5);
+insert into public.lease_tenants (lease_id, tenant_id) values ('cccccccc-6666-0000-0000-000000000001', 'bbbbbbbb-6666-0000-0000-000000000001');
+select public.iz_generate_rent_charges('cccccccc-6666-0000-0000-000000000001', '2025-03-31');
+
+-- Import des loyers : anti-doublon
+insert into public.payments (id, lease_id, amount, paid_on, source, import_ref) values
+  ('dddddddd-6666-0000-0000-000000000001', 'cccccccc-6666-0000-0000-000000000001', 750, '2024-02-05', 'import', 'loy:abc:1');
+select tests.fails($q$ insert into public.payments (lease_id, amount, paid_on, source, import_ref) values ('cccccccc-6666-0000-0000-000000000001', 750, '2024-02-05', 'import', 'loy:abc:1') $q$,
+  'import loyers : même ligne refusée (anti-doublon)');
+
+-- Révision IRL
+select tests.fails($q$ select public.iz_revise_rent('cccccccc-6666-0000-0000-000000000001', '2025-02-01', '2023-T4', 142.06, '2024-T4', 144.64) $q$,
+  'révision : refusée si le bail ne la prévoit pas');
+update public.leases set irl_enabled = true, irl_base_label = '2023-T4', irl_base_value = 142.06 where id in ('cccccccc-6666-0000-0000-000000000001', 'cccccccc-6666-0000-0000-000000000002');
+select tests.fails($q$ select public.iz_revise_rent('cccccccc-6666-0000-0000-000000000001', '2024-10-01', '2023-T4', 142.06, '2024-T4', 144.64) $q$,
+  'révision : pas avant un an de bail');
+select tests.fails($q$ select public.iz_revise_rent('cccccccc-6666-0000-0000-000000000002', '2025-02-01', '2023-T4', 142.06, '2024-T4', 144.64) $q$,
+  'révision : interdite pour un logement classé G (gel des loyers)');
+select tests.ok((select new_rent = 712.71 and charges_updated = 2 from public.iz_revise_rent('cccccccc-6666-0000-0000-000000000001', '2025-02-01', '2023-T4', 142.06, '2024-T4', 144.64)),
+  'révision : 700 × 144,64 / 142,06 = 712,71, échéances de février et mars mises à jour');
+select tests.ok((select rent_hc = 712.71 and irl_base_label = '2024-T4' and last_revision_on = '2025-02-01' from public.leases where id = 'cccccccc-6666-0000-0000-000000000001'),
+  'révision : loyer et indice de référence du bail mis à jour');
+select tests.ok((select rent_amount = 700 from public.rent_charges where lease_id = 'cccccccc-6666-0000-0000-000000000001' and period_start = '2025-01-01'),
+  'révision : pas d''effet rétroactif sur les mois précédents');
+select tests.fails($q$ select public.iz_revise_rent('cccccccc-6666-0000-0000-000000000001', '2025-06-01', '2024-T4', 144.64, '2025-T1', 145.47) $q$,
+  'révision : une seule par année de bail');
+select tests.ok((select count(*) from public.lease_revisions) = 1, 'révision : historique conservé');
+select tests.fails($q$ insert into public.lease_revisions (lease_id, effective_on, old_rent, new_rent, old_index_label, old_index, new_index_label, new_index)
+  values ('cccccccc-6666-0000-0000-000000000001', '2026-02-01', 1, 2, 'x', 1, 'y', 1) $q$, 'révision : historique non modifiable directement');
+
+-- Rappel de charges repris sur la quittance du mois
+insert into public.rent_charges (id, lease_id, kind, label, period_start, period_end, due_date, rent_amount, charges_amount) values
+  ('eeeeeeee-6666-0000-0000-000000000001', 'cccccccc-6666-0000-0000-000000000001', 'regularisation', 'Rappel de charges 2024', '2024-01-01', '2024-12-31', '2025-03-01', 0, 120);
+insert into public.payments (id, lease_id, amount, paid_on) values ('dddddddd-6666-0000-0000-000000000002', 'cccccccc-6666-0000-0000-000000000001', 882.71, '2025-03-05');
+insert into public.payment_allocations (payment_id, charge_id, amount)
+  select 'dddddddd-6666-0000-0000-000000000002', id, 762.71 from public.rent_charges where lease_id = 'cccccccc-6666-0000-0000-000000000001' and kind = 'loyer' and period_start = '2025-03-01';
+insert into public.payment_allocations (payment_id, charge_id, amount) values ('dddddddd-6666-0000-0000-000000000002', 'eeeeeeee-6666-0000-0000-000000000001', 120);
+select tests.ok((select jsonb_array_length(extra_lines) = 1 and paid_amount = 882.71
+                   from public.iz_issue_receipt_with_extras((select id from public.rent_charges where lease_id = 'cccccccc-6666-0000-0000-000000000001' and kind = 'loyer' and period_start = '2025-03-01'),
+                                                            array['eeeeeeee-6666-0000-0000-000000000001'::uuid])),
+  'quittance : rappel de charges 2024 ajouté sur une ligne distincte');
+select tests.fails($q$ select public.iz_issue_receipt('eeeeeeee-6666-0000-0000-000000000001', 'quittance') $q$, 'rappel : pas de seconde quittance pour la même somme');
+select tests.fails($q$ select public.iz_issue_receipt_with_extras((select id from public.rent_charges where lease_id = 'cccccccc-6666-0000-0000-000000000001' and kind = 'loyer' and period_start = '2024-02-01'),
+  array['eeeeeeee-6666-0000-0000-000000000001'::uuid]) $q$, 'rappel : impossible de le reprendre sur une autre quittance');
+commit;
+
+-- Isolation : Bob ne peut ni réviser ni quittancer pour Alice
+begin;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+select tests.fails($q$ select public.iz_revise_rent('cccccccc-6666-0000-0000-000000000001', '2026-02-01', '2024-T4', 144.64, '2025-T4', 145.78) $q$, 'révision : refusée sur le bail d''un autre compte');
+select tests.ok((select count(*) from public.lease_revisions) = 0, 'révision : historique invisible pour un autre compte');
+commit;
+
+select 'Tests SQL loyers, IRL et rappels passés' as fin;

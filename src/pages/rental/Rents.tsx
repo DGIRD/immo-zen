@@ -8,6 +8,7 @@ import { round2 } from '../../domain/simulator.ts';
 import { DataTable, type Column } from '../../ui/DataTable.tsx';
 import { Button, EmptyState, PageHeader, Section, Tabs } from '../../ui/components.tsx';
 import { navigate } from '../../ui/router.ts';
+import { RentImportDialog } from './RentImport.tsx';
 import { ChargeActions, ChargeBadge, PaymentDialog, paymentAllocated, periodLabel, ReceiptDialog, useRental } from './common.tsx';
 
 type Filter = 'a_traiter' | 'impayee' | 'partielle' | 'payee' | 'a_venir' | 'toutes';
@@ -20,6 +21,7 @@ export function RentsPage() {
   const [month, setMonth] = useState('');
   const [pay, setPay] = useState<{ chargeId?: string; leaseId?: string; mode: 'saisie' | 'confirmation' } | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const months = useMemo(() => [...new Set(views.map((v) => v.charge.period_start.slice(0, 7)))].sort().reverse(), [views]);
   const rows = views.filter((v) => {
@@ -57,7 +59,11 @@ export function RentsPage() {
   return (
     <>
       <PageHeader title="Loyers et paiements" subtitle="Échéances de tous vos baux. Le solde découle uniquement des échéances et des paiements enregistrés."
-        actions={<Button variant="primary" disabled={!data.leases.length} onClick={() => setPay({ mode: 'saisie' })}>Enregistrer un paiement</Button>} />
+        actions={<>
+          <Button disabled={!data.leases.length} onClick={() => setImporting(true)}>Importer des loyers (Excel)</Button>
+          <Button variant="primary" disabled={!data.leases.length} onClick={() => setPay({ mode: 'saisie' })}>Enregistrer un paiement</Button>
+        </>} />
+      <RentImportDialog open={importing} onClose={() => setImporting(false)} />
       {!data.leases.length ? (
         <EmptyState title="Aucun bail" action={<Button variant="primary" onClick={() => navigate('/baux/nouveau')}>Créer un bail</Button>}>Les échéances de loyer sont générées à partir des baux.</EmptyState>
       ) : (

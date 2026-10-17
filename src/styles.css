@@ -439,3 +439,16 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 .plan h3 { margin: 0; }
 .plan-price { font-size: 1.4rem; font-weight: 600; margin: 0; }
 .dt-table td.wrap { white-space: normal; word-break: break-word; }
+
+/* Saisie automatique d'adresse */
+.address-field { position: relative; }
+.address-list { position: absolute; z-index: 30; top: 4.2rem; left: 0; right: 0; margin: 0; padding: .25rem 0; list-style: none; background: var(--surface, #fff); border: 1px solid var(--line-strong); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); max-height: 16rem; overflow-y: auto; }
+.address-list li { padding: .45rem .75rem; cursor: pointer; }
+.address-list li.active, .address-list li:hover { background: var(--vert-tint); }
+
+/* Dépenses : ajout rapide et suppression */
+.quick-add { display: grid; grid-template-columns: 9.5rem minmax(8rem, 1fr) minmax(10rem, 1.3fr) minmax(8rem, 1.5fr) 7rem auto; gap: .5rem; align-items: center; margin: 0 0 .8rem; padding: .6rem; border: 1px dashed var(--line-strong); border-radius: 10px; }
+.quick-add input, .quick-add select { min-width: 0; width: 100%; }
+@media (max-width: 760px) { .quick-add { grid-template-columns: 1fr 1fr; } .quick-add button { grid-column: 1 / -1; } }
+.row-delete { font-size: 1rem; opacity: .65; }
+.row-delete:hover, .row-delete:focus-visible { opacity: 1; }

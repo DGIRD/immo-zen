@@ -8,7 +8,7 @@ import {
 } from '../../domain/rental.ts';
 import { round2 } from '../../domain/simulator.ts';
 import { downloadBlob } from '../../domain/exporting.ts';
-import { Button, Modal, NumberInput, Select, TextInput } from '../../ui/components.tsx';
+import { Button, Checkbox, Modal, NumberInput, Select, TextInput } from '../../ui/components.tsx';
 import { buildReceiptPdf } from '../../../supabase/functions/_shared/receiptPdf.ts';
 
 export const METHODS = Object.entries(PAYMENT_METHOD_LABELS) as [PaymentMethod, string][];
@@ -27,7 +27,9 @@ export function useRental() {
       const names = leaseTenants(l.id, data.leaseTenants, data.tenants).map(tenantName).join(', ');
       return `${p?.title ?? 'Bien supprimé'}${l.label ? ` – ${l.label}` : ''}${names ? ` (${names})` : ''}`;
     };
-    const quittanceFor = (chargeId: string) => data.receipts.find((r) => r.charge_id === chargeId && r.kind === 'quittance' && !r.cancelled_at) ?? null;
+    // quittance de l'échéance, ou quittance d'un autre mois qui la reprend en rappel de charges
+    const quittanceFor = (chargeId: string) => data.receipts.find((r) => r.kind === 'quittance' && !r.cancelled_at
+      && (r.charge_id === chargeId || (r.extra_lines ?? []).some((x) => x.charge_id === chargeId))) ?? null;
     return { today, views, viewById, leaseById, propertyById, leaseLabel, quittanceFor };
   }, [data, today]);
 }
@@ -237,6 +239,7 @@ export function ReceiptDialog({ receipt, onClose }: { receipt: Receipt | null; o
           </Button>
         )}
       </>}>
+      {(live.extra_lines ?? []).length > 0 && <p className="note">Rappel de charges inclus : {live.extra_lines!.map((x) => `${x.label} (${money2(x.amount)})`).join(', ')}.</p>}
       <p className="muted small">
         {label} du {date(live.issued_on)} pour {periodLabel({ ...live, kind: 'loyer', label: null })}. Statut : {sendLabel(live)}
         {live.sent_at ? ` le ${dateTime(live.sent_at)}` : ''}{live.send_error && live.send_status !== 'envoye' ? ` (${live.send_error})` : ''}.
@@ -261,15 +264,32 @@ export function ChargeActions({ v, onPay, onConfirm, onReceipt }: {
   v: ChargeView; onPay: (v: ChargeView) => void; onConfirm: (v: ChargeView) => void; onReceipt: (r: Receipt) => void;
 }) {
   const store = useStore();
-  const { quittanceFor } = useRental();
+  const { quittanceFor, views } = useRental();
+  const [extras, setExtras] = useState<string[] | null>(null);
   const q = quittanceFor(v.charge.id);
   if (v.charge.cancelled_at) return null;
+  // rappels de charges réglés et pas encore quittancés, proposés sur la quittance d'un loyer
+  const pending = v.charge.kind === 'loyer' ? views.filter((x) => x.charge.lease_id === v.charge.lease_id && x.charge.kind !== 'loyer' && x.status === 'payee' && !x.charge.cancelled_at && !quittanceFor(x.charge.id)) : [];
+  const issueQuittance = async (ids: string[]) => {
+    const r = await store.call((repo) => (ids.length ? repo.issueReceiptWithExtras(v.charge.id, ids) : repo.issueReceipt(v.charge.id, 'quittance')), ids.length ? 'Quittance émise avec le rappel de charges.' : 'Quittance émise.');
+    setExtras(null);
+    if (r) onReceipt(r);
+  };
   return (
     <div className="actions">
+      <Modal open={extras !== null} title="Rappel de charges" onClose={() => setExtras(null)}
+        footer={<><Button onClick={() => void issueQuittance([])}>Sans rappel</Button><Button variant="primary" disabled={!extras?.length} onClick={() => void issueQuittance(extras ?? [])}>Émettre avec le rappel</Button></>}>
+        <p>Des sommes réglées n’ont pas encore de quittance. Les ajouter à la quittance de {periodLabel(v.charge)} ?</p>
+        {pending.map((x) => (
+          <Checkbox key={x.charge.id} label={`${periodLabel(x.charge)} — ${money2(x.total)}`} checked={!!extras?.includes(x.charge.id)}
+            onChange={(on) => setExtras((e) => (on ? [...(e ?? []), x.charge.id] : (e ?? []).filter((id) => id !== x.charge.id)))} />
+        ))}
+        <p className="muted small">Le rappel figure sur la quittance comme une ligne distincte, après le loyer et les charges du mois.</p>
+      </Modal>
       {v.remaining > 0 && <Button size="sm" onClick={() => (v.charge.due_date <= todayParis() ? onConfirm(v) : onPay(v))}>{v.charge.due_date <= todayParis() ? 'Confirmer le paiement' : 'Paiement anticipé'}</Button>}
       {v.status === 'payee' && (q
         ? <Button size="sm" variant="ghost" onClick={() => onReceipt(q)}>Quittance {q.number}</Button>
-        : <Button size="sm" variant="primary" onClick={async () => { const r = await store.call((repo) => repo.issueReceipt(v.charge.id, 'quittance'), 'Quittance émise.'); if (r) onReceipt(r); }}>Émettre la quittance</Button>)}
+        : <Button size="sm" variant="primary" onClick={() => (pending.length ? setExtras(pending.map((x) => x.charge.id)) : void issueQuittance([]))}>Émettre la quittance</Button>)}
       {v.status === 'partielle' && (
         <Button size="sm" variant="ghost" onClick={async () => { const r = await store.call((repo) => repo.issueReceipt(v.charge.id, 'recu'), 'Reçu émis.'); if (r) onReceipt(r); }}>Reçu partiel</Button>
       )}

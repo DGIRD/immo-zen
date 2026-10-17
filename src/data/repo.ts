@@ -1,8 +1,7 @@
 import type { PlatformApi } from './platform.ts';
 import type {
   Allocation, Contact, DepositMovement, DocumentRow, Expense, Insert, Lease, LeaseTenant, OutboxMessage, Patch, Payment, Property, PropertyTask,
-  Receipt, Reminder, RentCharge, Scenario, Tables, TableName, Tenant, TimelineEvent, UserSettings, VersionedTable,
-} from './types.ts';
+  Receipt, Reminder, RentCharge, Scenario, Tables, TableName, Tenant, TimelineEvent, UserSettings, VersionedTable, LeaseRevision } from './types.ts';
 
 export interface SessionInfo {
   userId: string;
@@ -27,6 +26,7 @@ export interface Snapshot {
   documents: DocumentRow[];
   expenses: Expense[];
   outbox: OutboxMessage[];
+  revisions: LeaseRevision[];
   settings: UserSettings | null;
   /** Tables absentes côté serveur (migration non appliquée). */
   missingTables: string[];
@@ -35,7 +35,7 @@ export interface Snapshot {
 
 export const EMPTY_SNAPSHOT: Snapshot = {
   properties: [], scenarios: [], contacts: [], tasks: [], events: [], tenants: [], leases: [], leaseTenants: [], charges: [], payments: [],
-  allocations: [], deposits: [], receipts: [], reminders: [], documents: [], expenses: [], outbox: [], settings: null, missingTables: [], loadedAt: '',
+  allocations: [], deposits: [], receipts: [], reminders: [], documents: [], expenses: [], outbox: [], revisions: [], settings: null, missingTables: [], loadedAt: '',
 };
 
 /** Correspondance table serveur → liste du Snapshot. */
@@ -55,6 +55,8 @@ export class RepoError extends Error {
     super(message);
   }
 }
+
+export interface ReviseRentArgs { leaseId: string; effective: string; oldLabel: string; oldIndex: number; newLabel: string; newIndex: number }
 
 export interface Repo {
   readonly mode: 'supabase' | 'demo';
@@ -83,6 +85,10 @@ export interface Repo {
   cancelReceipt(receiptId: string, reason: string): Promise<Receipt>;
   queueReceiptEmail(receiptId: string): Promise<void>;
   queueReminder(reminderId: string): Promise<Reminder>;
+  /** Quittance d'une échéance reprenant des rappels de charges réglés. */
+  issueReceiptWithExtras(chargeId: string, extraChargeIds: string[]): Promise<Receipt>;
+  /** Révision annuelle du loyer (IRL). */
+  reviseRent(a: ReviseRentArgs): Promise<LeaseRevision>;
 
   // Fichiers privés
   uploadFile(path: string, file: Blob, contentType: string): Promise<void>;

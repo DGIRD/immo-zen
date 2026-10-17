@@ -54,6 +54,16 @@ async function main() {
   const { url, close } = await serve();
   const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
   const ctx = await browser.newContext({ locale: 'fr-FR', timezoneId: 'Europe/Paris', viewport: { width: 1360, height: 900 }, acceptDownloads: true });
+  // services d'adresses publics simulés (aucun appel réseau pendant les tests)
+  await ctx.route('https://data.geopf.fr/geocodage/**', (r) => r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ features: [
+    { properties: { label: '12 Rue de Paris 93100 Montreuil', name: '12 Rue de Paris', postcode: '93100', city: 'Montreuil', type: 'housenumber' } },
+    { properties: { label: '12 Rue de Paris 75012 Paris', name: '12 Rue de Paris', postcode: '75012', city: 'Paris', type: 'housenumber' } },
+  ] }) }));
+  await ctx.route('https://geo.api.gouv.fr/communes**', (r) => {
+    const zip = new URL(r.request().url()).searchParams.get('codePostal');
+    const list = zip === '93100' ? [{ nom: 'Montreuil' }] : zip === '75018' ? [{ nom: 'Paris' }] : [];
+    return r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(list) });
+  });
   const page = await ctx.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -83,7 +93,11 @@ async function main() {
     await page.goto(url + '#/prospection');
     await page.getByRole('button', { name: 'Ajouter un premier bien' }).click();
     await page.getByLabel('Titre *').fill('T3 test balcon');
-    await page.getByLabel('Ville').fill('Montreuil');
+    await page.getByRole('combobox', { name: 'Adresse' }).fill('12 rue de Par');
+    await page.getByRole('option', { name: '12 Rue de Paris 93100 Montreuil' }).click();
+    assert.equal(await page.getByLabel('Code postal').inputValue(), '93100', 'code postal rempli par la saisie automatique');
+    assert.equal(await page.getByLabel('Ville').inputValue(), 'Montreuil');
+    assert.equal(await page.getByRole('combobox', { name: 'Adresse' }).inputValue(), '12 Rue de Paris');
     await page.getByLabel('Surface').fill('62,5');
     await page.getByLabel('Prix affiché').fill('320 000');
     await page.getByLabel('Prix proposé').fill('300000');
@@ -432,6 +446,61 @@ async function main() {
     assert.match(balance, /-651,00 €/, 'dépôt exclu du solde des loyers');
   });
 
+  await step('rappel de charges 2025, import de loyers Excel et quittance avec rappel', async () => {
+    await page.goto(leaseUrl);
+    await page.getByRole('tab', { name: /Échéances/ }).click();
+    await page.getByRole('button', { name: 'Ajouter une somme due' }).click();
+    let dlg = page.locator('dialog[open]');
+    const lastYear = String(new Date().getFullYear() - 1);
+    assert.equal(await dlg.getByLabel('Libellé').inputValue(), `Rappel de charges ${lastYear}`);
+    await dlg.getByLabel('Montant').fill('120');
+    await dlg.getByRole('button', { name: 'Ajouter' }).click();
+    await page.getByText(/Rappel de charges ajouté/).waitFor();
+    // import d'un loyer collé depuis Excel : réparti sur ce qui reste dû, rappel compris
+    const today = await page.evaluate(() => new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris' }).format(new Date()));
+    const text = `Date\tMontant\tLocataire\tMoyen\tRéférence\n${today}\t3 000,00 €\tLéa Martin\tVirement\tVIR LOYER`;
+    await page.goto(url + '#/loyers');
+    await page.getByRole('button', { name: 'Importer des loyers (Excel)' }).click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByLabel(/collez les lignes/).fill(text);
+    await dlg.getByRole('button', { name: 'Analyser le texte collé' }).click();
+    await dlg.getByText('1 prête(s)').waitFor();
+    await page.screenshot({ path: join(out, '25-import-loyers.png'), fullPage: true });
+    await dlg.getByRole('button', { name: 'Importer 1 paiement(s)' }).click();
+    await page.getByText('1 loyer(s) importé(s)').waitFor();
+    await page.getByRole('button', { name: 'Importer des loyers (Excel)' }).click();
+    await dlg.getByLabel(/collez les lignes/).fill(text);
+    await dlg.getByRole('button', { name: 'Analyser le texte collé' }).click();
+    await dlg.getByText('1 déjà importée(s)').waitFor();
+    await dlg.getByRole('button', { name: 'Fermer' }).first().click();
+    // quittance d'un loyer réglé : le rappel est proposé
+    await page.goto(leaseUrl);
+    await page.getByRole('tab', { name: /Échéances/ }).click();
+    await page.locator('table.dt-table tbody tr').filter({ hasNotText: 'Rappel' }).getByRole('button', { name: 'Émettre la quittance' }).first().click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByRole('heading', { name: 'Rappel de charges' }).waitFor();
+    assert.ok(await dlg.getByRole('checkbox', { name: new RegExp(`Rappel de charges ${lastYear}`) }).isChecked());
+    await dlg.getByRole('button', { name: 'Émettre avec le rappel' }).click();
+    await page.getByText('Quittance émise avec le rappel de charges.').waitFor();
+    await page.locator('dialog[open]').getByText(`Rappel de charges inclus : Rappel de charges ${lastYear}`).waitFor();
+    await page.screenshot({ path: join(out, '26-quittance-rappel.png'), fullPage: true });
+    await page.locator('dialog[open]').getByRole('button', { name: 'Fermer' }).click();
+    // le rappel n'est plus proposé seul
+    const rappelRow = page.locator('table.dt-table tbody tr', { hasText: `Rappel de charges ${lastYear}` });
+    assert.equal(await rappelRow.getByRole('button', { name: 'Émettre la quittance' }).count(), 0);
+  });
+
+  await step('révision IRL : activation dans le bail, prochaine date affichée', async () => {
+    await page.goto(leaseUrl);
+    await page.getByText(/l’activer dans le bail/).waitFor();
+    await page.getByRole('button', { name: 'Modifier' }).first().click();
+    await page.getByLabel(/prévoit une révision annuelle/).check();
+    assert.ok((await page.getByLabel('IRL de référence du bail').inputValue()).match(/^\d{4}-T[1-4]$/), 'dernier IRL publié à la signature proposé');
+    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    await page.getByRole('heading', { name: 'Révision annuelle du loyer (IRL)' }).waitFor();
+    await page.getByText(/Prochaine révision possible à partir du/).waitFor();
+  });
+
   await step('dépenses : saisie, part récupérable, totaux', async () => {
     await page.goto(url + '#/depenses');
     await page.getByRole('button', { name: 'Ajouter une dépense' }).first().click();
@@ -446,6 +515,19 @@ async function main() {
     await dlg.getByRole('button', { name: 'Enregistrer' }).click();
     await page.getByText('Dépense enregistrée.').waitFor();
     assert.match((await page.locator('.figure').first().innerText()).replace(/[\u202f\u00a0]/g, ' '), /800,00 €/);
+    // ajout rapide puis suppression d'une ligne
+    const quick = page.getByRole('form', { name: 'Ajout rapide d’une dépense' });
+    await quick.getByLabel('Bien').selectOption({ label: 'Parking détenu' });
+    await quick.getByLabel('Catégorie').selectOption('assurance');
+    await quick.getByLabel('Libellé').fill('PNO ajout rapide');
+    await quick.getByLabel('Montant').fill('99');
+    await quick.getByRole('button', { name: '+ Ajouter' }).click();
+    await page.getByText('Ligne ajoutée.').waitFor();
+    const row = page.locator('table.dt-table tbody tr', { hasText: '99,00' });
+    await row.waitFor();
+    await row.getByRole('button', { name: /Supprimer la dépense/ }).click();
+    await page.locator('dialog[open]').getByRole('button', { name: 'Supprimer' }).click();
+    await row.waitFor({ state: 'detached' });
   });
 
   await step('import d’un relevé collé depuis Excel : catégories, logement, anti-doublon', async () => {

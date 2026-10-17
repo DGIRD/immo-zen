@@ -73,6 +73,18 @@ Légende : **Implémenté et testé** = code livré et couvert par un test autom
 | Accès support autorisé par l'abonné, limité et journalisé | Implémenté et testé | SQL + e2e |
 | Déclaration fiscale : micro-foncier (4BE), 2044 ligne par ligne et 4BA/4BB/4BC, micro-BIC (5ND), LMNP réel avec amortissements et report (5NA/5NY), saisies complémentaires, export Excel | Implémenté et testé (calculs) / **non validé par un professionnel** | unitaires + e2e |
 
+## Évolutions du 17 octobre 2026
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Saisie automatique des adresses (Base Adresse Nationale, IGN) : code postal et ville remplis ; communes d'un code postal | Implémenté et testé (services simulés) | unitaires + e2e |
+| Dépenses : ligne d'ajout rapide, bouton Supprimer par ligne, suppression multiple, duplication | Implémenté et testé | e2e |
+| Import Excel des loyers : bail retrouvé, répartition automatique, anti-doublon | Implémenté et testé | unitaires + SQL + e2e |
+| Révision annuelle IRL : indices INSEE intégrés, une fois par année de bail, sans rétroactivité, gel F/G, échéances mises à jour, historique, rappel au tableau de bord | Implémenté et testé | unitaires + SQL + e2e |
+| Rappel de charges des années précédentes repris sur la quittance (ligne distincte, jamais quittancé deux fois) | Implémenté et testé | unitaires + SQL + e2e |
+
+Limites : les valeurs IRL sont intégrées jusqu'au 3e trimestre 2026 (à compléter chaque trimestre ou saisir à la main) ; la révision ne modifie pas les échéances déjà partiellement réglées ; le service d'adresses n'a pas été appelé réellement pendant les tests (réponses simulées).
+
 ## Restant
 
 Tout le périmètre du cahier des charges est livré. Reste **à configurer** : compte Stripe et fonctions `platform` / `stripe-webhook` ([ABONNEMENTS](ABONNEMENTS.md)), premier administrateur, envoi réel des e-mails (Resend). Pistes ultérieures : vérification de l'abonnement dans les fonctions serveur (quittances, relances), réimport de la gestion locative depuis une sauvegarde, liasse 2031/2033 complète, travaux de rénovation énergétique et déficits antérieurs dans la déclaration.
