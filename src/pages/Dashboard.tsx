@@ -4,6 +4,7 @@ import type { PropertyStatus } from '../data/types.ts';
 import { date, dateTime, money, todayParis } from '../domain/format.ts';
 import { STATUS_LABELS, statusTone } from '../domain/labels.ts';
 import { isOwned, metrics, ownedCashflow } from '../domain/property.ts';
+import { revisionPlan } from '../domain/irl.ts';
 import { chargeViews, propertyRentalSummary } from '../domain/rental.ts';
 import { Button, EmptyState, PageHeader, Section } from '../ui/components.tsx';
 import { href, navigate } from '../ui/router.ts';
@@ -48,7 +49,8 @@ export function DashboardPage() {
       const l = data.leases.find((x) => x.id === leaseId);
       return data.properties.find((p) => p.id === l?.property_id)?.title ?? 'Bail';
     };
-    return { cashUnknown, prospects, owned, counts, followUps, visits, tasks, contactFollow, ownedCash, ownedRent, offers, overdue, overdueSum, toReceipt, drafts, received, expensesToPay, leaseTitle };
+    const revisions = data.leases.filter((l) => l.irl_enabled && !revisionPlan(l, today, data.properties.find((p) => p.id === l.property_id)?.dpe ?? null).block);
+    return { revisions, cashUnknown, prospects, owned, counts, followUps, visits, tasks, contactFollow, ownedCash, ownedRent, offers, overdue, overdueSum, toReceipt, drafts, received, expensesToPay, leaseTitle };
   }, [data, today, in7, simulatorDefaults]);
 
   const max = Math.max(1, ...v.counts.map(([, n]) => n));
@@ -84,9 +86,10 @@ export function DashboardPage() {
 
           <div className="two-col">
             <Section title="À faire">
-              {v.followUps.length + v.visits.length + v.tasks.length + v.contactFollow.length + v.overdue.length + v.drafts.length === 0 ? <p className="muted">Rien d’urgent cette semaine.</p> : (
+              {v.followUps.length + v.visits.length + v.tasks.length + v.contactFollow.length + v.overdue.length + v.drafts.length + v.revisions.length === 0 ? <p className="muted">Rien d’urgent cette semaine.</p> : (
                 <ul className="agenda">
                   {v.overdue.map((c) => <li key={`o${c.charge.id}`}><span className="neg">{date(c.charge.due_date)}</span><a href={href(`/baux/${c.charge.lease_id}`)}>Loyer non confirmé : {v.leaseTitle(c.charge.lease_id)}</a><span className="muted">reste {money(c.remaining)}</span></li>)}
+                  {v.revisions.map((l) => <li key={`r${l.id}`}><span>IRL</span><a href={href(`/baux/${l.id}`)}>Révision du loyer possible : {v.leaseTitle(l.id)}</a></li>)}
                   {v.drafts.map((r) => <li key={`d${r.id}`}><span>{date(r.created_at)}</span><a href={href(`/baux/${r.lease_id}`)}>Relance à valider : {v.leaseTitle(r.lease_id)}</a></li>)}
                   {v.followUps.map((p) => <li key={`f${p.id}`}><span className={p.follow_up_date! < today ? 'neg' : ''}>{date(p.follow_up_date)}</span><a href={href(`/bien/${p.id}`)}>Relancer : {p.title}</a>{p.next_action && <span className="muted">{p.next_action}</span>}</li>)}
                   {v.contactFollow.map((c) => <li key={`c${c.id}`}><span className={c.next_follow_up! < today ? 'neg' : ''}>{date(c.next_follow_up)}</span><a href={href(`/contacts/${c.id}`)}>Relancer : {c.name}</a></li>)}

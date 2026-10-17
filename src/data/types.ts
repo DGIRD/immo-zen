@@ -191,6 +191,26 @@ export interface Lease extends Versioned {
   reminder_enabled: boolean;
   reminder_delay_days: number;
   notes: string | null;
+  /** Révision annuelle selon l'IRL. */
+  irl_enabled?: boolean;
+  irl_base_label?: string | null;
+  irl_base_value?: number | null;
+  last_revision_on?: string | null;
+}
+
+export interface LeaseRevision {
+  id: string;
+  user_id: string;
+  lease_id: string;
+  effective_on: string;
+  old_rent: number;
+  new_rent: number;
+  old_index_label: string;
+  old_index: number;
+  new_index_label: string;
+  new_index: number;
+  charges_updated: number;
+  created_at: string;
 }
 
 export interface LeaseTenant {
@@ -224,6 +244,8 @@ export interface Payment extends Versioned {
   reference: string | null;
   comment: string | null;
   source: 'saisie' | 'confirmation' | 'import';
+  /** Empreinte de la ligne importée (anti-doublon). */
+  import_ref?: string | null;
 }
 
 export interface Allocation {
@@ -270,6 +292,8 @@ export interface Receipt {
   send_error: string | null;
   cancelled_at: string | null;
   cancel_reason: string | null;
+  /** Rappels de charges repris sur la quittance. */
+  extra_lines?: { charge_id: string; label: string; amount: number }[];
   created_at: string;
 }
 

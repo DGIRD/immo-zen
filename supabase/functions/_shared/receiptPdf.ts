@@ -25,6 +25,8 @@ export interface ReceiptData {
   landlord_address: string | null;
   property_address: string | null;
   charges_label?: string;
+  /** Rappels de charges (régularisations d'années précédentes) réglés et repris sur la quittance. */
+  extra_lines?: { label: string; amount: number }[] | null;
 }
 
 // Sous-ensemble de l'API pdf-lib utilisé
@@ -60,13 +62,14 @@ export function pdfSafe(s: string): string {
 
 /** Lignes de texte du document (testables indépendamment du rendu). */
 export function receiptLines(r: ReceiptData) {
-  const total = Math.round((r.rent_amount + r.charges_amount) * 100) / 100;
+  const extras = (r.extra_lines ?? []).filter((x) => x.amount);
+  const total = Math.round((r.rent_amount + r.charges_amount + extras.reduce((a, x) => a + x.amount, 0)) * 100) / 100;
   const remaining = Math.round((total - r.paid_amount) * 100) / 100;
   const period = `du ${frDate(r.period_start)} au ${frDate(r.period_end)}`;
   const landlord = r.landlord_name?.trim() || 'Le bailleur';
   const title = r.kind === 'quittance' ? 'Quittance de loyer' : 'Reçu de paiement partiel';
   const statement = r.kind === 'quittance'
-    ? `Je soussigné(e) ${landlord}, bailleur du logement désigné ci-dessus, déclare avoir reçu de ${r.tenant_names} la somme de ${frMoney(total)} au titre du loyer et des charges pour la période ${period}, et lui en donne quittance, sous réserve de tous mes droits.`
+    ? `Je soussigné(e) ${landlord}, bailleur du logement désigné ci-dessus, déclare avoir reçu de ${r.tenant_names} la somme de ${frMoney(total)} au titre du loyer et des charges pour la période ${period}${extras.length ? `, ainsi que du rappel de charges (${extras.map((x) => x.label).join(', ')})` : ''}, et lui en donne quittance, sous réserve de tous mes droits.`
     : `Je soussigné(e) ${landlord}, bailleur du logement désigné ci-dessus, déclare avoir reçu de ${r.tenant_names} la somme de ${frMoney(r.paid_amount)}, à valoir sur le loyer et les charges de la période ${period}. Il reste dû ${frMoney(remaining)} pour cette période. Le présent reçu ne vaut pas quittance.`;
   return {
     title,
@@ -78,7 +81,8 @@ export function receiptLines(r: ReceiptData) {
     detail: [
       ['Loyer hors charges', frMoney(r.rent_amount)],
       [r.charges_label ?? 'Provision pour charges', frMoney(r.charges_amount)],
-      ['Total de la période', frMoney(total)],
+      ...extras.map((x) => [x.label, frMoney(x.amount)] as [string, string]),
+      [extras.length ? 'Total réglé' : 'Total de la période', frMoney(total)],
       ...(r.kind === 'recu' ? [['Montant reçu', frMoney(r.paid_amount)], ['Reste dû', frMoney(remaining)]] : []),
     ] as [string, string][],
     payments: r.payments.map((p) => `${frDate(p.date)} : ${frMoney(p.amount)} par ${METHODS[p.method] ?? p.method}`),

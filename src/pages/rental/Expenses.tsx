@@ -45,16 +45,30 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
     { id: 'recoverable', label: 'Récupérable', value: (e) => e.recoverable_amount, kind: 'money', align: 'right', render: (e) => (e.recoverable_amount ? money2(e.recoverable_amount) : '—') },
     { id: 'status', label: 'Paiement', value: (e) => (e.payment_status === 'paye' ? `Payée le ${date(e.paid_on)}` : 'À payer'),
       render: (e) => (e.payment_status === 'paye' ? <span className="muted">payée le {date(e.paid_on)}</span> : <span className="pill pill-warn">à payer</span>), mobile: true },
+    { id: 'delete', label: 'Supprimer', value: () => null, sortable: false, align: 'right',
+      render: (e) => <button type="button" className="icon-btn row-delete" aria-label={`Supprimer la dépense du ${date(e.expense_date)} (${money2(e.amount)})`} title="Supprimer" onClick={() => void del([e])}>🗑</button> },
     { id: 'proof', label: 'Justificatif', value: (e) => (e.document_id ? 'oui' : null), sortable: false,
       render: (e) => { const d = data.documents.find((x) => x.id === e.document_id); return d ? <button type="button" className="link" onClick={() => void openDocument(store.repo, d).catch((x: Error) => store.notify(x.message, 'error'))}>Voir</button> : '—'; } },
   ];
-  const exportCols: ExportColumn<Expense>[] = columns.filter((c) => c.id !== 'proof').map((c) => ({ label: c.label, value: c.value, kind: c.kind }));
+  async function del(list: Expense[]) {
+    const label = list.length === 1 ? `${money2(list[0]!.amount)} du ${date(list[0]!.expense_date)} sera supprimée.` : `${list.length} lignes seront supprimées.`;
+    if (!(await ask(list.length === 1 ? 'Supprimer la dépense' : 'Supprimer les dépenses', `${label} Les justificatifs restent dans Documents.`, 'Supprimer'))) return false;
+    let n = 0;
+    for (const e of list) if (await store.remove('expenses', e.id)) n++;
+    if (n > 1) store.notify(`${n} lignes supprimées.`);
+    return n > 0;
+  }
+  const exportCols: ExportColumn<Expense>[] = columns.filter((c) => c.id !== 'proof' && c.id !== 'delete').map((c) => ({ label: c.label, value: c.value, kind: c.kind }));
   const exp = async (f: 'xlsx' | 'csv') => {
     const name = `immo-zen-depenses-${year || 'toutes'}-${stamp()}`;
     if (f === 'csv') downloadBlob(new Blob([toCsv(exportCols, rows)], { type: 'text/csv;charset=utf-8' }), `${name}.csv`);
     else downloadBlob(await toXlsx([{ name: 'Dépenses', columns: exportCols, rows }]), `${name}.xlsx`);
   };
   const owned = data.properties.filter((p) => p.status === 'acquis');
+  async function duplicate(e: Expense) {
+    const { id: _i, user_id: _u, version: _v, created_at: _c, updated_at: _up, import_ref: _r, document_id: _d, ...rest } = e;
+    if (await store.create('expenses', { ...rest, document_id: null, import_ref: null })) store.notify('Ligne dupliquée.');
+  }
 
   return (
     <>
@@ -70,6 +84,7 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
         <div className="figure"><span className="figure-label">Capital et trésorerie</span><span className="figure-value">{money2(round2(t.byNature.remboursement_capital + t.byNature.tresorerie))}</span><span className="figure-hint">hors charges</span></div>
         {t.income > 0 && <div className="figure"><span className="figure-label">Recettes importées</span><span className="figure-value pos">{money2(t.income)}</span><span className="figure-hint">catégorie Loyer, hors dépenses</span></div>}
       </div>
+      {owned.length > 0 && <QuickAdd owned={owned} defaultProperty={property || propertyId || (owned.length === 1 ? owned[0]!.id : '')} />}
       <DataTable id="depenses" rows={rows} columns={columns} rowKey={(e) => e.id} initialSort={{ id: 'date', dir: 'desc' }} onOpen={(e) => setEdit(e)}
         toolbar={<>
           <label className="inline-select">Bien<select value={property} onChange={(e) => setProperty(e.target.value)}><option value="">Tous</option>{owned.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
@@ -79,8 +94,10 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
         rowActions={(e) => [
           { label: 'Modifier', onSelect: () => setEdit(e) },
           ...(e.payment_status === 'a_payer' ? [{ label: 'Marquer payée aujourd’hui', onSelect: () => void store.update('expenses', e, { payment_status: 'paye', paid_on: todayParis() }, 'La dépense') }] : []),
-          { label: 'Supprimer', danger: true, onSelect: async () => { if (await ask('Supprimer la dépense', `${money2(e.amount)} du ${date(e.expense_date)} sera supprimée. Le justificatif reste dans Documents.`, 'Supprimer')) await store.remove('expenses', e.id); } },
+          { label: 'Dupliquer', onSelect: () => void duplicate(e) },
+          { label: 'Supprimer', danger: true, onSelect: () => void del([e]) },
         ]}
+        bulkActions={(sel, clear) => <Button size="sm" variant="danger" onClick={async () => { if (await del(sel)) clear(); }}>Supprimer ({sel.length})</Button>}
         empty={<EmptyState title="Aucune dépense" action={owned.length > 0 && <Button variant="primary" onClick={() => setEdit('new')}>Ajouter une dépense</Button>}>
           {owned.length ? 'Copropriété, taxe foncière, assurances, intérêts, travaux, mobilier, entretien, gestion…' : <>Ajoutez d’abord un bien dans <a href="#/biens">Mes biens</a>.</>}
         </EmptyState>} />
@@ -165,5 +182,38 @@ export function ExpenseDialog({ expense, onClose, propertyId }: { expense: Expen
       </div>
       {err && <p className="form-error" role="alert">{err}</p>}
     </Modal>
+  );
+}
+
+/** Ajout d'une ligne en une fois, sans ouvrir de fenêtre : date, bien, catégorie, libellé, montant. */
+function QuickAdd({ owned, defaultProperty }: { owned: { id: string; title: string }[]; defaultProperty: string }) {
+  const store = useStore();
+  const today = todayParis();
+  const [d, setD] = useState({ property_id: defaultProperty, expense_date: today, category: 'copropriete' as ExpenseCategory, label: '', amount: '' });
+  const [busy, setBusy] = useState(false);
+  const amount = Number(d.amount.replace(/\s/g, '').replace(',', '.'));
+  const ok = d.property_id && d.expense_date && Number.isFinite(amount) && amount > 0;
+  async function add() {
+    if (!ok) { store.notify('Indiquez le bien, la date et un montant positif.', 'error'); return; }
+    setBusy(true);
+    try {
+      const row = await store.create('expenses', { property_id: d.property_id, expense_date: d.expense_date, category: d.category, nature: defaultNature(d.category),
+        label: d.label.trim() || null, amount: round2(amount), recoverable_amount: 0, payment_status: 'paye', paid_on: d.expense_date, supplier: null });
+      if (row) { store.notify('Ligne ajoutée.'); setD((x) => ({ ...x, label: '', amount: '' })); }
+    } finally { setBusy(false); }
+  }
+  return (
+    <form className="quick-add" onSubmit={(e) => { e.preventDefault(); void add(); }} aria-label="Ajout rapide d’une dépense">
+      <input type="date" aria-label="Date" value={d.expense_date} onChange={(e) => setD({ ...d, expense_date: e.target.value })} />
+      <select aria-label="Bien" value={d.property_id} onChange={(e) => setD({ ...d, property_id: e.target.value })}>
+        <option value="">Bien…</option>{owned.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+      </select>
+      <select aria-label="Catégorie" value={d.category} onChange={(e) => setD({ ...d, category: e.target.value as ExpenseCategory })}>
+        {CATS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+      </select>
+      <input aria-label="Libellé" placeholder="Libellé" maxLength={300} value={d.label} onChange={(e) => setD({ ...d, label: e.target.value })} />
+      <input aria-label="Montant" placeholder="Montant €" inputMode="decimal" value={d.amount} onChange={(e) => setD({ ...d, amount: e.target.value })} />
+      <Button type="submit" variant="primary" disabled={busy}>+ Ajouter</Button>
+    </form>
   );
 }

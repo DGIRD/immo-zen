@@ -10,6 +10,7 @@ import { round2 } from '../../domain/simulator.ts';
 import { Button, EmptyState, KeyValue, Modal, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
 import { href, navigate } from '../../ui/router.ts';
 import { DocumentList } from './Documents.tsx';
+import { IRL_VALUES, irlLabel, revisionPlan } from '../../domain/irl.ts';
 import { ChargeActions, ChargeBadge, LeaseBadge, PaymentDialog, paymentAllocated, periodLabel, ReceiptDialog, sendLabel, useRental } from './common.tsx';
 
 type Tab = 'echeances' | 'paiements' | 'quittances' | 'relances' | 'depot' | 'titulaires' | 'documents';
@@ -58,6 +59,8 @@ export function LeaseDetailPage({ id }: { id: string }) {
         <div className="figure"><span className="figure-label">Impayé échu</span><span className={`figure-value ${ledger.overdue ? 'neg' : ''}`}>{money2(ledger.overdue)}</span><span className="figure-hint">échéances passées non réglées</span></div>
         <div className="figure"><span className="figure-label">Dépôt de garantie détenu</span><span className="figure-value">{money2(depositHeld)}</span><span className="figure-hint">prévu au bail : {money2(lease.deposit_amount)}</span></div>
       </div>
+
+      <RentRevision leaseId={lease.id} />
 
       <Tabs tabs={[['echeances', `Échéances (${charges.length})`], ['paiements', `Paiements (${payments.length})`], ['quittances', `Quittances et reçus (${receipts.filter((r) => !r.cancelled_at).length})`],
         ['relances', `Relances${drafts ? ` (${drafts} à valider)` : ''}`], ['depot', 'Dépôt de garantie'], ['titulaires', `Titulaires (${titulaires.length})`], ['documents', 'Documents']]} value={tab} onChange={setTab} />
@@ -177,27 +180,85 @@ function PaymentsList({ payments, views, onAdd }: { payments: Payment[]; views: 
 function ChargeDialog({ open, leaseId, onClose }: { open: boolean; leaseId: string; onClose: () => void }) {
   const store = useStore();
   const today = todayParis();
-  const [kind, setKind] = useState<RentCharge['kind']>('regularisation');
-  const [label, setLabel] = useState('Régularisation annuelle des charges');
+  const lastYear = Number(today.slice(0, 4)) - 1;
+  const [kind, setKind] = useState<'rappel' | RentCharge['kind']>('rappel');
+  const [year, setYear] = useState(lastYear);
+  const [label, setLabel] = useState(`Rappel de charges ${lastYear}`);
   const [amount, setAmount] = useState<number | null>(null);
   const [due, setDue] = useState(today);
   const [err, setErr] = useState<string | null>(null);
+  const chooseKind = (k: 'rappel' | RentCharge['kind']) => {
+    setKind(k);
+    setLabel(k === 'rappel' ? `Rappel de charges ${year}` : k === 'regularisation' ? 'Régularisation annuelle des charges' : '');
+  };
   async function save() {
-    if (amount === null || !Number.isFinite(amount) || amount === 0) { setErr('Indiquez un montant (négatif pour un remboursement au locataire).'); return; }
+    if (amount === null || !Number.isFinite(amount) || amount === 0) { setErr('Indiquez un montant.'); return; }
     if (amount < 0) { setErr('Un trop-perçu de charges en faveur du locataire se gère en avance : enregistrez une restitution ou déduisez-le d’une échéance.'); return; }
-    const c = await store.create('rent_charges', { lease_id: leaseId, kind, label: label.trim() || null, period_start: due, period_end: due, due_date: due, rent_amount: 0, charges_amount: round2(amount) });
-    if (c) { store.notify('Somme due ajoutée.'); onClose(); }
+    // le rappel couvre l'année concernée (affichée sur la quittance), il est exigible à la date choisie
+    const period = kind === 'rappel' ? { period_start: `${year}-01-01`, period_end: `${year}-12-31` } : { period_start: due, period_end: due };
+    const c = await store.create('rent_charges', { lease_id: leaseId, kind: kind === 'rappel' ? 'regularisation' : kind, label: label.trim() || null, ...period, due_date: due, rent_amount: 0, charges_amount: round2(amount) });
+    if (c) { store.notify(kind === 'rappel' ? 'Rappel de charges ajouté : une fois réglé, il pourra figurer sur la quittance du mois.' : 'Somme due ajoutée.'); onClose(); }
   }
   return (
     <Modal open={open} title="Ajouter une somme due" onClose={onClose} footer={<><Button onClick={onClose}>Annuler</Button><Button variant="primary" onClick={() => void save()}>Ajouter</Button></>}>
       <div className="grid">
-        <Select label="Nature" value={kind} onChange={(v) => setKind(v ?? 'autre')} options={[['regularisation', 'Régularisation de charges'], ['autre', 'Autre somme due']] as const} />
-        <TextInput label="Libellé" wide value={label} onChange={setLabel} maxLength={200} />
-        <NumberInput label="Montant" suffix="€" value={amount} onChange={setAmount} />
+        <Select label="Nature" value={kind} onChange={(v) => chooseKind(v ?? 'autre')} options={[['rappel', 'Rappel de charges d’une année précédente'], ['regularisation', 'Régularisation de charges'], ['autre', 'Autre somme due']] as const} />
+        {kind === 'rappel' && (
+          <Select label="Année concernée" value={String(year)} onChange={(v) => { const y = Number(v ?? lastYear); setYear(y); setLabel(`Rappel de charges ${y}`); }}
+            options={[0, 1, 2, 3, 4].map((i) => String(lastYear - i)).map((y) => [y, y] as const)} hint="Rappel possible sur trois ans (prescription des charges)." />
+        )}
+        <TextInput label="Libellé" wide value={label} onChange={setLabel} maxLength={200} hint={kind === 'rappel' ? 'Tel qu’il apparaîtra sur la quittance.' : undefined} />
+        <NumberInput label="Montant" suffix="€" value={amount} onChange={setAmount} hint={kind === 'rappel' ? 'Charges réelles de l’année − provisions déjà versées.' : undefined} />
         <TextInput label="Date d’exigibilité" type="date" value={due} onChange={setDue} />
       </div>
+      {kind === 'rappel' && <p className="muted small">Une fois le rappel réglé, « Émettre la quittance » d’un loyer proposera de l’y ajouter sur une ligne distincte. Joignez le décompte de charges au locataire (Documents).</p>}
       {err && <p className="form-error">{err}</p>}
     </Modal>
+  );
+}
+
+function RentRevision({ leaseId }: { leaseId: string }) {
+  const store = useStore();
+  const { data } = store;
+  const lease = data.leases.find((l) => l.id === leaseId)!;
+  const property = data.properties.find((p) => p.id === lease.property_id);
+  const today = todayParis();
+  const [open, setOpen] = useState(false);
+  const [newIdx, setNewIdx] = useState<number | null>(null);
+  const [oldIdx, setOldIdx] = useState<number | null>(null);
+  const [effective, setEffective] = useState<string | null>(null);
+  const history = (data.revisions ?? []).filter((r) => r.lease_id === leaseId).sort((a, b) => b.effective_on.localeCompare(a.effective_on));
+  const plan = revisionPlan(lease, today, property?.dpe ?? null, newIdx, oldIdx);
+  if (!lease.irl_enabled && !history.length) {
+    return <p className="muted small">Révision annuelle du loyer (IRL) non prévue : <a href={href(`/baux/${lease.id}/modifier`)}>l’activer dans le bail</a>.</p>;
+  }
+  const canRevise = !plan.block || plan.block === 'indice_inconnu';
+  async function revise() {
+    if (!plan.newRent || !plan.newKey || !plan.oldKey || !plan.newValue || !plan.oldValue) return;
+    const r = await store.call((repo) => repo.reviseRent({ leaseId, effective: effective ?? plan.effective, oldLabel: plan.oldKey!, oldIndex: plan.oldValue!, newLabel: plan.newKey!, newIndex: plan.newValue! }),
+      `Loyer révisé : ${money2(plan.newRent)} hors charges.`);
+    if (r) setOpen(false);
+  }
+  return (
+    <Section title="Révision annuelle du loyer (IRL)" actions={canRevise ? <Button variant="primary" onClick={() => { setNewIdx(null); setOldIdx(null); setEffective(null); setOpen(true); }}>Réviser le loyer</Button> : undefined}>
+      <p>{plan.block && plan.block !== 'indice_inconnu' ? plan.message : <>Révision possible{plan.late ? ` depuis le ${date(plan.anniversary)} (demande tardive : effet à la date de la demande, sans rattrapage)` : ` au ${date(plan.anniversary)}`} : {plan.newRent ? <><strong>{money2(plan.currentRent)} → {money2(plan.newRent)}</strong> ({plan.increasePct !== null && plan.increasePct >= 0 ? '+' : ''}{String(plan.increasePct ?? '').replace('.', ',')} %)</> : 'indice à saisir'}.</>}</p>
+      {history.length > 0 && (
+        <table className="dt-table compact"><thead><tr><th>Effet au</th><th>Indices</th><th className="num">Ancien loyer</th><th className="num">Nouveau loyer</th></tr></thead>
+          <tbody>{history.map((h) => <tr key={h.id}><td>{date(h.effective_on)}</td><td>{irlLabel(h.old_index_label)} ({String(h.old_index).replace('.', ',')}) → {irlLabel(h.new_index_label)} ({String(h.new_index).replace('.', ',')})</td><td className="num">{money2(h.old_rent)}</td><td className="num">{money2(h.new_rent)}</td></tr>)}</tbody></table>
+      )}
+      <Modal open={open} title="Réviser le loyer" onClose={() => setOpen(false)}
+        footer={<><Button onClick={() => setOpen(false)}>Annuler</Button><Button variant="primary" disabled={!plan.newRent || (!!plan.block && plan.block !== 'indice_inconnu')} onClick={() => void revise()}>Appliquer la révision</Button></>}>
+        <p>Nouveau loyer = loyer actuel × IRL {plan.newKey ? irlLabel(plan.newKey) : ''} / IRL {plan.oldKey ? irlLabel(plan.oldKey) : ''} (variation annuelle, indices INSEE).</p>
+        <div className="grid">
+          <NumberInput label={`IRL ${plan.oldKey ? irlLabel(plan.oldKey) : 'précédent'}`} value={plan.oldValue} onChange={setOldIdx} />
+          <NumberInput label={`IRL ${plan.newKey ? irlLabel(plan.newKey) : 'nouveau'}`} value={plan.newValue} onChange={setNewIdx} hint={plan.newKey && !IRL_VALUES[plan.newKey] ? 'Pas encore dans Immo-Zen : valeur publiée par l’INSEE à saisir.' : 'Valeur INSEE, modifiable.'} />
+          <TextInput label="Date d’effet" type="date" value={effective ?? plan.effective} onChange={(v) => setEffective(v || null)} hint={plan.late ? 'Demande tardive : pas d’effet rétroactif.' : 'Date anniversaire du bail.'} />
+          <div className="field"><span className="label" id="irl-new">Nouveau loyer hors charges</span><output className="computed" aria-labelledby="irl-new">{plan.newRent ? money2(plan.newRent) : '—'}</output>
+            <small className="muted">Actuel : {money2(plan.currentRent)}</small></div>
+        </div>
+        <p className="muted small">Les échéances de loyer à partir de la date d’effet encore sans paiement sont mises à jour ; les suivantes sont générées au nouveau montant. Informez le locataire par écrit (courrier ou e-mail).</p>
+      </Modal>
+    </Section>
   );
 }
 

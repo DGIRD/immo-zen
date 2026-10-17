@@ -70,7 +70,7 @@ export function createSupabaseRepo(url: string, anonKey: string): Repo {
     async loadAll(): Promise<Snapshot> {
       const missing: string[] = [];
       const [properties, scenarios, contacts, tasks, events, settings, tenants, leases, leaseTenants, charges, payments, allocations, deposits,
-        receipts, reminders, documents, expenses, outbox] = await Promise.all([
+        receipts, reminders, documents, expenses, outbox, revisions] = await Promise.all([
         selectAll<Tables['properties']>('properties'),
         selectAll<Tables['scenarios']>('scenarios'),
         selectAll<Tables['pro_contacts']>('pro_contacts'),
@@ -89,10 +89,11 @@ export function createSupabaseRepo(url: string, anonKey: string): Repo {
         optional<Snapshot['documents'][number]>('documents', missing),
         optional<Snapshot['expenses'][number]>('expenses', missing, 'expense_date'),
         optional<Snapshot['outbox'][number]>('email_outbox', missing),
+        optional<Snapshot['revisions'][number]>('lease_revisions', [], 'effective_on'),
       ]);
       return {
         ...EMPTY_SNAPSHOT, properties, scenarios, contacts, tasks, events, settings, tenants, leases, leaseTenants, charges, payments, allocations,
-        deposits, receipts, reminders, documents, expenses, outbox, missingTables: [...new Set(missing)], loadedAt: new Date().toISOString(),
+        deposits, receipts, reminders, documents, expenses, outbox, revisions, missingTables: [...new Set(missing)], loadedAt: new Date().toISOString(),
       };
     },
 
@@ -134,6 +135,12 @@ export function createSupabaseRepo(url: string, anonKey: string): Repo {
 
     async generateCharges(leaseId, until) {
       return check(await sb.rpc('iz_generate_rent_charges', { p_lease: leaseId, ...(until ? { p_until: until } : {}) })) as number;
+    },
+    async issueReceiptWithExtras(chargeId, extras) {
+      return check(await sb.rpc('iz_issue_receipt_with_extras', { p_charge: chargeId, p_extras: extras }).single()) as Receipt;
+    },
+    async reviseRent(a) {
+      return check(await sb.rpc('iz_revise_rent', { p_lease: a.leaseId, p_effective: a.effective, p_old_label: a.oldLabel, p_old_index: a.oldIndex, p_new_label: a.newLabel, p_new_index: a.newIndex }).single()) as never;
     },
     async issueReceipt(chargeId, kind) {
       return check(await sb.rpc('iz_issue_receipt', { p_charge: chargeId, p_kind: kind }).single()) as Receipt;

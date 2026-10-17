@@ -20,6 +20,10 @@ Aucun import automatique depuis les portails d'annonces : collez le lien de l'an
 
 Bouton **Marquer comme acquis** (ou statut « Acquis »). Après confirmation, le bien quitte la prospection et apparaît dans **Mes biens**, avec tout son historique. Les hypothèses de son scénario principal sont figées (« photographie à l'acquisition ») : elles ne changeront plus, même si vous retouchez le scénario. Une erreur ? « Revenir en prospection » dans le menu Plus.
 
+## Adresses
+
+Dans la fiche d'un bien (prospection ou Mes biens), commencez à taper l'adresse : des suggestions de la Base Adresse Nationale s'affichent ; en choisir une remplit le code postal et la ville. Un code postal saisi seul propose sa ou ses communes. Sans connexion au service, la saisie manuelle reste possible.
+
 ## Mes biens
 
 Les biens détenus, acquis depuis la prospection ou ajoutés directement (**Ajouter un bien détenu**) : mode de détention, régime fiscal renseigné, date et coût d'acquisition, occupation, loyer et provision, et **charges annuelles** (taxe foncière, copropriété, assurance PNO, gestion locative, GLI, autres) avec leur total ; elles pré-remplissent les simulations du bien. Section **Crédit** : montant, taux, durée, date de première échéance, assurance (€/mois) ; la mensualité est calculée, ou saisie si vous la connaissez. Le bouton « Reprendre le crédit de la simulation » recopie le crédit du scénario figé à l'acquisition. Le **cash-flow prévisionnel** du bien (fiche, tableau Mes biens, tableau de bord) = loyer charges comprises (celui du bail en cours, sinon le loyer saisi) − charges annuelles / 12 − mensualité de crédit, avant impôts. Sans loyer ni charge saisis, il reprend la simulation principale. Voir plus bas « Mes biens » pour le suivi locatif.
@@ -46,9 +50,17 @@ La fiche du bail regroupe échéances, paiements, quittances et reçus, relances
 - **Confirmer le paiement** (échéance passée) : la date du jour est proposée par défaut et le paiement est marqué « date par défaut » tant que vous ne la corrigez pas. Sans confirmation, l'échéance reste impayée, même si vous ne répondez pas à l'e-mail de rappel.
 - Le **solde** d'un bail est toujours calculé à partir des échéances et des paiements : il ne se saisit pas. Le dépôt de garantie n'y entre pas.
 
+### Importer des loyers
+
+**Loyers et paiements → Importer des loyers (Excel)** : fichier .xlsx ou .csv, ou lignes collées, avec les colonnes *Date · Montant · Locataire · Appartement · Moyen · Référence · Commentaire* (Date et Montant obligatoires, modèle téléchargeable). Le bail est retrouvé d'après le locataire ou le logement (sinon à choisir). Chaque ligne devient un paiement réparti sur les échéances dues les plus anciennes ; un excédent reste en avance. Un fichier réimporté ne crée pas de doublon.
+
+### Révision annuelle du loyer (IRL)
+
+Dans le bail, cochez « révision annuelle » et choisissez l'IRL de référence (trimestre figurant au bail ; le dernier publié à la signature est proposé). Chaque année à la date anniversaire, la fiche du bail propose **Réviser le loyer** (et le tableau de bord le signale) : nouveau loyer = loyer × IRL du trimestre de l'année / IRL du même trimestre un an plus tôt (valeurs INSEE intégrées jusqu'au 3e trimestre 2026, saisissables ensuite). Une seule révision par année de bail ; demande tardive sans effet rétroactif (une année non réclamée est perdue) ; révision refusée pour un logement classé F ou G au DPE. Les échéances encore impayées à partir de la date d'effet sont mises à jour ; l'historique des révisions est conservé.
+
 ## Quittances et reçus
 
-**Émettre la quittance** n'est proposé que pour une échéance intégralement réglée ; une seule quittance par période. Pour un paiement partiel, un **reçu** indique la somme reçue et le reste dû. Chaque document s'ouvre en aperçu, se télécharge en PDF et peut être envoyé au locataire par e-mail (adresse renseignée dans sa fiche). Une quittance émise par erreur s'annule avec un motif ; ses paiements redeviennent alors modifiables.
+**Émettre la quittance** n'est proposé que pour une échéance intégralement réglée ; une seule quittance par période. Pour un paiement partiel, un **reçu** indique la somme reçue et le reste dû. Chaque document s'ouvre en aperçu, se télécharge en PDF et peut être envoyé au locataire par e-mail (adresse renseignée dans sa fiche). **Rappel de charges** : dans le bail, « Ajouter une somme due » → *Rappel de charges d'une année précédente* (année, montant). Une fois réglé, « Émettre la quittance » d'un loyer propose de l'ajouter : il figure sur une ligne distincte de la quittance et ne peut plus être quittancé une seconde fois. Une quittance émise par erreur s'annule avec un motif ; ses paiements redeviennent alors modifiables.
 
 Envoi automatique (option du bail) : la quittance part seule quand un paiement que vous avez saisi ou confirmé règle exactement la période. Elle ne part jamais sur la seule base d'une date.
 
@@ -67,6 +79,8 @@ Par bien : date, fournisseur, montant, catégorie, **nature** (charge, immobilis
 ## Déclaration fiscale
 
 Choisissez l'année des revenus : l'onglet indique, selon le régime de chaque bien (à choisir dans le tableau ou la fiche du bien), les cases à remplir — 4BE (micro-foncier), formulaire 2044 ligne par ligne puis 4BA / 4BB / 4BC (réel), 5ND (micro-BIC), 5NA / 5NY avec amortissements (LMNP au réel). Quelques montants se saisissent (régularisation des provisions de l'année précédente, recettes diverses, paramètres d'amortissement). Export Excel. Détail des règles : [DECLARATION-FISCALE](DECLARATION-FISCALE.md). C'est une aide au remplissage, pas un conseil fiscal.
+
+Ajout et suppression rapides : la ligne au-dessus du tableau ajoute une dépense en une fois (date, bien, catégorie, libellé, montant) ; chaque ligne a un bouton Supprimer, et la sélection multiple permet de supprimer plusieurs lignes ; « Dupliquer » recopie une ligne.
 
 ## Documents
 

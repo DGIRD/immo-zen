@@ -28,6 +28,10 @@ Vérifié par `npm run test:db` avec deux comptes (lecture, modification, suppre
 - Invitations par Supabase Auth : l'invité choisit son mot de passe, aucun mot de passe n'est envoyé.
 - Secrets Stripe (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`) uniquement dans les secrets des fonctions ; le navigateur ne voit jamais de carte bancaire (Stripe Checkout).
 
+## Services externes appelés par le navigateur
+
+- Saisie automatique des adresses : `data.geopf.fr` (IGN) et `geo.api.gouv.fr`, services publics sans compte. Seul le texte de l'adresse ou le code postal saisi est envoyé, sans identifiant de compte.
+
 ## Secrets
 
 - Le frontend ne contient que l'URL et la clé **publique** du projet. Le build échoue si la clé fournie est une clé `service_role` ou `sb_secret_`.
