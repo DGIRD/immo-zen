@@ -61,7 +61,7 @@ export function AuthPage() {
           {mode === 'login' && <button type="button" className="link" onClick={() => setMode('reset')}>Mot de passe oublié</button>}
           {mode === 'login' && <button type="button" className="link" onClick={() => setMode('signup')}>Créer un compte</button>}
         </div>
-        <p className="muted small">L’abonnement (offres mensuelle et annuelle) sera ajouté au lot 3 ; la création de compte reste ouverte d’ici là.</p>
+        <p className="muted small">Les offres d’abonnement se consultent dans « Mon abonnement », une fois connecté.</p>
       </form>
     </div>
   );
