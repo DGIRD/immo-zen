@@ -93,6 +93,13 @@ Limites : les valeurs IRL sont intégrées jusqu'au 3e trimestre 2026 (à compl�
 | Durée d'amortissement personnalisée par dépense (saisie, import), section Amortissements de la déclaration (dotation, cumul, reste), sans double déduction | Implémenté et testé | unitaires + SQL + e2e |
 | Déploiement des fonctions serveur et de leurs secrets par GitHub Actions ; guide de mise en service OVH, Resend, Stripe ([MISE-EN-SERVICE](MISE-EN-SERVICE.md)) | Implémenté, **non exécuté** (jeton Supabase à fournir) | — |
 
+## Assistant (18 octobre 2026)
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Assistant d'aide (bouton « ? Assistant ») : questions proposées par rubrique, réponses de l'aide intégrée, liens vers les écrans | Implémenté et testé | unitaires (pertinence de 13 questions types) + e2e |
+| Mode conversationnel via l'API Claude (fonction `assistant`, quota quotidien, aucune donnée utilisateur transmise) | Implémenté et testé (quota SQL) / **à configurer** (clé d'API) ; appel réel non testé | SQL |
+
 ## Restant
 
 Tout le périmètre du cahier des charges est livré. Reste **à configurer** : compte Stripe et fonctions `platform` / `stripe-webhook` ([ABONNEMENTS](ABONNEMENTS.md)), premier administrateur, envoi réel des e-mails (Resend). Pistes ultérieures : vérification de l'abonnement dans les fonctions serveur (quittances, relances), réimport de la gestion locative depuis une sauvegarde, liasse 2031/2033 complète, travaux de rénovation énergétique et déficits antérieurs dans la déclaration.

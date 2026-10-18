@@ -29,7 +29,13 @@ export interface Lead {
 }
 export type LeadInput = Pick<Lead, 'name' | 'email' | 'phone' | 'source' | 'status' | 'notes' | 'next_follow_up'>;
 
+/** Assistant conversationnel non configuré (pas de clé d'API) ou indisponible en mode démonstration. */
+export class AssistantUnavailable extends Error {}
+export interface ChatMessage { role: 'user' | 'assistant'; content: string }
+
 export interface PlatformApi {
+  /** Réponse de l'assistant conversationnel (fonction « assistant »). */
+  ask(messages: ChatMessage[], page: string): Promise<string>;
   /** null : tables du lot 3 absentes (migration non exécutée). */
   state(): Promise<PlatformState | null>;
   checkout(plan: Plan['code']): Promise<string>;
@@ -82,6 +88,17 @@ export function createSupabasePlatform(sb: SupabaseClient): PlatformApi {
     return data as Record<string, unknown>;
   }
   return {
+    async ask(messages, page) {
+      const { data, error } = await sb.functions.invoke('assistant', { body: { messages, page } });
+      if (error) {
+        const ctx = (error as { context?: Response }).context;
+        if (!ctx || ctx.status === 503 || ctx.status === 404) throw new AssistantUnavailable('Assistant non configuré.');
+        let msg = 'L’assistant n’a pas répondu.';
+        try { const j = await ctx.json(); if (j?.error) msg = j.error; } catch { /* corps illisible */ }
+        throw new RepoError(msg);
+      }
+      return String((data as { answer?: string }).answer ?? '');
+    },
     async state() {
       const acc = await sb.rpc('iz_my_access').maybeSingle();
       if (missing(acc.error)) return null;
@@ -149,6 +166,7 @@ export function createDemoPlatform(storage: Storage, userId: () => string | null
     d.audit.unshift({ id: d.audit.length + 1, admin_id: userId(), action, target_user: null, details, at: new Date().toISOString() });
   const noPay = () => { throw new RepoError('Mode démonstration : aucun paiement n’est possible.'); };
   return {
+    async ask() { throw new AssistantUnavailable('Mode démonstration : aide intégrée seulement.'); },
     async state() {
       const d = read();
       return { access: { has_access: true, reason: 'administrateur', until: null, is_admin: true, enforce: d.config.enforce_subscription }, config: d.config, plans: d.plans, subscription: null, supportUntil: d.supportUntil };

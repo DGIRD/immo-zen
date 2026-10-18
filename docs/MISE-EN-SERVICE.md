@@ -72,6 +72,15 @@ Le workflow **Actions → « Fonctions serveur Supabase » → Run workflow** tr
 9. **Passage en production** : activez le compte Stripe (identité, IBAN), créez produit, prix et webhook en mode **live**, remplacez `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` et les `price_…`, relancez le workflow.
 10. Seulement ensuite, si vous le souhaitez : Administration → **Contrôle d'accès** (abonnement exigé après l'essai gratuit).
 
+## 5. Assistant conversationnel (facultatif)
+
+Sans réglage, l'assistant répond à partir de l'aide intégrée (gratuit). Pour des réponses aux questions libres :
+1. Supabase SQL Editor : exécutez `supabase/migrations/20261018000200_assistant.sql` (quota quotidien).
+2. platform.claude.com : créez un compte, ajoutez un moyen de paiement (facturation à l'usage ; le modèle par défaut, Claude Haiku 5.5, est le moins cher), puis **API Keys → Create Key**. Fixez une limite de dépense mensuelle dans la console.
+3. GitHub → secret `ANTHROPIC_API_KEY`. Facultatif : variables `ASSISTANT_MODEL` (ex. `claude-sonnet-5-5` pour des réponses plus fines, plus coûteuses) et `ASSISTANT_DAILY_LIMIT` (40 questions par compte et par jour par défaut).
+4. Lancez le workflow « Fonctions serveur Supabase » (il déploie aussi la fonction `assistant`).
+Seules les questions et le nom de la rubrique affichée sont transmis au modèle, jamais les données des biens ou des locataires.
+
 ## Récapitulatif des réglages GitHub (Settings → Secrets and variables → Actions)
 
 | Nom | Type | Valeur |
@@ -85,3 +94,5 @@ Le workflow **Actions → « Fonctions serveur Supabase » → Run workflow** tr
 | `EMAIL_FROM` | variable | `Immo-Zen <quittances@mail.immo-zen.fr>` |
 | `EMAIL_REPLY_TO` | variable | votre adresse |
 | `EMAIL_ENABLED` | variable | `false`, puis `true` après vérification |
+| `ANTHROPIC_API_KEY` | secret | clé de l'API Claude (assistant, facultatif) |
+| `ASSISTANT_MODEL`, `ASSISTANT_DAILY_LIMIT` | variables | facultatives |

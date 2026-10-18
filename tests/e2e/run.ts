@@ -681,6 +681,24 @@ async function main() {
     await page.screenshot({ path: join(out, '27-amortissements.png'), fullPage: true });
   });
 
+  await step('assistant : questions proposées selon la rubrique, réponses de l’aide intégrée', async () => {
+    await page.goto(url + '#/depenses');
+    await page.getByRole('button', { name: 'Assistant' }).click();
+    const panel = page.getByRole('dialog', { name: 'Assistant Immo-Zen' });
+    await panel.getByText('Aide intégrée · rubrique Dépenses').waitFor();
+    await panel.getByRole('button', { name: 'Comment importer mon relevé bancaire ?' }).click();
+    await panel.getByText('Importer un relevé de dépenses (Excel)').waitFor();
+    await panel.getByLabel('Votre question').fill('Comment réviser le loyer avec l’indice IRL ?');
+    await panel.getByLabel('Votre question').press('Enter');
+    await panel.getByText('Révision annuelle du loyer (IRL)').first().waitFor();
+    await panel.getByLabel('Votre question').fill('recette de la tarte aux pommes');
+    await panel.getByRole('button', { name: 'Envoyer' }).click();
+    await panel.getByText(/Je n’ai pas trouvé de réponse précise/).waitFor();
+    await page.screenshot({ path: join(out, '28-assistant.png') });
+    await panel.getByRole('button', { name: 'Fermer l’assistant' }).click();
+    await panel.waitFor({ state: 'detached' });
+  });
+
   await step('rendu mobile (390 px) sans défilement horizontal', async () => {
     const m = await browser.newContext({ locale: 'fr-FR', timezoneId: 'Europe/Paris', viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     const mp = await m.newPage();
