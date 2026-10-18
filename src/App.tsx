@@ -40,7 +40,8 @@ export function App() {
   else if (a === 'bien' && b === 'nouveau') {
     const mode = route.query.get('mode') === 'owned' ? 'owned' : 'prospect';
     active = mode === 'owned' ? 'biens' : 'prospection';
-    page = <PropertyFormPage key={key} mode={mode} />;
+    // bien en prospection : fiche et simulation saisies ensemble dans le simulateur
+    page = mode === 'owned' ? <PropertyFormPage key={key} mode={mode} /> : <SimulatorPage key={key} />;
   } else if (a === 'bien' && b) {
     const p = data.properties.find((x) => x.id === b);
     active = p?.status === 'acquis' ? 'biens' : 'prospection';

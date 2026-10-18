@@ -8,6 +8,8 @@ L'indicateur en haut à droite montre l'état : *Synchronisé*, *Enregistrement�
 
 ## Prospection
 
+**Une seule saisie** : « Ajouter un bien » ouvre le simulateur, qui contient la fiche du bien (titre, statut, adresse, type, pièces, DPE, lien de l'annonce) et la simulation (prix, surface, travaux, loyer, financement, charges). Enregistrer crée le bien en prospection et son scénario. Prix, surface, travaux et loyer ne se saisissent plus dans la fiche : ils viennent du scénario principal. La fiche garde l'agence, l'agent, les relances, les commentaires et la vigilance.
+
 Les biens que vous étudiez. **Ajouter un bien** : titre obligatoire, le reste au fil de l'eau. Vous pouvez créer l'agence et l'agent directement depuis le formulaire.
 
 Le tableau se recherche, se trie (clic sur un en-tête), se filtre (en cours, refusés, archivés, statut précis, relances dues), se pagine. **Colonnes** choisit les colonnes affichées (mémorisé sur l'appareil). Cochez des lignes pour changer leur statut, les comparer (2 à 4) ou les exporter. Le menu « ⋯ » de chaque ligne : ouvrir, modifier, simuler, dupliquer, marquer comme acquis, archiver, supprimer.

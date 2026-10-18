@@ -5,6 +5,7 @@ import { downloadBlob, stamp, toCsv, toXlsx, type ExportColumn } from '../../dom
 import { date, money2, todayParis } from '../../domain/format.ts';
 import { defaultNature, EXPENSE_CATEGORY_LABELS, EXPENSE_NATURE_LABELS, expenseTotals, isIncome, MAIN_EXPENSE_CATEGORIES, OTHER_EXPENSE_CATEGORIES } from '../../domain/rental.ts';
 import { ExpenseImportDialog } from './ExpenseImport.tsx';
+import { expenseYears, isDepreciable } from '../../domain/fiscal.ts';
 import { round2 } from '../../domain/simulator.ts';
 import { DataTable, type Column } from '../../ui/DataTable.tsx';
 import { Button, EmptyState, Modal, NumberInput, PageHeader, Select, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
@@ -38,6 +39,8 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
     { id: 'property', label: 'Bien', value: (e) => titles.get(e.property_id) ?? '—', mobile: true },
     { id: 'category', label: 'Catégorie', value: (e) => EXPENSE_CATEGORY_LABELS[e.category], mobile: true },
     { id: 'nature', label: 'Nature', value: (e) => EXPENSE_NATURE_LABELS[e.nature] },
+    { id: 'amort', label: 'Amortissement', value: (e) => (isDepreciable(e) ? expenseYears(e, data.settings?.tax_inputs?.params?.[e.property_id] ?? {}) : null),
+      render: (e) => (isDepreciable(e) ? `${String(expenseYears(e, data.settings?.tax_inputs?.params?.[e.property_id] ?? {})).replace('.', ',')} ans${e.amortization_years ? '' : ' (défaut)'}` : '—'), defaultHidden: false },
     { id: 'supplier', label: 'Fournisseur', value: (e) => e.supplier },
     { id: 'label', label: 'Libellé', value: (e) => e.label, defaultHidden: true },
     { id: 'amount', label: 'Montant', value: (e) => (isIncome(e) ? e.amount : -e.amount), kind: 'money', align: 'right', render: (e) => (isIncome(e) ? <span className="pos">+{money2(e.amount)}</span> : money2(e.amount)), mobile: true },
@@ -135,6 +138,7 @@ export function ExpenseDialog({ expense, onClose, propertyId }: { expense: Expen
     if (!d.expense_date) return setErr('Indiquez la date.');
     if (!(d.amount && d.amount > 0)) return setErr('Indiquez un montant positif.');
     if ((d.recoverable_amount ?? 0) < 0 || (d.recoverable_amount ?? 0) > d.amount) return setErr('La part récupérable doit être comprise entre 0 et le montant.');
+    if (d.amortization_years != null && !(d.amortization_years > 0 && d.amortization_years <= 50)) return setErr('Durée d’amortissement entre 1 et 50 ans.');
     if (d.payment_status === 'paye' && !d.paid_on) return setErr('Indiquez la date de paiement.');
     setBusy(true);
     try {
@@ -145,6 +149,7 @@ export function ExpenseDialog({ expense, onClose, propertyId }: { expense: Expen
         documentId = doc.id;
       }
       const { id: _i, user_id: _u, version: _v, created_at: _c, updated_at: _up, ...rest } = d as Partial<Expense>;
+      if (rest.amortization_years == null) delete rest.amortization_years; // compatibilité avant migration
       const payload: Insert<Expense> = { ...rest, amount: round2(d.amount), recoverable_amount: round2(d.recoverable_amount ?? 0), supplier: d.supplier?.trim() || null, label: d.label?.trim() || null,
         paid_on: d.payment_status === 'paye' ? d.paid_on : null, document_id: documentId };
       const row = existing ? await store.update('expenses', existing, payload, 'La dépense') : await store.create('expenses', payload);
@@ -166,6 +171,10 @@ export function ExpenseDialog({ expense, onClose, propertyId }: { expense: Expen
         <TextInput label="Libellé" value={d.label} onChange={(v) => set('label', v)} maxLength={300} />
         <NumberInput label={d.category === 'loyer' ? 'Montant reçu' : 'Montant TTC'} suffix="€" value={d.amount ?? null} onChange={(v) => set('amount', v ?? undefined)} />
         <NumberInput label="Part récupérable sur le locataire" suffix="€" value={d.recoverable_amount ?? 0} onChange={(v) => set('recoverable_amount', v ?? 0)} />
+        {(d.nature === 'immobilisation' || d.category === 'mobilier' || d.category === 'entretien_amortissable' || (d.amortization_years ?? 0) > 0) && (
+          <NumberInput label="Durée d’amortissement" suffix="ans" value={d.amortization_years ?? null} onChange={(v) => set('amortization_years', v)}
+            hint={`Vide : durée par défaut (${d.category === 'mobilier' ? 'meubles 7 ans' : 'travaux 10 ans'}, réglable dans la déclaration fiscale). Les amortissements de l’année s’ajoutent à la déclaration (LMNP au réel).`} />
+        )}
         <Select label="Statut" value={d.payment_status!} onChange={(v) => set('payment_status', v ?? 'paye')} options={[['paye', 'Payée'], ['a_payer', 'À payer']] as const} />
         {d.payment_status === 'paye' && <TextInput label="Payée le" type="date" value={d.paid_on} onChange={(v) => set('paid_on', v || null)} />}
         <div className="field field-wide">

@@ -57,6 +57,12 @@ select tests.ok((select jsonb_array_length(extra_lines) = 1 and paid_amount = 88
 select tests.fails($q$ select public.iz_issue_receipt('eeeeeeee-6666-0000-0000-000000000001', 'quittance') $q$, 'rappel : pas de seconde quittance pour la même somme');
 select tests.fails($q$ select public.iz_issue_receipt_with_extras((select id from public.rent_charges where lease_id = 'cccccccc-6666-0000-0000-000000000001' and kind = 'loyer' and period_start = '2024-02-01'),
   array['eeeeeeee-6666-0000-0000-000000000001'::uuid]) $q$, 'rappel : impossible de le reprendre sur une autre quittance');
+-- Durée d'amortissement personnalisée sur une dépense
+insert into public.expenses (property_id, expense_date, amount, category, nature, payment_status, paid_on, amortization_years)
+values ('aaaaaaaa-6666-0000-0000-000000000001', '2025-05-01', 3000, 'entretien', 'immobilisation', 'paye', '2025-05-01', 8);
+select tests.ok((select amortization_years = 8 from public.expenses where amount = 3000 and property_id = 'aaaaaaaa-6666-0000-0000-000000000001'), 'amortissement : durée personnalisée enregistrée');
+select tests.fails($q$ insert into public.expenses (property_id, expense_date, amount, category, payment_status, paid_on, amortization_years)
+  values ('aaaaaaaa-6666-0000-0000-000000000001', '2025-05-01', 10, 'mobilier', 'paye', '2025-05-01', 0) $q$, 'amortissement : durée nulle refusée');
 commit;
 
 -- Isolation : Bob ne peut ni réviser ni quittancer pour Alice

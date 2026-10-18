@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../data/store.tsx';
-import type { Property, Scenario } from '../data/types.ts';
+import type { Property, PropertyStatus, PropertyType, Scenario } from '../data/types.ts';
+import { DPE_VALUES, STATUS_LABELS, STATUS_ORDER, TYPE_LABELS } from '../domain/labels.ts';
+import { AddressFields } from '../ui/AddressFields.tsx';
 import { downloadBlob, stamp, toXlsx } from '../domain/exporting.ts';
 import { money, money2, pct } from '../domain/format.ts';
 import { inputsFromProperty, isProspect, prospectFieldsFromSimulation } from '../domain/property.ts';
@@ -30,8 +32,19 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
   const [inputs, setInputs] = useState<SimulationInputs>(initial);
   const [name, setName] = useState(scenario?.name ?? (property ? `Scénario ${data.scenarios.filter((s) => s.property_id === property.id).length + 1}` : 'Scénario 1'));
   const [linked, setLinked] = useState<string | null>(initialProperty);
-  // Sans bien rattaché, l'enregistrement crée un bien en prospection
-  const [newTitle, setNewTitle] = useState('');
+  // Fiche du bien saisie dans le même écran (prospection) : une seule saisie pour le bien et sa simulation
+  const bienOf = (p?: Property): Bien => ({
+    title: p?.title ?? '', address: p?.address ?? null, zip: p?.zip ?? null, city: p?.city ?? null, property_type: p?.property_type ?? 'appartement',
+    rooms: p?.rooms ?? null, dpe: p?.dpe ?? null, listing_url: p?.listing_url ?? null, status: p?.status ?? 'repere',
+  });
+  const [bien, setBien] = useState<Bien>(() => bienOf(property));
+  const [bienBase, setBienBase] = useState<Bien>(() => bienOf(property));
+  const changeLinked = (id: string | null) => {
+    setLinked(id);
+    const p = id ? data.properties.find((x) => x.id === id) : undefined;
+    setBien(bienOf(p)); setBienBase(bienOf(p));
+  };
+  const setB = <K extends keyof Bien>(k: K, v: Bien[K]) => setBien((b) => ({ ...b, [k]: v }));
   const [detail, setDetail] = useState<'annuel' | 'mensuel' | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => { setInputs(initial); }, [initial]);
@@ -51,19 +64,22 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
     return next;
   });
   const live = outcome.ok ? outcome.result : null;
-  const dirty = JSON.stringify(inputs) !== JSON.stringify(initial) || name !== (scenario?.name ?? name) || linked !== initialProperty;
+  const dirty = JSON.stringify(inputs) !== JSON.stringify(initial) || name !== (scenario?.name ?? name) || linked !== initialProperty || JSON.stringify(bien) !== JSON.stringify(bienBase);
 
+  const linkedProp = linked ? data.properties.find((p) => p.id === linked) : undefined;
   async function save(asNew: boolean) {
     if (!outcome.ok) { notify('Corrigez les valeurs signalées avant d’enregistrer.', 'error'); return; }
-    if (!linked && !newTitle.trim()) { notify('Donnez un titre au bien qui sera ajouté à la prospection.', 'error'); return; }
+    const editable = !linkedProp || isProspect(linkedProp);
+    if (editable && !bien.title.trim()) { notify('Donnez un titre au bien.', 'error'); return; }
+    if (editable && bien.listing_url && !/^https?:\/\//i.test(bien.listing_url)) { notify('Le lien de l’annonce doit commencer par http:// ou https://', 'error'); return; }
     setBusy(true);
     try {
       const fields = prospectFieldsFromSimulation(inputs, outcome.result);
-      let prop: Property | null | undefined = linked ? data.properties.find((p) => p.id === linked) : undefined;
+      let prop: Property | null | undefined = linkedProp;
       let created = false;
       if (!prop) {
         // Le simulateur alimente la prospection : nouveau bien « Repéré » avec les valeurs simulées
-        prop = await create('properties', { title: newTitle.trim().slice(0, 200), status: 'repere', property_type: 'appartement', vigilance: [], ...fields });
+        prop = await create('properties', { ...bien, title: bien.title.trim().slice(0, 200), vigilance: [], ...fields });
         if (!prop) return;
         created = true;
         setLinked(prop.id);
@@ -77,11 +93,14 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
       const primary = !prop.primary_scenario_id || prop.primary_scenario_id === saved.id;
       if (!prop.primary_scenario_id) patch.primary_scenario_id = saved.id;
       // Le scénario principal met à jour la fiche du bien en prospection (prix, surface, travaux, loyer)
-      if (primary && isProspect(prop) && !created) {
-        for (const [k, v] of Object.entries(fields) as [keyof Property, never][]) if (prop[k] !== v) (patch as Record<string, unknown>)[k] = v;
+      if (isProspect(prop) && !created) {
+        // fiche du bien (titre, adresse, type, DPE, statut…) : toujours ; prix, surface, travaux et loyer : scénario principal
+        const own = { ...bien, title: bien.title.trim().slice(0, 200) };
+        for (const [k, v] of Object.entries({ ...own, ...(primary ? fields : {}) }) as [keyof Property, never][]) if (prop[k] !== v) (patch as Record<string, unknown>)[k] = v;
       }
       if (Object.keys(patch).length) await update('properties', prop, patch, `Le bien « ${prop.title} »`);
-      notify(created ? `Simulation enregistrée et bien « ${prop.title} » ajouté à la prospection.` : 'Simulation enregistrée.');
+      setBienBase(bien);
+      notify(created ? `Bien « ${prop.title} » ajouté à la prospection avec sa simulation.` : 'Bien et simulation enregistrés.');
       if (!scenario || asNew || saved.id !== scenarioId) navigate(`/simulateur/${saved.id}`);
     } finally {
       setBusy(false);
@@ -126,15 +145,25 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
 
       <div className="sim-layout">
         <div>
-          <Section title="Rattachement">
+          <Section title="Le bien">
             <div className="grid">
-              <TextInput label="Nom du scénario" wide value={name} onChange={setName} maxLength={120} />
-              <Select label="Bien" wide value={linked} onChange={setLinked} allowEmpty="Nouveau bien en prospection"
-                options={data.properties.filter((p) => p.status !== 'archive' || p.id === linked).map((p) => [p.id, p.title] as const)}
-                hint={linkedProperty && isProspect(linkedProperty) ? 'Le scénario principal met à jour les prix, la surface, les travaux et le loyer du bien.' : undefined} />
-              {!linked && <TextInput label="Titre du nouveau bien" required wide value={newTitle} onChange={setNewTitle} maxLength={200} placeholder="Ex. T2 lumineux proche gare"
-                hint="Le bien sera ajouté à la prospection avec les prix, la surface, les travaux et le loyer simulés." />}
+              <Select label="Bien" wide value={linked} onChange={changeLinked} allowEmpty="Nouveau bien en prospection"
+                options={data.properties.filter((p) => p.status !== 'archive' || p.id === linked).map((p) => [p.id, p.title] as const)} />
+              {(!linkedProperty || isProspect(linkedProperty)) ? (
+                <>
+                  <TextInput label="Titre du bien" required wide value={bien.title} onChange={(v) => setB('title', v)} maxLength={200} placeholder="Ex. T2 lumineux proche gare" />
+                  <Select label="Statut" value={bien.status} onChange={(v) => setB('status', (v ?? 'repere') as PropertyStatus)}
+                    options={STATUS_ORDER.filter((x) => x !== 'acquis' && x !== 'archive').map((x) => [x, STATUS_LABELS[x]] as const)} />
+                  <AddressFields value={bien} onChange={(a) => setBien((b) => ({ ...b, ...a }))} />
+                  <Select label="Type" value={bien.property_type} onChange={(v) => setB('property_type', (v ?? 'appartement') as PropertyType)} options={Object.entries(TYPE_LABELS) as [PropertyType, string][]} />
+                  <NumberInput label="Pièces" value={bien.rooms} onChange={(v) => setB('rooms', v === null ? null : Math.round(v))} />
+                  <Select label="DPE" value={bien.dpe} onChange={(v) => setB('dpe', v)} allowEmpty="Non renseigné" options={DPE_VALUES.map((d) => [d, d] as const)} />
+                  <TextInput label="Lien de l’annonce" type="url" wide value={bien.listing_url} onChange={(v) => setB('listing_url', v || null)} placeholder="https://" />
+                </>
+              ) : <p className="muted small field-full">Bien détenu : sa fiche se modifie dans Mes biens. La simulation ne la change pas.</p>}
+              <TextInput label="Nom du scénario" value={name} onChange={setName} maxLength={120} />
             </div>
+            {(!linkedProperty || isProspect(linkedProperty)) && <p className="muted small">Une seule saisie : la fiche du bien en prospection est enregistrée avec la simulation. Prix, surface, travaux et loyer du scénario principal s’affichent dans la prospection. Agence, relances et commentaires : fiche du bien.</p>}
           </Section>
 
           <Section title="Acquisition">
@@ -303,3 +332,5 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
     </>
   );
 }
+
+type Bien = Pick<Property, 'title' | 'address' | 'zip' | 'city' | 'property_type' | 'rooms' | 'dpe' | 'listing_url' | 'status'>;

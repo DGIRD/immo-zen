@@ -3,7 +3,7 @@ import { useStore } from '../data/store.tsx';
 import type { TaxInputs, TaxPropertyInputs, TaxRegime } from '../data/types.ts';
 import { downloadBlob, stamp, toXlsx } from '../domain/exporting.ts';
 import { money2, todayParis } from '../domain/format.ts';
-import { DEFAULT_TAX_INPUTS, FONCIER_DEFICIT_LIMIT, fiscalSummary, MICRO_BIC_LIMIT, MICRO_FONCIER_LIMIT, type FiscalSummary } from '../domain/fiscal.ts';
+import { DEFAULT_TAX_INPUTS, depreciationItems, FONCIER_DEFICIT_LIMIT, fiscalSummary, MICRO_BIC_LIMIT, MICRO_FONCIER_LIMIT, type FiscalSummary } from '../domain/fiscal.ts';
 import { TAX_REGIME_LABELS } from '../domain/labels.ts';
 import { Button, EmptyState, NumberInput, PageHeader, Section } from '../ui/components.tsx';
 import { href } from '../ui/router.ts';
@@ -40,6 +40,15 @@ export function FiscalPage() {
   [year, data, inputs]);
   const title = (id: string) => data.properties.find((p) => p.id === id)?.title ?? '—';
   const boxes = collectBoxes(fiscal, title);
+  // amortissements de l'année pour chaque bien (bâti seulement pour les régimes qui l'amortissent)
+  const fiscalData = { properties: data.properties, leases: data.leases, charges: data.charges, payments: data.payments, allocations: data.allocations, expenses: data.expenses };
+  const amort = [...fiscal.amounts.keys()].map((pid) => {
+    const p = data.properties.find((x) => x.id === pid)!;
+    const withBuilding = p.tax_regime === 'reel_bic' || p.tax_regime === 'is';
+    const { items } = depreciationItems(p, year, fiscalData, get(pid, year), withBuilding);
+    return { p, items, total: items.reduce((a, i) => a + i.amount, 0) };
+  }).filter((x) => x.items.length > 0);
+  for (const a of amort) for (const i of a.items) boxes.push({ form: 'Amortissements', code: `${i.years} ans`, label: i.label, amount: i.amount, property: a.p.title });
   const owned = data.properties.filter((p) => p.status === 'acquis');
 
   async function saveInputs() {
@@ -99,6 +108,33 @@ export function FiscalPage() {
               </table>
             </Section>
           )}
+
+          <Section title={`Amortissements ${year}`}>
+            {amort.length === 0 ? (
+              <p className="muted">Aucun élément amorti pour {year}. Les meubles, l’entretien amortissable et toute dépense dotée d’une durée d’amortissement (onglet Dépenses) apparaissent ici ; en LMNP au réel, le bâti s’y ajoute.</p>
+            ) : (
+              <>
+                {amort.map(({ p, items, total }) => (
+                  <div key={p.id} className="tax-amort">
+                    <p className="label">{p.title} — {p.tax_regime ? TAX_REGIME_LABELS[p.tax_regime] : 'régime à choisir'} : dotation {year} <strong>{money2(total)}</strong></p>
+                    <div className="dt-scroll"><table className="dt-table compact">
+                      <thead><tr><th>Élément</th><th className="num">Base</th><th className="num">Durée</th><th>Depuis</th><th className="num">Dotation {year}</th><th className="num">Cumul fin {year}</th><th className="num">Reste à amortir</th></tr></thead>
+                      <tbody>{items.map((i) => (
+                        <tr key={i.label + i.start}><td>{i.label}</td><td className="num">{money2(i.base)}</td><td className="num">{String(i.years).replace('.', ',')} ans</td><td>{i.start.split('-').reverse().join('/')}</td>
+                          <td className="num">{money2(i.amount)}</td><td className="num">{money2(i.cumulated)}</td><td className="num">{money2(i.remaining)}</td></tr>
+                      ))}</tbody>
+                    </table></div>
+                    <p className="muted small">{p.tax_regime === 'reel_bic' ? 'Déduits du résultat LMNP ci-dessous, dans la limite du résultat avant amortissements (excédent reporté).'
+                      : p.tax_regime === 'is' ? 'À reporter dans la liasse de la société.'
+                      : p.tax_regime === 'reel_foncier' ? 'Information : en location nue, rien ne s’amortit ; les travaux sont déduits l’année du paiement (ligne 224) et les meubles ne sont pas déductibles.'
+                      : p.tax_regime === 'micro_foncier' || p.tax_regime === 'micro_bic' ? 'Information : au régime micro, l’abattement forfaitaire remplace toute déduction, amortissements compris.'
+                      : 'Choisissez le régime fiscal du bien pour savoir si ces amortissements sont déductibles.'} <a href={href(`/depenses?bien=${p.id}`)}>Modifier les durées dans Dépenses</a>.</p>
+                  </div>
+                ))}
+                <p><strong>Total des dotations {year} : {money2(amort.reduce((a, x) => a + x.total, 0))}</strong></p>
+              </>
+            )}
+          </Section>
 
           {fiscal.microFoncier && (
             <Section title="Micro-foncier — déclaration 2042">

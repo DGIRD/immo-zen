@@ -10,7 +10,7 @@ import { EXPENSE_CATEGORY_LABELS, defaultNature } from './rental.ts';
 export type Cell = string | number | null;
 
 export const IMPORT_COLUMNS = ['Date', 'Libellé', 'Compte du mouvement', 'Montant (EUROS)', 'Catégorie', 'Commentaires', 'Appartement'] as const;
-type Field = 'date' | 'label' | 'account' | 'amount' | 'category' | 'notes' | 'property';
+type Field = 'date' | 'label' | 'account' | 'amount' | 'category' | 'notes' | 'property' | 'years';
 
 export const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -206,6 +206,8 @@ export interface ImportRow {
   notes: string | null;
   rawProperty: string | null;
   propertyId: string | null;
+  /** Durée d'amortissement (colonne facultative « Durée d'amortissement »). */
+  years: number | null;
   ref: string;
   errors: string[];
 }
@@ -218,6 +220,7 @@ const HEADER_MATCH: [Field, RegExp][] = [
   ['category', /^categorie|^rubrique/],
   ['notes', /^commentaire|^note|^remarque/],
   ['property', /^appartement|^bien|^logement|^adresse|^lot/],
+  ['years', /^duree|amortissement/],
 ];
 
 /** Repère la ligne d'en-têtes et la position de chaque colonne. */
@@ -276,7 +279,9 @@ export function buildImportRows(rows: Cell[][], properties: Pick<Property, 'id' 
     out.push({
       line: header + i + 2, date, label, account, signed, rawCategory, category,
       notes: get(r, 'notes') === null ? null : String(get(r, 'notes')),
-      rawProperty, propertyId: propCache.get(pk) ?? null, ref: `imp:${base}:${n}`, errors,
+      rawProperty, propertyId: propCache.get(pk) ?? null,
+      years: (() => { const y = parseAmount(get(r, 'years')); return y && y > 0 && y <= 50 ? y : null; })(),
+      ref: `imp:${base}:${n}`, errors,
     });
   });
   return { rows: out };
@@ -313,5 +318,6 @@ export function toExpense(r: ImportRow): Insert<Expense> {
     account: r.account?.slice(0, 120) ?? null,
     import_ref: r.ref,
     document_id: null,
+    ...(r.years ? { amortization_years: r.years } : {}),
   };
 }
