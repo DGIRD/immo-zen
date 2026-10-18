@@ -6,7 +6,7 @@
 //  * en cas d'erreur, réponse 500 : Stripe renvoie l'événement plus tard.
 // Secrets : STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET (+ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY fournis par Supabase).
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { HANDLED_EVENTS, stripeRequest, subscriptionFields, subscriptionIdOf, verifyStripeSignature, type StripeEvent, type StripeSubscription } from '../_shared/stripe.ts';
+import { fiscalPackFromSession, HANDLED_EVENTS, stripeRequest, subscriptionFields, subscriptionIdOf, verifyStripeSignature, type StripeEvent, type StripeSubscription } from '../_shared/stripe.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 
@@ -37,8 +37,17 @@ Deno.serve(async (req) => {
       return Response.json({ received: true });
     }
     const o = ev.data.object as Record<string, unknown>;
+    // Paiement ponctuel (pack fiscal) : aucun abonnement concerné
+    if (ev.type.startsWith('checkout.session.') && o.mode === 'payment') {
+      const pack = fiscalPackFromSession(ev);
+      if (!pack) { await done('ignore', { error: o.payment_status === 'unpaid' ? 'paiement en attente de confirmation' : null }); return Response.json({ received: true }); }
+      const { error } = await sb.rpc('iz_grant_fiscal_pack', { p_user: pack.userId });
+      if (error) throw new Error(error.message);
+      await done('traite', { user_id: pack.userId });
+      return Response.json({ received: true });
+    }
     let userId: string | null = null;
-    if (ev.type === 'checkout.session.completed') {
+    if (ev.type === 'checkout.session.completed' || ev.type === 'checkout.session.async_payment_succeeded') {
       userId = (o.client_reference_id as string) ?? null;
       if (userId && o.customer) {
         await sb.from('subscriptions').upsert({ user_id: userId, stripe_customer_id: o.customer as string, source: 'stripe' }, { onConflict: 'user_id', ignoreDuplicates: false });
@@ -54,8 +63,9 @@ Deno.serve(async (req) => {
     }
     if (!userId) throw new Error('Client Stripe non rattaché à un compte');
 
-    const { data: plans } = await sb.from('plans').select('code, stripe_price_id');
-    const planByPrice = Object.fromEntries((plans ?? []).filter((p) => p.stripe_price_id).map((p) => [p.stripe_price_id, p.code]));
+    const { data: plans } = await sb.from('plans').select('code, stripe_price_id, kind');
+    // seules les formules déterminent l'offre d'un abonnement
+    const planByPrice = Object.fromEntries((plans ?? []).filter((p) => p.stripe_price_id && (p.kind ?? 'formule') === 'formule').map((p) => [p.stripe_price_id, p.code]));
     const { data: current } = await sb.from('subscriptions').select('stripe_updated_at').eq('user_id', userId).maybeSingle();
     if (current?.stripe_updated_at && current.stripe_updated_at > ev.created) {
       await done('ignore', { user_id: userId, error: 'événement plus ancien que l’état enregistré' });

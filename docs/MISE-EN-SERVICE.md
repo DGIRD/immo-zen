@@ -1,6 +1,6 @@
 # Mise en service : OVH, Resend, Stripe
 
-Ordre conseillé : **1. OVH (nom de domaine)** → **2. jeton Supabase** → **3. Resend (e-mails)** → **4. Stripe (abonnements)**.
+Ordre conseillé : **1. OVH (nom de domaine)** → **2. jeton Supabase** → **3. Resend (e-mails)** → **4. Stripe (formules et paiements)**.
 Chaque étape est indépendante : l'application fonctionne déjà sans elles (adresse GitHub, pas d'e-mails, pas de paiement).
 Dans les exemples, remplacez `immo-zen.fr` par votre domaine.
 
@@ -73,20 +73,78 @@ L'adresse `contact@immo-zen.fr` sert à la fois à **recevoir** (boîte ou redir
 7. Supabase → **Database → Extensions** : activez `pg_cron` et `pg_net`. Puis SQL Editor : exécutez `supabase/scheduling.example.sql` en remplaçant `VOTRE-PROJET` par `sbxnjvjsapnsdeenmvtm` et le jeton par la valeur de `CRON_SECRET`.
 8. Le lendemain, vérifiez `job_runs` (requêtes en fin de fichier) : les tâches tournent sans rien envoyer. Puis variable `EMAIL_ENABLED` = `true`, relancez le workflow, et envoyez-vous une quittance de test (locataire avec votre propre adresse).
 
-## 4. Stripe : abonnements
+## 4. Stripe : formules, moyens de paiement et abonnements
 
+Grille appliquée (migration `20261018000500_formules.sql`) : **Découverte** gratuite · **Essentiel** 9,90 €/mois ou 99 €/an · **Patrimoine** 19,90 €/mois ou 199 €/an · **Pro** 39,90 €/mois ou 399 €/an · **Pack fiscal** 49 € pour 12 mois (paiement ponctuel, en complément d'Essentiel ou Patrimoine). Prix TTC.
+
+### 4.1 Compte
 1. stripe.com → créez le compte. Restez en **mode test** (interrupteur en haut) jusqu'à la recette.
-2. **Catalogue de produits → Ajouter un produit** « Immo-Zen » avec deux prix **récurrents** : mensuel et annuel (TTC, EUR). Notez les identifiants `price_…`.
-3. **Paramètres → Facturation → Portail client** : activez factures, moyen de paiement, annulation « à la fin de la période de facturation » ; enregistrez.
-4. **Développeurs → Clés API** : copiez la clé secrète `sk_test_…` → secret GitHub `STRIPE_SECRET_KEY`.
-5. **Développeurs → Webhooks → Ajouter une destination** : URL `https://sbxnjvjsapnsdeenmvtm.supabase.co/functions/v1/stripe-webhook`, événements :
-   `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.paused`, `customer.subscription.resumed`, `invoice.paid`, `invoice.payment_failed`, `charge.refunded`.
-   Copiez le **secret de signature** `whsec_…` → secret GitHub `STRIPE_WEBHOOK_SECRET`.
-6. Lancez le workflow « Fonctions serveur Supabase ».
-7. Immo-Zen → **Administration → Offres et tarifs** : prix affichés, identifiants `price_…`, cochez « Offre ouverte ».
-8. **Recette** (mode test) depuis un second compte : Mon abonnement → S'abonner → carte `4242 4242 4242 4242` (date future, CVC quelconque) ; l'abonnement doit apparaître « Actif ». Testez l'espace client (résiliation programmée), puis la carte `4000 0000 0000 0341` (échec de paiement). Administration → Journal : les événements Stripe doivent être « traité ».
-9. **Passage en production** : activez le compte Stripe (identité, IBAN), créez produit, prix et webhook en mode **live**, remplacez `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` et les `price_…`, relancez le workflow.
-10. Seulement ensuite, si vous le souhaitez : Administration → **Contrôle d'accès** (abonnement exigé après l'essai gratuit).
+2. **Paramètres → Informations publiques** : nom affiché « Immo-Zen », e-mail et site du support, **URL des conditions générales**. Ils apparaissent sur la page de paiement et les reçus.
+
+### 4.2 Moyens de paiement
+**Paramètres → Paiements → Moyens de paiement**. L'application ne fixe aucune liste : la page de paiement propose automatiquement les moyens activés ici et compatibles avec les abonnements.
+
+| Moyen | Réglage conseillé | Frais Stripe (France) | Remarques |
+|---|---|---|---|
+| Cartes (CB, Visa, Mastercard) | **Activé** (par défaut) | 1,5 % + 0,25 € (carte standard de l'EEE) ; 2,8 % + 0,25 € (carte premium) ; 3,15 % + 0,25 € (hors EEE) | Indispensable. Authentification 3D Secure gérée par Stripe. |
+| Apple Pay, Google Pay | **Activés** | comme la carte | Aucune vérification de domaine nécessaire : la page de paiement est hébergée par Stripe. |
+| Link | Activé | comme la carte | Paiement en un clic pour les clients déjà connus de Stripe. |
+| Prélèvement SEPA | **Activé** | 0,35 € par prélèvement | Le moins cher pour l'annuel. Confirmation après plusieurs jours ouvrés : l'abonnement (ou le pack) s'active à la confirmation. Le client peut contester un prélèvement pendant 8 semaines. |
+| PayPal | Facultatif, pas au lancement | voir la page tarifaire | Compatible avec les abonnements ; à activer si des clients le demandent. |
+| Autres (paiement fractionné, virement, portefeuilles étrangers) | Désactivés | — | Inutiles pour des montants de 10 à 400 €. |
+
+S'ajoutent les frais de **Stripe Billing** (abonnements) : 0,7 % du volume facturé. Tarifs relevés sur stripe.com/fr/pricing le 18/10/2026.
+
+### 4.3 Catalogue
+**Catalogue de produits → Ajouter un produit**, quatre produits :
+
+| Produit | Prix à créer | Code Immo-Zen |
+|---|---|---|
+| Immo-Zen Essentiel | 9,90 € **récurrent mensuel** · 99 € **récurrent annuel** | `essentiel_mensuel`, `essentiel_annuel` |
+| Immo-Zen Patrimoine | 19,90 € mensuel · 199 € annuel | `patrimoine_mensuel`, `patrimoine_annuel` |
+| Immo-Zen Pro | 39,90 € mensuel · 399 € annuel | `pro_mensuel`, `pro_annuel` |
+| Immo-Zen Pack fiscal | 49 € **ponctuel** (« one-off », pas récurrent) | `pack_fiscal` |
+
+Si vous êtes en franchise de TVA, saisissez ces montants tels quels. Si vous facturez la TVA, réglez « Comportement fiscal : taxes incluses » pour que le prix affiché reste TTC. Notez chaque identifiant `price_…`.
+
+### 4.4 Espace client (portail)
+**Paramètres → Facturation → Portail client** :
+- **Factures** et **moyens de paiement** : activés ;
+- **Annulation** : « à la fin de la période de facturation » ;
+- **Changement d'offre** : activé, produits Essentiel, Patrimoine et Pro avec leurs deux prix ; passage à une formule supérieure **au prorata immédiatement**, passage à une formule inférieure **à la fin de la période**.
+Enregistrez. L'application relit l'abonnement à chaque changement : la nouvelle formule s'applique dès que Stripe l'envoie.
+
+### 4.5 Offre fondateurs (facultatif)
+**Catalogue de produits → Coupons → Créer** : −30 %, durée « Pour toujours », limité aux trois prix **annuels**, 300 utilisations au plus. Puis **Codes promotionnels** : code `FONDATEUR`. La page de paiement d'Immo-Zen accepte déjà les codes promotionnels.
+
+### 4.6 E-mails et relances de paiement
+- **Paramètres → E-mails clients** : reçus de paiement, factures payées, échec de paiement, notification de prélèvement SEPA : activés.
+- **Paramètres → Facturation → Recouvrement** : nouvelles tentatives intelligentes (4 tentatives sur 2 semaines par exemple), puis **annuler l'abonnement**. Pendant les relances, le compte garde sa formule ; à l'annulation, il passe en Découverte, sans perte de données.
+
+### 4.7 Clé API et webhook
+1. **Développeurs → Clés API** : clé secrète `sk_test_…` → secret GitHub `STRIPE_SECRET_KEY`.
+2. **Développeurs → Webhooks → Ajouter une destination** : URL `https://sbxnjvjsapnsdeenmvtm.supabase.co/functions/v1/stripe-webhook`, événements :
+   `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.paused`, `customer.subscription.resumed`, `invoice.paid`, `invoice.payment_failed`, `charge.refunded`.
+   Le secret de signature `whsec_…` → secret GitHub `STRIPE_WEBHOOK_SECRET`.
+3. Supabase SQL Editor : exécutez `supabase/migrations/20261018000500_formules.sql`.
+4. Lancez le workflow « Fonctions serveur Supabase » (il redéploie `platform` et `stripe-webhook`).
+
+### 4.8 Offres dans Immo-Zen
+**Administration → Offres et tarifs** : pour chacune des sept offres, collez l'identifiant `price_…`, vérifiez le prix affiché et cochez « Offre ouverte ». Les limites de chaque formule sont dans la table `plan_tiers` (modifiable en SQL).
+
+### 4.9 Recette en mode test (depuis un second compte, non administrateur)
+1. Mon abonnement → Annuel → **Choisir Essentiel** → carte `4242 4242 4242 4242` (date future, CVC quelconque). Mon abonnement doit afficher « Essentiel », puis Administration → Journal : événements « traité ».
+2. **Ajouter le pack fiscal** → la rubrique Déclaration fiscale s'ouvre.
+3. Espace client : passez en Patrimoine (prorata), puis programmez une résiliation.
+4. Second abonnement par **prélèvement SEPA** avec l'IBAN de test `FR1420041010050500013M02606` : l'activation arrive après confirmation de Stripe.
+5. Carte `4000 0000 0000 0341` : échec au renouvellement, compte en « Paiement en retard », formule conservée.
+6. Renvoyez un événement depuis le tableau de bord Stripe : il doit rester sans effet (doublon).
+
+### 4.10 Passage en production
+1. Activez le compte Stripe (identité, IBAN de versement).
+2. En mode **live** : recréez produits, prix, coupon, portail et webhook ; remplacez `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` et les `price_…` ; relancez le workflow.
+3. Conditions générales de vente : abonnement sans engagement, résiliation en ligne, et droit de rétractation de 14 jours d'un service en ligne (renonciation expresse si le service démarre immédiatement). À faire relire.
+4. Seulement ensuite : **Administration → Application des formules** → « Appliquer les limites des formules ». Les comptes de plus de 30 jours sans abonnement passent en Découverte ; les plus récents gardent l'essai Patrimoine jusqu'à son terme.
 
 ## 5. Estimation DVF
 

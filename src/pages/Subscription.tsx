@@ -1,24 +1,53 @@
 import { useEffect, useState } from 'react';
-import { useStore } from '../data/store.tsx';
+import { usePlan, useStore } from '../data/store.tsx';
 import { ACCESS_REASONS, STATUS_LABELS, type Plan } from '../data/platform.ts';
 import { describeError } from '../data/repo.ts';
 import { date, money2 } from '../domain/format.ts';
-import { Button, KeyValue, NotAvailable, PageHeader, Pill, Section } from '../ui/components.tsx';
+import { FISCAL_PACK_PRICE, planUsage, sizeLabel, TIERS, tierDef, type TierDef } from '../domain/plans.ts';
+import { Button, KeyValue, NotAvailable, PageHeader, Pill, Section, Tabs } from '../ui/components.tsx';
 import { useRoute } from '../ui/router.ts';
 
 export const planPrice = (p: Plan) => `${money2(p.amount_cents / 100)} / ${p.billing_interval === 'month' ? 'mois' : 'an'}`;
 
+/** Ce que comprend une formule, en quelques lignes. */
+export function tierHighlights(t: TierDef): string[] {
+  const l = t.limits, f = t.features;
+  return [
+    l.owned === null ? 'Biens détenus illimités' : l.owned === 1 ? '1 bien détenu' : `Jusqu’à ${l.owned} biens détenus`,
+    l.prospects === null ? 'Prospection illimitée' : `${l.prospects} biens en prospection`,
+    l.scenarios === null ? 'Scénarios de simulation illimités' : `${l.scenarios} scénarios par bien`,
+    f.contacts ? 'Contacts, relances agence, comparaison de biens' : 'Sans contacts ni comparaison',
+    f.automations ? 'Quittances envoyées automatiquement, relances d’impayés' : 'Quittances PDF à la main',
+    ...(f.consolidated ? ['Cash-flow consolidé'] : []),
+    f.fiscal ? 'Déclaration fiscale incluse' : t.code === 'decouverte' ? '' : `Déclaration fiscale en option (${FISCAL_PACK_PRICE} €/an)`,
+    ...(f.sharing ? ['Plusieurs SCI et accès partagé (bientôt)'] : []),
+    `${sizeLabel(l.storage_mb ?? 0)} de documents`,
+  ].filter(Boolean);
+}
+
+function Meter({ label, used, max, format = String }: { label: string; used: number; max: number | null; format?: (n: number) => string }) {
+  const pct = max ? Math.min(100, Math.round((used / max) * 100)) : 0;
+  return (
+    <div className="meter">
+      <div className="meter-head"><span>{label}</span><span className="muted small">{format(used)}{max === null ? ' · illimité' : ` sur ${format(max)}`}</span></div>
+      {max !== null && <div className="meter-bar" role="progressbar" aria-label={label} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><span className={pct >= 100 ? 'full' : ''} style={{ width: `${pct}%` }} /></div>}
+    </div>
+  );
+}
+
 export function SubscriptionPage() {
-  const { platform, refreshPlatform, repo, notify } = useStore();
+  const { platform, refreshPlatform, repo, notify, data } = useStore();
+  const plan = usePlan();
   const route = useRoute();
   const [busy, setBusy] = useState<string | null>(null);
+  const [period, setPeriod] = useState<'year' | 'month'>('year');
   const back = route.query.get('retour');
   useEffect(() => { void refreshPlatform(); }, [refreshPlatform]);
 
-  async function go(kind: 'checkout' | 'portal', plan?: Plan['code']) {
-    setBusy(kind + (plan ?? ''));
+  async function go(kind: 'checkout' | 'portal' | 'pack', code?: Plan['code']) {
+    setBusy(kind + (code ?? ''));
     try {
-      const url = kind === 'checkout' ? await repo.platform.checkout(plan!) : await repo.platform.portal();
+      const url = kind === 'checkout' ? await repo.platform.checkout(code!) : kind === 'pack' ? await repo.platform.buyFiscalPack() : await repo.platform.portal();
       location.assign(url);
     } catch (e) {
       notify(describeError(e), 'error');
@@ -37,50 +66,88 @@ export function SubscriptionPage() {
     );
   }
   const { access, subscription: s, plans, config } = platform;
-  const offered = plans.filter((p) => p.active && p.stripe_price_id && p.amount_cents > 0);
   const running = s?.source === 'stripe' && ['active', 'trialing', 'past_due', 'unpaid', 'incomplete'].includes(s.status);
+  const usage = planUsage(data);
+  const current = tierDef(plan.tier);
+  const offer = (tier: string) => plans.find((p) => p.tier === tier && p.kind !== 'option' && p.billing_interval === period && p.code !== 'mensuel' && p.code !== 'annuel');
+  const pack = plans.find((p) => p.code === 'pack_fiscal');
+  const packOpen = !!pack?.active && !!pack.stripe_price_id;
+  const packValid = s?.fiscal_pack_until && new Date(s.fiscal_pack_until) > new Date() ? s.fiscal_pack_until : null;
+  const subPlan = s?.plan_code ? plans.find((p) => p.code === s.plan_code) : undefined;
 
   return (
     <>
-      <PageHeader title="Mon abonnement" subtitle="Statut, période couverte, factures et résiliation." />
-      {back === 'ok' && <p className="note" role="status">Paiement transmis. L’abonnement s’active dès que Stripe le confirme (quelques secondes) ; rechargez la page si besoin.</p>}
+      <PageHeader title="Mon abonnement" subtitle="Votre formule, ce qu’elle comprend, et le passage à une autre formule." />
+      {back === 'ok' && <p className="note" role="status">Paiement transmis. L’abonnement s’active dès que Stripe le confirme : quelques secondes par carte, jusqu’à quelques jours ouvrés par prélèvement SEPA. Rechargez la page si besoin.</p>}
+      {back === 'pack' && <p className="note" role="status">Paiement du pack fiscal transmis : la déclaration fiscale s’ouvre dès que Stripe confirme le paiement.</p>}
       {back === 'annule' && <p className="note" role="status">Paiement annulé : aucun montant n’a été prélevé.</p>}
-      <Section title="Accès">
+
+      <Section title="Ma formule">
+        <p className="current-tier"><Pill tone={plan.tier === 'decouverte' ? 'neutral' : 'ok'}>{current.label}</Pill> {ACCESS_REASONS[plan.reason] ?? ACCESS_REASONS[access.reason] ?? access.reason}</p>
+        {!plan.enforce ? (
+          <p className="muted small">Phase de lancement : toutes les fonctions sont ouvertes sans abonnement pour l’instant. Les limites ci-dessous s’appliqueront à l’ouverture des abonnements.</p>
+        ) : (
+          <div className="meters">
+            <Meter label="Biens détenus" used={usage.owned} max={plan.limits.owned} />
+            <Meter label="Biens en prospection" used={usage.prospects} max={plan.limits.prospects} />
+            <Meter label="Documents" used={Math.round(usage.storage_bytes / 1048576)} max={plan.limits.storage_mb} format={(n) => sizeLabel(n)} />
+          </div>
+        )}
         <KeyValue items={[
-          ['État', <>{access.has_access ? <Pill tone="ok">Accès complet</Pill> : <Pill tone="bad">Consultation seule</Pill>} {ACCESS_REASONS[access.reason] ?? access.reason}</>],
-          ...(access.until ? [[access.reason === 'essai' ? 'Fin de l’essai' : 'Accès jusqu’au', date(access.until)] as [string, string]] : []),
           ['Abonnement', s ? `${STATUS_LABELS[s.status]}${s.source === 'manuel' ? ' (accordé par Immo-Zen)' : ''}` : STATUS_LABELS.none],
-          ...(s?.plan_code ? [['Offre', plans.find((p) => p.code === s.plan_code)?.label ?? s.plan_code] as [string, string]] : []),
-          ...(s?.current_period_end ? [[s.cancel_at_period_end || s.status === 'canceled' ? 'Fin d’accès' : 'Prochaine échéance', date(s.current_period_end)] as [string, string]] : []),
+          ...(subPlan ? [['Offre', subPlan.label] as [string, string]] : []),
+          ...(access.until ? [[access.reason === 'essai' ? 'Fin de l’essai' : 'Accès jusqu’au', date(access.until)] as [string, string]] : []),
+          ...(s?.current_period_end && running ? [[s.cancel_at_period_end ? 'Fin d’accès' : 'Prochaine échéance', date(s.current_period_end)] as [string, string]] : []),
+          ...(packValid ? [['Pack fiscal', `valable jusqu’au ${date(packValid)}`] as [string, string]] : []),
         ]} />
-        {s?.cancel_at_period_end && s.status !== 'canceled' && <p className="muted">Résiliation programmée : l’abonnement reste actif jusqu’au {date(s.current_period_end)}, puis s’arrête sans nouveau prélèvement.</p>}
+        {access.reason === 'essai' && plan.enforce && <p className="muted">Essai gratuit en formule {tierDef(plan.trial_tier ?? 'patrimoine').label}, sans carte bancaire. À la fin de l’essai, le compte passe en formule Découverte s’il n’est pas abonné : rien n’est supprimé.</p>}
+        {s?.cancel_at_period_end && s.status !== 'canceled' && <p className="muted">Résiliation programmée : l’abonnement reste actif jusqu’au {date(s.current_period_end)}, puis le compte passe en formule Découverte sans nouveau prélèvement.</p>}
         {s?.status === 'past_due' && <p className="form-error">Le dernier prélèvement a échoué. Stripe va le retenter ; mettez à jour votre moyen de paiement pour éviter l’interruption.</p>}
-        {!access.has_access && <p>Vos données restent consultables et exportables. Abonnez-vous pour pouvoir à nouveau les modifier.</p>}
-        {!access.enforce && access.reason !== 'administrateur' && <p className="muted small">Phase de lancement : l’application est utilisable sans abonnement pour l’instant.</p>}
+        {plan.enforce && plan.tier === 'decouverte' && <p>Vos données au-delà des limites restent consultables, modifiables et exportables ; seuls les ajouts sont bloqués.</p>}
       </Section>
 
       {running ? (
         <Section title="Gérer mon abonnement">
-          <p>Factures, moyen de paiement, changement d’offre et résiliation se font dans l’espace client sécurisé de Stripe.</p>
+          <p>Factures, moyen de paiement, changement de formule ou de périodicité et résiliation se font dans l’espace client sécurisé de Stripe. Un changement de formule prend effet immédiatement, au prorata.</p>
           <Button variant="primary" disabled={!!busy} onClick={() => void go('portal')}>{busy === 'portal' ? 'Ouverture…' : 'Ouvrir l’espace client'}</Button>
         </Section>
       ) : (
-        <Section title="Offres">
-          {offered.length === 0 ? (
-            <NotAvailable>Les offres ne sont pas encore ouvertes : le paiement en ligne sera disponible prochainement.{config?.support_email ? <> Contact : <a href={`mailto:${config.support_email}`}>{config.support_email}</a>.</> : null}</NotAvailable>
-          ) : (
-            <div className="plans">
-              {offered.map((p) => (
-                <div key={p.code} className="plan">
-                  <h3>{p.label}</h3>
-                  <p className="plan-price">{planPrice(p)}</p>
-                  <Button variant="primary" disabled={!!busy || repo.mode === 'demo'} onClick={() => void go('checkout', p.code)}>{busy === 'checkout' + p.code ? 'Redirection…' : 'S’abonner'}</Button>
+        <Section title="Choisir une formule" actions={<Tabs tabs={[['year', 'Annuel : 2 mois offerts'], ['month', 'Mensuel']]} value={period} onChange={setPeriod} />}>
+          <div className="plans tiers">
+            {TIERS.filter((t) => t.code !== 'decouverte').map((t) => {
+              const o = offer(t.code);
+              const open = !!o?.active && !!o.stripe_price_id && (o.amount_cents ?? 0) > 0;
+              const euros = o?.amount_cents ? o.amount_cents / 100 : period === 'year' ? t.annual : t.monthly;
+              return (
+                <div key={t.code} className={`plan${t.code === 'patrimoine' ? ' plan-featured' : ''}${t.code === plan.tier && plan.enforce ? ' plan-current' : ''}`}>
+                  <h3>{t.label}</h3>
+                  <p className="plan-price">{money2(euros)} <span className="muted small">TTC / {period === 'year' ? 'an' : 'mois'}</span></p>
+                  {period === 'year' && <p className="muted small">soit {money2(euros / 12)} par mois</p>}
+                  <p className="small">{t.pitch}</p>
+                  <ul className="plan-list">{tierHighlights(t).map((h) => <li key={h}>{h}</li>)}</ul>
+                  <Button variant={t.code === 'patrimoine' ? 'primary' : 'secondary'} disabled={!open || !!busy || repo.mode === 'demo'} onClick={() => void go('checkout', o!.code)}>
+                    {busy === 'checkout' + o?.code ? 'Redirection…' : open ? `Choisir ${t.label}` : 'Bientôt disponible'}
+                  </Button>
                 </div>
-              ))}
-            </div>
+              );
+            })}
+          </div>
+          {!plans.some((p) => p.tier && p.active && p.stripe_price_id) && (
+            <NotAvailable>Le paiement en ligne n’est pas encore ouvert.{config?.support_email ? <> Contact : <a href={`mailto:${config.support_email}`}>{config.support_email}</a>.</> : null}</NotAvailable>
           )}
-          <p className="muted small">Paiement sécurisé par Stripe : Immo-Zen ne voit jamais votre numéro de carte. L’abonnement n’est activé qu’après confirmation du paiement par Stripe.</p>
+          <p className="muted small">Formule Découverte gratuite et sans limite de durée : 1 bien détenu, 5 biens en prospection, 2 scénarios par bien, 100 Mo de documents. Paiement sécurisé par Stripe (carte bancaire, Apple Pay, Google Pay ou prélèvement SEPA) : Immo-Zen ne voit jamais vos coordonnées bancaires. Sans engagement : résiliation en ligne à tout moment, effective à la fin de la période payée.</p>
           {s?.stripe_customer_id && <Button size="sm" disabled={!!busy} onClick={() => void go('portal')}>Mes factures</Button>}
+        </Section>
+      )}
+
+      {(plan.tier === 'essentiel' || plan.tier === 'patrimoine' || packValid) && plan.enforce && (
+        <Section title="Pack fiscal">
+          <p>Déclaration des revenus fonciers (2044, micro-foncier) et des locations meublées (micro-BIC, LMNP au réel avec amortissements), cases à reporter et export Excel, pendant 12 mois : <strong>{money2((pack?.amount_cents ?? FISCAL_PACK_PRICE * 100) / 100)} TTC</strong>, paiement unique. Inclus dans la formule Pro.</p>
+          {packValid ? <p><Pill tone="ok">Actif</Pill> jusqu’au {date(packValid)}</p> : (
+            <Button variant="primary" disabled={!packOpen || !running || !!busy || repo.mode === 'demo'} onClick={() => void go('pack')}>
+              {busy === 'pack' ? 'Redirection…' : !packOpen ? 'Bientôt disponible' : 'Ajouter le pack fiscal'}
+            </Button>
+          )}
         </Section>
       )}
     </>

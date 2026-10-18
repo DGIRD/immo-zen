@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { useStore } from '../data/store.tsx';
+import { usePlan, useStore } from '../data/store.tsx';
+import { refusal } from '../domain/plans.ts';
 import type { PropertyStatus } from '../data/types.ts';
 import { todayParis } from '../domain/format.ts';
 import { STATUS_LABELS, STATUS_ORDER } from '../domain/labels.ts';
@@ -15,7 +16,8 @@ type Scope = 'en_cours' | 'clos' | 'archive' | 'tous' | PropertyStatus;
 const CLOSED: PropertyStatus[] = ['refuse', 'abandonne'];
 
 export function ProspectionPage() {
-  const { data } = useStore();
+  const { data, notify } = useStore();
+  const plan = usePlan();
   const { ask, dialog } = useConfirm();
   const actions = usePropertyActions(ask);
   const [scope, setScope] = useState<Scope>('en_cours');
@@ -83,7 +85,7 @@ export function ProspectionPage() {
               {STATUS_ORDER.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
             </select>
           </label>
-          <Button size="sm" disabled={sel.length < 2 || sel.length > 4} title="Entre 2 et 4 biens" onClick={() => setCompare(sel)}>Comparer</Button>
+          <Button size="sm" disabled={sel.length < 2 || sel.length > 4} title="Entre 2 et 4 biens" onClick={() => plan.features.contacts ? setCompare(sel) : notify(refusal(plan, 'la comparaison de biens n’est pas incluse'), 'error')}>Comparer</Button>
           <Button size="sm" onClick={() => void exportRows('xlsx', 'prospection', columns, sel, data.scenarios)}>Excel</Button>
           <Button size="sm" onClick={() => void exportRows('csv', 'prospection', columns, sel, data.scenarios)}>CSV</Button>
           <Button size="sm" onClick={() => void exportRows('json', 'prospection', columns, sel, data.scenarios)}>JSON</Button>

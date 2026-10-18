@@ -1,4 +1,5 @@
 import type { PlatformState } from './platform.ts';
+import { planViolation, UNLIMITED_PLAN, type PlanInfo, type PlanOp } from '../domain/plans.ts';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { userDefaults, type SimulationInputs } from '../domain/simulator.ts';
 import { describeError, EMPTY_SNAPSHOT, RepoError, SNAPSHOT_KEY, type Repo, type SessionInfo, type Snapshot } from './repo.ts';
@@ -96,6 +97,11 @@ export function StoreProvider({ repo, children }: { repo: Repo; children: ReactN
   }, [persist]);
 
   const [platform, setPlatform] = useState<PlatformState | null | undefined>(undefined);
+  // Formule en vigueur et données courantes, lues par les vérifications faites avant chaque écriture
+  const planRef = useRef<PlanInfo | null>(null);
+  planRef.current = platform?.plan ?? null;
+  const dataRef = useRef<Snapshot>(EMPTY);
+  dataRef.current = data;
   const refresh = useCallback(async () => {
     const s = sessionRef.current;
     if (!s) return;
@@ -187,7 +193,15 @@ export function StoreProvider({ repo, children }: { repo: Repo; children: ReactN
     });
   }, [commit]);
 
+  /** Refus local si l'écriture dépasse la formule (la base applique la même règle). */
+  const overPlan = useCallback((op: PlanOp) => {
+    const msg = planViolation(planRef.current, dataRef.current, op);
+    if (msg) notify(msg, 'error');
+    return !!msg;
+  }, [notify]);
+
   const create = useCallback(async <T extends TableName>(table: T, row: Insert<Tables[T]>) => {
+    if (overPlan({ table, rows: [row] })) return null;
     const rec = await run(() => repo.insert(table, row));
     refreshAfter(table, rec);
     if (rec) {
@@ -196,7 +210,7 @@ export function StoreProvider({ repo, children }: { repo: Repo; children: ReactN
       if (table === 'properties') void repo.loadAll().then((s) => commit((d) => ({ ...d, events: s.events }))).catch(() => undefined);
     }
     return rec;
-  }, [repo, run, upsertLocal, commit]);
+  }, [repo, run, upsertLocal, commit, overPlan]);
 
   // Effets serveur (quittance automatique, file d'e-mails…) : rechargement complet
   const refreshAfter = useCallback(<T,>(table: TableName, r: T) => {
@@ -205,15 +219,17 @@ export function StoreProvider({ repo, children }: { repo: Repo; children: ReactN
   }, [refresh]);
 
   const createMany = useCallback(async <T extends TableName>(table: T, rows: Insert<Tables[T]>[]) => {
+    if (overPlan({ table, rows })) return null;
     const recs = await run(() => repo.insertMany(table, rows));
     if (recs) upsertLocal(table, recs);
     return refreshAfter(table, recs);
-  }, [repo, run, upsertLocal, refreshAfter]);
+  }, [repo, run, upsertLocal, refreshAfter, overPlan]);
 
   const askConflict = useCallback((table: VersionedTable, label: string) =>
     new Promise<'reload' | 'overwrite'>((resolve) => setConflict({ table, label, resolve: (c) => { setConflict(null); resolve(c); } })), []);
 
   const update = useCallback(async <T extends VersionedTable>(table: T, current: Tables[T], patch: Patch<Tables[T]>, label = 'Cet élément') => {
+    if (overPlan({ table, current, patch })) return null;
     let version = current.version;
     for (let attempt = 0; attempt < 3; attempt++) {
       const res = await run(() => repo.update(table, current.id, version, patch));
@@ -241,7 +257,7 @@ export function StoreProvider({ repo, children }: { repo: Repo; children: ReactN
       version = res.current.version; // écrasement explicitement choisi
     }
     return null;
-  }, [repo, run, upsertLocal, askConflict, notify, refresh, commit]);
+  }, [repo, run, upsertLocal, askConflict, notify, refresh, commit, overPlan]);
 
   const remove = useCallback(async (table: TableName, id: string) => {
     const ok = await run(async () => { await repo.remove(table, id); return true; });
@@ -321,4 +337,10 @@ export function useStore(): StoreValue {
   const v = useContext(Ctx);
   if (!v) throw new Error('StoreProvider manquant');
   return v;
+}
+
+/** Formule du compte connecté (sans migration des formules ni contrôle activé : aucune limite). */
+export function usePlan(): PlanInfo {
+  const { platform } = useStore();
+  return platform?.plan ?? UNLIMITED_PLAN;
 }

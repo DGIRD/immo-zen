@@ -5,6 +5,9 @@ import { describeError } from '../data/repo.ts';
 import { date, dateTime, todayParis } from '../domain/format.ts';
 import { Button, Checkbox, EmptyState, Modal, NotAvailable, NumberInput, PageHeader, Pill, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../ui/components.tsx';
 import { planPrice } from './Subscription.tsx';
+import { TIERS, tierDef, type TierCode } from '../domain/plans.ts';
+
+const TIER_OPTIONS = TIERS.map((t) => [t.code, t.label] as const);
 
 type Tab = 'comptes' | 'offres' | 'acces' | 'incidents' | 'journal' | 'prospects';
 const LEAD_STATUS: [Lead['status'], string][] = [['nouveau', 'Nouveau'], ['contacte', 'Contacté'], ['demo', 'Démonstration'], ['converti', 'Converti'], ['perdu', 'Perdu']];
@@ -24,7 +27,7 @@ export function AdminPage() {
   return (
     <>
       <PageHeader title="Administration" subtitle="Comptes, offres, contrôle d’accès, incidents et journal. Aucune donnée immobilière des abonnés n’est visible ici." />
-      <Tabs tabs={[['comptes', 'Comptes'], ['offres', 'Offres et tarifs'], ['acces', 'Contrôle d’accès'], ['incidents', 'Incidents'], ['journal', 'Journal'], ['prospects', 'Prospects commerciaux']]} value={tab} onChange={setTab} />
+      <Tabs tabs={[['comptes', 'Comptes'], ['offres', 'Offres et tarifs'], ['acces', 'Application des formules'], ['incidents', 'Incidents'], ['journal', 'Journal'], ['prospects', 'Prospects commerciaux']]} value={tab} onChange={setTab} />
       {tab === 'comptes' && <Users run={run} api={api} />}
       {tab === 'offres' && <Plans plans={platform.plans} run={run} onSaved={refreshPlatform} api={api} />}
       {tab === 'acces' && <AccessConfig run={run} onSaved={refreshPlatform} api={api} />}
@@ -50,6 +53,7 @@ function Users({ run, api }: { run: Run; api: Api }) {
   const [manual, setManual] = useState<AdminUser | null>(null);
   const [until, setUntil] = useState('');
   const [note, setNote] = useState('');
+  const [tier, setTier] = useState<TierCode>('pro');
   const [invite, setInvite] = useState('');
   const [summary, setSummary] = useState<{ user: AdminUser; data: Record<string, number> } | null>(null);
   const [q, setQ] = useState('');
@@ -66,16 +70,17 @@ function Users({ run, api }: { run: Run; api: Api }) {
       <Section title={`Comptes (${users?.length ?? '…'})`} actions={<input aria-label="Rechercher un compte" placeholder="Rechercher un e-mail" value={q} onChange={(e) => setQ(e.target.value)} />}>
         {!users ? <p className="muted">Chargement…</p> : (
           <div className="dt-scroll"><table className="dt-table compact">
-            <thead><tr><th>E-mail</th><th>Créé le</th><th>Dernière connexion</th><th>Abonnement</th><th>Accès</th><th>Support</th><th /></tr></thead>
+            <thead><tr><th>E-mail</th><th>Créé le</th><th>Dernière connexion</th><th>Formule</th><th>Abonnement</th><th>Accès</th><th>Support</th><th /></tr></thead>
             <tbody>{list.map((u) => (
               <tr key={u.user_id}>
                 <td>{u.email}{u.is_admin && <Pill>admin</Pill>}</td>
                 <td>{date(u.created_at)}</td>
                 <td>{u.last_sign_in_at ? dateTime(u.last_sign_in_at) : '—'}</td>
+                <td>{u.tier ? tierDef(u.tier).label : '—'}{u.fiscal_pack_until && new Date(u.fiscal_pack_until) > new Date() ? ' + pack fiscal' : ''}</td>
                 <td>{STATUS_LABELS[u.status]}{u.source === 'manuel' ? ' (manuel)' : ''}{u.current_period_end ? ` · ${u.cancel_at_period_end ? 'fin' : 'échéance'} ${date(u.current_period_end)}` : ''}</td>
                 <td><Pill tone={u.has_access ? 'ok' : 'bad'}>{ACCESS_REASONS[u.access_reason] ?? u.access_reason}</Pill></td>
                 <td>{u.support_until ? <Button size="sm" onClick={async () => { const d = await run(() => api.supportSummary(u.user_id)); if (d) setSummary({ user: u, data: d }); }}>Consulter (jusqu’au {date(u.support_until)})</Button> : <span className="muted">non autorisé</span>}</td>
-                <td>{!u.is_admin && <Button size="sm" onClick={() => { setManual(u); setUntil(''); setNote(''); }}>Accès manuel</Button>}</td>
+                <td>{!u.is_admin && <Button size="sm" onClick={() => { setManual(u); setUntil(''); setNote(''); setTier('pro'); }}>Accès manuel</Button>}</td>
               </tr>
             ))}</tbody>
           </table></div>
@@ -85,10 +90,11 @@ function Users({ run, api }: { run: Run; api: Api }) {
         footer={<>
           <Button onClick={() => setManual(null)}>Annuler</Button>
           <Button variant="danger" onClick={async () => { if (await run(() => api.setManualAccess(manual!.user_id, null, note || 'Accès retiré'), 'Accès manuel retiré.') !== null) { setManual(null); reload(); } }}>Retirer</Button>
-          <Button variant="primary" disabled={!until} onClick={async () => { if (await run(() => api.setManualAccess(manual!.user_id, new Date(`${until}T23:59:59`).toISOString(), note), 'Accès accordé.') !== null) { setManual(null); reload(); } }}>Accorder</Button>
+          <Button variant="primary" disabled={!until} onClick={async () => { if (await run(() => api.setManualAccess(manual!.user_id, new Date(`${until}T23:59:59`).toISOString(), note, tier), 'Accès accordé.') !== null) { setManual(null); reload(); } }}>Accorder</Button>
         </>}>
-        <p>Accès complet offert sans paiement (partenaire, geste commercial). Impossible pour un compte ayant un abonnement Stripe en cours. L’action est journalisée.</p>
+        <p>Formule offerte sans paiement (partenaire, geste commercial). Impossible pour un compte ayant un abonnement Stripe en cours. L’action est journalisée.</p>
         <div className="grid">
+          <Select label="Formule offerte" value={tier} onChange={(v) => setTier(v ?? 'pro')} options={TIER_OPTIONS.filter(([c]) => c !== 'decouverte')} />
           <TextInput label="Jusqu’au" type="date" value={until} onChange={setUntil} />
           <TextInput label="Motif" value={note} onChange={setNote} maxLength={300} />
         </div>
@@ -105,12 +111,13 @@ function Plans({ plans, run, onSaved, api }: { plans: Plan[]; run: Run; onSaved:
   const [draft, setDraft] = useState<Record<string, Plan>>(() => Object.fromEntries(plans.map((p) => [p.code, { ...p }])));
   return (
     <Section title="Offres">
-      <p className="muted">Créez d’abord le produit et ses deux prix récurrents (mensuel, annuel) dans Stripe, puis collez ici leur identifiant <code>price_…</code>. Le montant affiché doit correspondre au prix Stripe, qui seul fait foi pour le paiement.</p>
+      <p className="muted">Dans Stripe, créez un produit par formule (Essentiel, Patrimoine, Pro) avec deux prix récurrents, mensuel et annuel, et un produit « Pack fiscal » avec un prix <strong>ponctuel</strong>. Collez ici chaque identifiant <code>price_…</code>. Le montant affiché doit correspondre au prix Stripe, qui seul fait foi pour le paiement. Les limites de chaque formule sont dans la table <code>plan_tiers</code> (SQL).</p>
       <div className="plans">
         {Object.values(draft).map((p) => (
           <div key={p.code} className="plan">
+            <p className="muted small">{p.kind === 'option' ? 'Option (paiement ponctuel)' : p.tier ? `Formule ${tierDef(p.tier).label} · ${p.billing_interval === 'month' ? 'mensuel' : 'annuel'}` : ''}</p>
             <TextInput label="Libellé" value={p.label} onChange={(v) => setDraft((d) => ({ ...d, [p.code]: { ...p, label: v } }))} maxLength={80} />
-            <NumberInput label={`Prix TTC par ${p.billing_interval === 'month' ? 'mois' : 'an'}`} suffix="€" value={p.amount_cents / 100} onChange={(v) => setDraft((d) => ({ ...d, [p.code]: { ...p, amount_cents: Math.round((v ?? 0) * 100) } }))} />
+            <NumberInput label={p.kind === 'option' ? 'Prix TTC (12 mois)' : `Prix TTC par ${p.billing_interval === 'month' ? 'mois' : 'an'}`} suffix="€" value={p.amount_cents / 100} onChange={(v) => setDraft((d) => ({ ...d, [p.code]: { ...p, amount_cents: Math.round((v ?? 0) * 100) } }))} />
             <TextInput label="Identifiant du prix Stripe" value={p.stripe_price_id ?? ''} onChange={(v) => setDraft((d) => ({ ...d, [p.code]: { ...p, stripe_price_id: v.trim() || null } }))} placeholder="price_…" />
             <Checkbox label="Offre ouverte aux abonnements" checked={p.active} onChange={(v) => setDraft((d) => ({ ...d, [p.code]: { ...p, active: v } }))} />
             <p className="muted small">Affiché : {planPrice(p)}</p>
@@ -132,19 +139,24 @@ function AccessConfig({ run, onSaved, api }: { run: Run; onSaved: () => Promise<
   const [enforce, setEnforce] = useState(c?.enforce_subscription ?? false);
   const [trial, setTrial] = useState<number | null>(c?.trial_days ?? 30);
   const [email, setEmail] = useState(c?.support_email ?? '');
+  const [trialTier, setTrialTier] = useState<TierCode>(c?.trial_tier ?? 'patrimoine');
+  const [demoTier, setDemoTier] = useState<TierCode>(c?.demo_tier ?? 'pro');
+  const demo = useStore().repo.mode === 'demo';
   return (
-    <Section title="Contrôle d’accès par abonnement">
-      <Checkbox label="Exiger un abonnement pour modifier les données" checked={enforce} onChange={setEnforce} />
-      <p className="muted small">Désactivé : tout le monde utilise l’application librement. Activé : après l’essai, un compte sans abonnement (ni accès manuel) ne peut plus rien créer, modifier ni supprimer ; il garde la consultation et l’export. Les administrateurs ne sont jamais bloqués.</p>
+    <Section title="Application des formules">
+      <Checkbox label="Appliquer les limites des formules" checked={enforce} onChange={setEnforce} />
+      <p className="muted small">Désactivé (phase de lancement) : tout le monde dispose de toutes les fonctions. Activé : chaque compte a les limites de sa formule ; sans abonnement ni accès manuel, après l’essai, il passe en formule Découverte (gratuite : 1 bien détenu, 5 en prospection). Ses données restent consultables, modifiables et exportables ; seuls les ajouts au-delà des limites sont refusés. Les administrateurs ont toujours la formule Pro.</p>
       <div className="grid">
         <NumberInput label="Durée de l’essai gratuit" suffix="jours" value={trial} onChange={setTrial} hint="Comptée depuis la création du compte" />
+        <Select label="Formule pendant l’essai" value={trialTier} onChange={(v) => setTrialTier(v ?? 'patrimoine')} options={TIER_OPTIONS} />
         <TextInput label="E-mail du support" type="email" value={email} onChange={setEmail} />
+        {demo && <Select label="Formule simulée (démonstration)" value={demoTier} onChange={(v) => setDemoTier(v ?? 'pro')} options={TIER_OPTIONS} hint="Mode démonstration : formule appliquée au compte local quand les limites sont activées." />}
       </div>
       <Button variant="primary" onClick={async () => {
         const days = Math.round(trial ?? 0);
         if (days < 0 || days > 365) { await run(async () => { throw new Error('Essai entre 0 et 365 jours.'); }); return; }
-        if (enforce && !c?.enforce_subscription && !(await ask('Activer le contrôle d’accès', 'Les comptes sans abonnement ni essai en cours passeront immédiatement en consultation seule. Vérifiez d’abord que les offres sont ouvertes et que le webhook Stripe fonctionne.', 'Activer'))) return;
-        if (await run(() => api.setConfig(enforce, days, email), 'Configuration enregistrée.') !== null) await onSaved();
+        if (enforce && !c?.enforce_subscription && !(await ask('Appliquer les formules', 'Les comptes sans abonnement ni essai en cours passeront immédiatement en formule Découverte : plus d’ajout au-delà d’un bien détenu et de 5 biens en prospection. Vérifiez d’abord que les offres sont ouvertes et que le webhook Stripe fonctionne.', 'Appliquer'))) return;
+        if (await run(() => api.setConfig(enforce, days, email, trialTier, demoTier), 'Configuration enregistrée.') !== null) await onSaved();
       }}>Enregistrer</Button>
       {dialog}
     </Section>

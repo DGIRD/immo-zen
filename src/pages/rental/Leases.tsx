@@ -1,6 +1,7 @@
 import { IRL_KEYS, IRL_VALUES, irlLabel, latestPublishedAt } from '../../domain/irl.ts';
 import { useMemo, useState } from 'react';
-import { useStore } from '../../data/store.tsx';
+import { usePlan, useStore } from '../../data/store.tsx';
+import { PlanLock } from '../../ui/PlanLock.tsx';
 import type { Insert, Lease, Tenant } from '../../data/types.ts';
 import { date, money, money2, todayParis } from '../../domain/format.ts';
 import { leaseLedger, leaseState, leaseTenants, tenantName } from '../../domain/rental.ts';
@@ -160,6 +161,7 @@ export function TenantDialog({ tenant, onClose, onCreated }: { tenant: Tenant | 
 export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: string }) {
   const store = useStore();
   const { data } = store;
+  const auto = usePlan().features.automations;
   const existing = id ? data.leases.find((l) => l.id === id) : undefined;
   const owned = data.properties.filter((p) => p.status === 'acquis');
   const rs = data.settings?.rental_settings ?? {};
@@ -168,7 +170,7 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
   const [d, setD] = useState<Insert<Lease>>(() => existing ? { ...existing } : {
     property_id: initialProperty, furnished: false, start_date: todayParis(), end_date: null, rent_hc: prop?.estimated_rent ?? 0,
     charges_amount: prop?.charges_provision ?? 0, charges_mode: 'provision', deposit_amount: prop?.estimated_rent ?? 0, payment_day: 5,
-    landlord_name: rs.landlord_name ?? '', landlord_address: rs.landlord_address ?? '', owner_confirmation_email: true, receipt_auto_send: false,
+    landlord_name: rs.landlord_name ?? '', landlord_address: rs.landlord_address ?? '', owner_confirmation_email: auto, receipt_auto_send: false,
     reminder_enabled: false, reminder_delay_days: 10,
   });
   const currentTenantIds = existing ? data.leaseTenants.filter((x) => x.lease_id === existing.id).map((x) => x.tenant_id) : [];
@@ -294,6 +296,9 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
       </Section>
 
       <Section title="Automatisations">
+        {!auto && !d.owner_confirmation_email && !d.receipt_auto_send && !d.reminder_enabled ? (
+          <PlanLock title="Non incluses dans la formule Découverte" compact>Envoi automatique des quittances, relances d’impayés et e-mail mensuel de confirmation du paiement : à partir de la formule Essentiel. Vous pouvez toujours émettre et télécharger les quittances vous-même.</PlanLock>
+        ) : (
         <div className="toggles">
           <Checkbox label="M’envoyer un e-mail le lendemain de chaque échéance non réglée pour confirmer le paiement" checked={!!d.owner_confirmation_email} onChange={(v) => set('owner_confirmation_email', v)} />
           <p className="muted small">Votre absence de réponse ne vaut jamais paiement : le loyer reste impayé tant que vous ne l’avez pas confirmé.</p>
@@ -304,7 +309,9 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
             <div className="grid"><NumberInput label="Délai après l’échéance" suffix="jours" value={d.reminder_delay_days} onChange={(v) => set('reminder_delay_days', v === null ? 10 : Math.round(v))} error={errors.reminder_delay_days} /></div>
           )}
           <p className="muted small">La relance est préparée en brouillon et vous est signalée : rien n’est envoyé au locataire sans votre validation.</p>
+          {!auto && <p className="muted small">Votre formule n’inclut plus ces automatisations : elles sont suspendues. Vous pouvez les désactiver ici.</p>}
         </div>
+        )}
       </Section>
 
       <Section title="Notes">
