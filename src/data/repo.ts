@@ -111,6 +111,8 @@ export function describeError(e: unknown): string {
   if (/duplicate key|unique constraint/i.test(msg)) return 'Cet élément existe déjà.';
   if (/schema cache/i.test(msg)) return `La base de données n’est pas à jour : une migration SQL reste à exécuter dans Supabase (${msg}).`;
   if (/Invalid login credentials/i.test(msg)) return 'E-mail ou mot de passe incorrect.';
+  if (/Error sending (recovery|confirmation|magic link|invite|email change) email|sending.*email/i.test(msg)) return 'L’e-mail n’a pas pu être envoyé : le service d’envoi n’est pas encore opérationnel. Réessayez plus tard ou écrivez à contact@immo-zen.fr.';
+  if (/rate limit|too many requests|over_email_send_rate_limit/i.test(msg)) return 'Trop de demandes en peu de temps : patientez quelques minutes avant de réessayer.';
   if (/Email not confirmed/i.test(msg)) return 'Adresse e-mail non confirmée : ouvrez le lien reçu par e-mail.';
   return msg;
 }
