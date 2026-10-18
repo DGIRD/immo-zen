@@ -46,21 +46,29 @@ insert into public.admins (user_id) select id from auth.users where email = 'vot
 
 Le workflow **Actions → « Fonctions serveur Supabase » → Run workflow** transmet ensuite les secrets aux fonctions et déploie `daily`, `platform` et `stripe-webhook`. Relancez-le après chaque changement de secret.
 
-## 3. Resend : e-mails (quittances, relances, confirmations)
+## 3. Adresse contact@immo-zen.fr et Resend (e-mails)
 
-1. resend.com → créez un compte (offre gratuite : quelques milliers d'e-mails par mois, suffisant pour démarrer).
-2. **Domains → Add Domain** : utilisez un sous-domaine, par exemple `mail.immo-zen.fr`, région Europe si proposée.
-3. Resend affiche 3 enregistrements à créer dans la **zone DNS OVH** (copiez exactement les valeurs affichées) :
+L'adresse `contact@immo-zen.fr` sert à la fois à **recevoir** (boîte ou redirection OVH) et à **envoyer** les e-mails de l'application (Resend). Les deux cohabitent sans conflit : la réception utilise les enregistrements MX du domaine, Resend ses propres enregistrements sur `send` et `resend._domainkey`.
+
+**Réception (OVH)**
+1. OVH → **Web Cloud → Emails** (ou **Noms de domaine → immo-zen.fr → Emails**) : créez l'adresse `contact` si votre offre comprend une boîte, sinon **Redirections → Ajouter une redirection** : `contact@immo-zen.fr` → votre adresse personnelle (gratuit).
+2. Vérifiez dans la zone DNS que les **MX** du domaine (`@`) pointent vers OVH (`mx1.mail.ovh.net`…), créés automatiquement.
+
+**Envoi (Resend)**
+1. resend.com → créez un compte (offre gratuite suffisante pour démarrer).
+2. **Domains → Add Domain** : `immo-zen.fr`, région Europe (Ireland) si proposée.
+3. Créez dans la **zone DNS OVH** les enregistrements affichés par Resend (copiez exactement les valeurs) :
    | Type | Sous-domaine (OVH) | Valeur |
    |---|---|---|
-   | MX | `send.mail` | `feedback-smtp.<région>.amazonses.com`, priorité 10 |
-   | TXT | `send.mail` | `v=spf1 include:amazonses.com ~all` |
-   | TXT | `resend._domainkey.mail` | clé DKIM fournie par Resend |
-   Conseillé en plus : TXT `_dmarc` → `v=DMARC1; p=none;`.
-   Dans OVH, le sous-domaine se saisit sans `.immo-zen.fr`. Puis **Verify** dans Resend (quelques minutes à quelques heures).
-4. **API Keys → Create API Key** (permission « Sending access », domaine `mail.immo-zen.fr`). Copiez-la.
-5. GitHub → Secrets : `RESEND_API_KEY` = la clé. Variables : `EMAIL_FROM` = `Immo-Zen <quittances@mail.immo-zen.fr>`, `EMAIL_REPLY_TO` = votre adresse habituelle, `EMAIL_ENABLED` = `false` pour commencer.
+   | TXT | `resend._domainkey` | clé DKIM fournie par Resend |
+   | MX | `send` | `feedback-smtp.<région>.amazonses.com`, priorité 10 |
+   | TXT | `send` | `v=spf1 include:amazonses.com ~all` |
+   | TXT | `_dmarc` (conseillé) | `v=DMARC1; p=none;` |
+   Ne touchez pas aux MX ni au SPF du domaine nu (`@`) : ils servent à la réception OVH. Dans OVH, le sous-domaine se saisit sans `.immo-zen.fr`. Puis **Verify** dans Resend.
+4. **API Keys → Create API Key** (« Sending access », domaine `immo-zen.fr`). Copiez-la.
+5. GitHub → Secrets : `RESEND_API_KEY` = la clé. Variables : `EMAIL_FROM` = `Immo-Zen <contact@immo-zen.fr>`, `EMAIL_REPLY_TO` = `contact@immo-zen.fr`, `EMAIL_ENABLED` = `false` pour commencer.
 6. Lancez le workflow « Fonctions serveur Supabase ».
+6 bis. E-mails de connexion (confirmation de compte, mot de passe oublié) : Supabase → **Authentication → Emails → SMTP Settings** → Enable custom SMTP : hôte `smtp.resend.com`, port `465`, utilisateur `resend`, mot de passe = la clé Resend, expéditeur `contact@immo-zen.fr`, nom `Immo-Zen`. Sans cela, Supabase n'envoie que quelques e-mails par heure avec son expéditeur par défaut.
 7. Supabase → **Database → Extensions** : activez `pg_cron` et `pg_net`. Puis SQL Editor : exécutez `supabase/scheduling.example.sql` en remplaçant `VOTRE-PROJET` par `sbxnjvjsapnsdeenmvtm` et le jeton par la valeur de `CRON_SECRET`.
 8. Le lendemain, vérifiez `job_runs` (requêtes en fin de fichier) : les tâches tournent sans rien envoyer. Puis variable `EMAIL_ENABLED` = `true`, relancez le workflow, et envoyez-vous une quittance de test (locataire avec votre propre adresse).
 
@@ -103,8 +111,8 @@ Seules les questions et le nom de la rubrique affichée sont transmis au modèle
 | `STRIPE_SECRET_KEY` | secret | `sk_test_…` puis `sk_live_…` |
 | `STRIPE_WEBHOOK_SECRET` | secret | `whsec_…` |
 | `APP_URL` | variable | `https://immo-zen.fr/app/` |
-| `EMAIL_FROM` | variable | `Immo-Zen <quittances@mail.immo-zen.fr>` |
-| `EMAIL_REPLY_TO` | variable | votre adresse |
+| `EMAIL_FROM` | variable | `Immo-Zen <contact@immo-zen.fr>` |
+| `EMAIL_REPLY_TO` | variable | `contact@immo-zen.fr` |
 | `EMAIL_ENABLED` | variable | `false`, puis `true` après vérification |
 | `ANTHROPIC_API_KEY` | secret | clé de l'API Claude (assistant, facultatif) |
 | `ASSISTANT_MODEL`, `ASSISTANT_DAILY_LIMIT` | variables | facultatives |
