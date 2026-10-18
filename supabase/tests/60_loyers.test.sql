@@ -82,4 +82,19 @@ select set_config('request.jwt.claims', '{"sub":"11111111-1111-1111-1111-1111111
 select tests.fails($q$ select public.iz_assistant_take('11111111-1111-1111-1111-111111111111', 1000) $q$, 'assistant : quota non manipulable par l''utilisateur');
 commit;
 
+-- Formulaire de contact du site (visiteur anonyme)
+begin;
+set local role anon;
+select set_config('request.jwt.claims', '{"role":"anon"}', true);
+select tests.ok(public.iz_submit_lead('Marie Dupont', 'Marie@Example.test', '0600000000', 'Je souhaite être accompagnée.', 'Accompagnement'), 'site : demande de contact enregistrée');
+select tests.fails($q$ select public.iz_submit_lead('X', 'pas-un-email', null, null) $q$, 'site : adresse invalide refusée');
+select tests.ok(public.iz_submit_lead('Robot', 'robot@spam.test', null, 'pub', null, 'http://spam'), 'site : champ piège accepté sans enregistrement');
+select public.iz_submit_lead('Marie Dupont', 'marie@example.test', null, 'relance');
+select public.iz_submit_lead('Marie Dupont', 'marie@example.test', null, 'relance');
+select tests.fails($q$ select public.iz_submit_lead('Marie Dupont', 'marie@example.test', null, 'encore') $q$, 'site : 3 demandes par adresse et par jour');
+select tests.fails($q$ select count(*) from public.platform_leads $q$, 'site : prospects illisibles pour un visiteur');
+commit;
+select tests.ok((select count(*) from public.platform_leads where email = 'marie@example.test' and source = 'Site – Accompagnement') = 1
+  and not exists (select 1 from public.platform_leads where email = 'robot@spam.test'), 'site : prospect visible en administration, robot écarté');
+
 select 'Tests SQL loyers, IRL et rappels passés' as fin;

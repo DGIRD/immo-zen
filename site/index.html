@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Immo-Zen — l'investissement locatif, de l'annonce à la déclaration</title>
+  <meta name="description" content="Immo-Zen réunit la prospection, les simulations de rentabilité, la gestion des locations et la préparation de la déclaration fiscale dans un seul espace.">
+  <meta name="theme-color" content="#1F4A45">
+  <link rel="icon" href="icon-192.png">
+  <link rel="stylesheet" href="site.css">
+</head>
+<body data-supabase-url="%IMMOZEN_SUPABASE_URL%" data-supabase-key="%IMMOZEN_SUPABASE_ANON_KEY%">
+  <a class="skip" href="#contenu">Aller au contenu</a>
+  <header class="top">
+    <div class="wrap top-in">
+      <a class="brand" href="./" aria-label="Immo-Zen, accueil">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 17 16 6l12 11" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 26h14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="16" cy="19" r="2.4" fill="currentColor"/></svg>
+        Immo-Zen
+      </a>
+      <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav">Menu</button>
+      <nav id="nav" aria-label="Navigation du site">
+        <a href="#solution">La solution</a>
+        <a href="#accompagnement">Accompagnement</a>
+        <a href="#guides">Guides</a>
+        <a href="#tarifs">Tarifs</a>
+        <a href="#questions">Questions</a>
+        <a class="btn btn-espace" href="app/">Espace client</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="contenu">
+    <section class="hero">
+      <div class="wrap hero-in">
+        <div class="hero-text">
+          <h1>L'investissement locatif, de la première annonce à la déclaration d'impôts.</h1>
+          <p class="lead">Immo-Zen réunit dans un seul espace la recherche de biens, les simulations de rentabilité, la gestion des locations et la préparation de la déclaration. Pour décider avec des chiffres justes, et gérer sans tableur.</p>
+          <div class="actions">
+            <a class="btn btn-main" href="app/">Ouvrir mon espace</a>
+            <a class="btn btn-ghost" href="#solution">Voir comment ça marche</a>
+          </div>
+          <p class="small">Gratuit pendant la phase de lancement. Fonctionne sur ordinateur et sur téléphone.</p>
+        </div>
+
+        <form class="calc" id="calc" aria-labelledby="calc-title" onsubmit="return false">
+          <h2 id="calc-title">Un premier calcul, tout de suite</h2>
+          <div class="calc-grid">
+            <label>Prix du bien<span class="in"><input inputmode="numeric" name="prix" value="120000"><i>€</i></span></label>
+            <label>Loyer hors charges<span class="in"><input inputmode="numeric" name="loyer" value="750"><i>€ / mois</i></span></label>
+            <label>Apport<span class="in"><input inputmode="numeric" name="apport" value="25000"><i>€</i></span></label>
+            <label>Taux du crédit<span class="in"><input inputmode="decimal" name="taux" value="3,5"><i>% sur 20 ans</i></span></label>
+            <label class="wide">Charges du propriétaire : taxe foncière, copropriété, assurance<span class="in"><input inputmode="numeric" name="charges" value="1300"><i>€ / an</i></span></label>
+          </div>
+          <div class="calc-out" aria-live="polite">
+            <p class="calc-label">Cash-flow mensuel estimé, avant impôts</p>
+            <p class="calc-figure" id="cf">—</p>
+            <p class="calc-detail" id="cf-detail"></p>
+          </div>
+          <p class="small">Estimation simplifiée : frais de notaire de 7,5 %, assurance emprunteur de 0,3 %. Dans Immo-Zen, le calcul complet tient compte des frais d'agence, de la négociation, des charges récupérables, du différé et de la vacance.</p>
+        </form>
+      </div>
+    </section>
+
+    <section class="why" aria-labelledby="why-title">
+      <div class="wrap narrow">
+        <h2 id="why-title">Pourquoi Immo-Zen</h2>
+        <p class="big">Investir dans un logement locatif, c'est une suite de décisions qui se jouent sur des chiffres : le bon prix, le bon crédit, le bon loyer, le bon régime fiscal. Pourtant, tout est éparpillé. Les annonces dans un onglet, les simulations dans un tableur, le bail dans un dossier, les loyers sur le relevé bancaire, les quittances à rédiger chaque mois, et la déclaration au printemps.</p>
+        <p>Immo-Zen est né de ce constat. Un seul espace suit chaque bien du repérage à la gestion, garde l'historique de chaque décision et fait les calculs à votre place, pour que les débutants avancent avec méthode et que les propriétaires expérimentés gagnent du temps. L'objectif : des décisions plus éclairées, des investissements mieux organisés, et un patrimoine géré avec davantage de sérénité.</p>
+      </div>
+    </section>
+
+    <section class="solution" id="solution" aria-labelledby="sol-title">
+      <div class="wrap">
+        <h2 id="sol-title">Une solution tout compris, étape par étape</h2>
+        <p class="intro">Chaque étape alimente la suivante : ce que vous saisissez en prospectant sert à la simulation, puis à la gestion, puis à la déclaration. Rien n'est ressaisi.</p>
+        <ol class="path">
+          <li>
+            <h3>Prospecter</h3>
+            <p>Chaque bien repéré a sa fiche : adresse complétée automatiquement, surface, DPE, lien de l'annonce, agence et agent, visites, relances et points de vigilance. Quinze statuts suivent le parcours jusqu'au compromis.</p>
+          </li>
+          <li>
+            <h3>Simuler et décider</h3>
+            <p>Négociation, frais de notaire et d'agence, crédit avec ou sans différé, loyer au m², charges de copropriété, cash-flow et rendement. Plusieurs scénarios par bien, et la comparaison de deux à quatre biens côte à côte.</p>
+          </li>
+          <li>
+            <h3>Acquérir</h3>
+            <p>Un clic fait passer le bien dans votre patrimoine, avec son historique et une photographie des hypothèses retenues. Le crédit réel, les charges annuelles et le cash-flow prévisionnel sont suivis bien par bien.</p>
+          </li>
+          <li>
+            <h3>Gérer au quotidien</h3>
+            <p>Baux et colocations, échéances générées chaque mois, paiements et loyers importés depuis Excel, quittances PDF, relances amiables, révision annuelle selon l'IRL, dépôt de garantie, dépenses et relevés bancaires importés, documents rangés par bien.</p>
+          </li>
+          <li>
+            <h3>Déclarer</h3>
+            <p>Chaque printemps, les montants à reporter selon le régime de chaque bien : formulaire 2044 ligne par ligne, cases 4BA à 4BE, micro-BIC, et location meublée au réel avec ses amortissements.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="detail" aria-labelledby="detail-title">
+      <div class="wrap">
+        <h2 id="detail-title">Ce qui vous change la vie</h2>
+        <dl class="facts">
+          <div><dt>Une seule saisie</dt><dd>La fiche du bien et sa simulation se remplissent dans le même écran ; les prix et le loyer suivent le bien jusqu'à la gestion.</dd></div>
+          <div><dt>Des loyers suivis sans effort</dt><dd>Les échéances se créent seules, chaque paiement est réparti sur ce qui est dû, et l'absence de réponse ne vaut jamais paiement.</dd></div>
+          <div><dt>Des quittances justes</dt><dd>Émises seulement pour une période intégralement réglée, jamais en double, avec le rappel de charges des années précédentes si besoin.</dd></div>
+          <div><dt>Vos relevés, importés</dt><dd>Collez les lignes de votre tableau ou déposez un fichier Excel : catégories et logements sont reconnus, les doublons écartés.</dd></div>
+          <div><dt>Un tableau de bord qui priorise</dt><dd>Impayés, quittances à émettre, relances, visites et révisions de loyer possibles, au même endroit.</dd></div>
+          <div><dt>Un assistant intégré</dt><dd>Une question sur l'application ? L'assistant explique où cliquer, rubrique par rubrique.</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="coach" id="accompagnement" aria-labelledby="coach-title">
+      <div class="wrap two">
+        <div>
+          <h2 id="coach-title">Un accompagnement, si vous le souhaitez</h2>
+          <p>L'application suffit pour avancer seul. Pour ceux qui veulent un regard extérieur, Immo-Zen prépare un accompagnement humain, à la carte :</p>
+          <ul class="ticks">
+            <li>définir votre projet : budget, secteur, type de bien, stratégie de location ;</li>
+            <li>relire une simulation avant de faire une offre ;</li>
+            <li>mettre en place la gestion : bail, quittances, révision du loyer, suivi des dépenses ;</li>
+            <li>préparer votre première déclaration avec les bons documents.</li>
+          </ul>
+          <p class="small">Ces accompagnements sont en préparation : dites-nous ce qui vous serait utile, nous vous recontactons.</p>
+        </div>
+        <form class="contact" id="contact" novalidate>
+          <h3>Être recontacté</h3>
+          <label>Votre nom<input name="name" autocomplete="name" required maxlength="200"></label>
+          <label>E-mail<input name="email" type="email" autocomplete="email" required maxlength="200"></label>
+          <label>Téléphone (facultatif)<input name="phone" type="tel" autocomplete="tel" maxlength="40"></label>
+          <label>Sujet
+            <select name="topic">
+              <option>Accompagnement</option>
+              <option>Question sur l'application</option>
+              <option>Partenariat</option>
+              <option>Autre</option>
+            </select>
+          </label>
+          <label>Votre message<textarea name="message" rows="4" maxlength="4000"></textarea></label>
+          <label class="hp" aria-hidden="true">Site web<input name="website" tabindex="-1" autocomplete="off"></label>
+          <p class="small">Vos coordonnées servent uniquement à vous répondre. Voir <a href="mentions-legales.html#confidentialite">confidentialité</a>.</p>
+          <button class="btn btn-main" type="submit">Envoyer ma demande</button>
+          <p class="form-msg" id="contact-msg" role="status"></p>
+        </form>
+      </div>
+    </section>
+
+    <section class="guides" id="guides" aria-labelledby="guides-title">
+      <div class="wrap narrow">
+        <h2 id="guides-title">Guides pratiques</h2>
+        <p class="intro">Trois notions à maîtriser avant d'investir. D'autres guides suivront.</p>
+        <details>
+          <summary>Calculer le cash-flow d'un investissement locatif</summary>
+          <p>Le cash-flow, c'est ce qui reste (ou ce qui manque) chaque mois : loyers encaissés, moins les charges que vous supportez (taxe foncière, copropriété non récupérable, assurance, gestion, entretien), moins la mensualité du crédit et son assurance. Le remboursement du capital fait baisser votre trésorerie mais augmente votre patrimoine : ce n'est pas une charge. Un cash-flow légèrement négatif peut rester un bon investissement si vous l'avez prévu ; l'important est de le connaître avant de signer.</p>
+        </details>
+        <details>
+          <summary>Location nue : micro-foncier ou régime réel ?</summary>
+          <p>Si vos loyers bruts de location nue ne dépassent pas 15 000 € par an, le micro-foncier s'applique : un abattement forfaitaire de 30 % représente vos charges, et vous reportez le montant brut en case 4BE. Le régime réel (formulaire 2044) déduit les charges réelles : intérêts d'emprunt, taxe foncière, travaux, assurance, copropriété. Il devient intéressant quand vos charges dépassent 30 % des loyers, et il peut créer un déficit foncier imputable sur votre revenu global dans la limite de 10 700 € par an. À vérifier chaque année avec les notices officielles.</p>
+        </details>
+        <details>
+          <summary>Réviser un loyer avec l'indice de référence des loyers</summary>
+          <p>Si le bail le prévoit, le loyer peut être révisé une fois par an à sa date anniversaire : nouveau loyer = loyer actuel × IRL du trimestre de référence de l'année ÷ IRL du même trimestre un an plus tôt (indices publiés par l'INSEE). Une révision demandée en retard ne s'applique qu'à partir de la demande, sans rattrapage. Les logements classés F ou G au DPE ne peuvent pas être augmentés.</p>
+        </details>
+        <p class="small">Ces guides donnent des repères généraux ; ils ne remplacent pas un conseil fiscal ou juridique personnalisé.</p>
+      </div>
+    </section>
+
+    <section class="trust" aria-labelledby="trust-title">
+      <div class="wrap two">
+        <h2 id="trust-title">Vos données vous appartiennent</h2>
+        <ul class="ticks">
+          <li>Chaque compte est isolé : personne d'autre ne voit vos biens, vos locataires ou vos documents.</li>
+          <li>L'équipe Immo-Zen n'y accède pas, sauf si vous l'autorisez vous-même pour un dépannage, pour 7 jours au plus, et chaque consultation est tracée.</li>
+          <li>Vos documents sont privés et ne s'ouvrent que par des liens temporaires.</li>
+          <li>Tout s'exporte à tout moment : Excel, CSV ou sauvegarde complète de votre compte.</li>
+          <li>Le paiement, quand il sera ouvert, passera par Stripe : Immo-Zen ne voit jamais votre carte bancaire.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="price" id="tarifs" aria-labelledby="price-title">
+      <div class="wrap narrow">
+        <h2 id="price-title">Tarifs</h2>
+        <p class="big">Gratuit pendant la phase de lancement.</p>
+        <p>Des abonnements mensuel et annuel seront proposés ensuite. Leurs prix seront affichés ici et dans votre espace avant toute facturation, et rien ne sera prélevé sans votre accord. Vos données restent consultables et exportables en toutes circonstances.</p>
+        <a class="btn btn-main" href="app/">Créer mon espace</a>
+      </div>
+    </section>
+
+    <section class="faq" id="questions" aria-labelledby="faq-title">
+      <div class="wrap narrow">
+        <h2 id="faq-title">Questions fréquentes</h2>
+        <details><summary>Faut-il installer quelque chose ?</summary><p>Non. Immo-Zen s'ouvre dans le navigateur, sur ordinateur, tablette ou téléphone. Le navigateur propose aussi de l'ajouter à l'écran d'accueil, comme une application.</p></details>
+        <details><summary>Je n'ai pas encore de bien. Immo-Zen m'est-il utile ?</summary><p>Oui : la prospection et le simulateur servent justement à comparer des biens et à vérifier qu'un projet tient la route avant de faire une offre.</p></details>
+        <details><summary>Immo-Zen calcule-t-il mes impôts ?</summary><p>Il prépare les montants à reporter sur votre déclaration à partir des loyers et dépenses enregistrés, selon le régime de chaque bien. C'est une aide au remplissage, à vérifier avec les notices ou un professionnel, pas un conseil fiscal.</p></details>
+        <details><summary>Puis-je reprendre mes tableaux Excel ?</summary><p>Oui : dépenses, relevés bancaires et loyers s'importent depuis un fichier Excel ou CSV, ou par simple copier-coller. Un fichier importé deux fois ne crée pas de doublon.</p></details>
+        <details><summary>Les quittances et relances partent-elles toutes seules ?</summary><p>Une quittance ne part automatiquement que si vous l'avez activé et qu'un paiement que vous avez enregistré règle exactement la période. Une relance est toujours préparée en brouillon : rien n'est envoyé au locataire sans votre validation.</p></details>
+        <details><summary>Comment me connecter ?</summary><p>Par le bouton « Espace client » en haut de chaque page, avec votre e-mail et votre mot de passe. « Mot de passe oublié » vous envoie un lien de réinitialisation.</p></details>
+      </div>
+    </section>
+
+    <section class="end">
+      <div class="wrap end-in">
+        <p>Prospectez, investissez et gérez vos locations sereinement.</p>
+        <a class="btn btn-light" href="app/">Ouvrir mon espace</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-in">
+      <p>© <span id="year">2026</span> Immo-Zen</p>
+      <nav aria-label="Liens légaux"><a href="mentions-legales.html">Mentions légales</a><a href="mentions-legales.html#confidentialite">Confidentialité</a><a href="app/">Espace client</a></nav>
+    </div>
+  </footer>
+  <script src="site.js" defer></script>
+</body>
+</html>

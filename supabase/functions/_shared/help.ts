@@ -26,6 +26,7 @@ export const HELP_TOPICS: HelpTopic[] = [
 2. **Acquisition** : « Marquer comme acquis » fait passer le bien dans **Mes biens**, avec son historique.
 3. **Gestion** : créez le bail (Locataires et baux), suivez les loyers, émettez les quittances, saisissez ou importez les dépenses.
 4. **Déclaration fiscale** : les montants à reporter sont calculés chaque année selon le régime de chaque bien.
+Le site public (page d'accueil de l'adresse) présente Immo-Zen ; le bouton « Espace client » ouvre l'application.
 Le **tableau de bord** regroupe ce qui est à faire : relances, visites, impayés, quittances à émettre, révisions de loyer.`,
     actions: [{ label: 'Ajouter un bien', path: '/simulateur' }, { label: 'Mes biens', path: '/biens' }],
     questions: ['Par où commencer ?', 'Comment ajouter un bien en prospection ?', 'Que montre le cash-flow du tableau de bord ?'],

@@ -26,7 +26,7 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       ASSISTANT_MODEL: ${{ vars.ASSISTANT_MODEL }}
       ASSISTANT_DAILY_LIMIT: ${{ vars.ASSISTANT_DAILY_LIMIT }}
-      APP_URL: ${{ vars.APP_URL || 'https://dgird.github.io/immo-zen/' }}
+      APP_URL: ${{ vars.APP_URL || 'https://dgird.github.io/immo-zen/app/' }}
       EMAIL_FROM: ${{ vars.EMAIL_FROM }}
       EMAIL_REPLY_TO: ${{ vars.EMAIL_REPLY_TO }}
       EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || 'false' }}

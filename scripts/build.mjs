@@ -1,4 +1,5 @@
-// Build Immo-Zen : bundle esbuild + copie des fichiers statiques + service worker versionné.
+// Build Immo-Zen : site vitrine (racine, dossier site/) + application (dist/app/) : bundle esbuild,
+// fichiers statiques et service worker versionné limité à l'application.
 // Usage : node scripts/build.mjs [--serve]
 // Variables lues depuis l'environnement ou un fichier .env (jamais commité) :
 //   IMMOZEN_ENV                 development | test | production
@@ -14,6 +15,8 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const serve = process.argv.includes('--serve');
 const out = join(root, 'dist');
+// L'application est publiée sous /app/ ; la racine accueille le site vitrine.
+const appOut = join(out, 'app');
 
 function loadDotEnv() {
   const file = join(root, '.env');
@@ -58,7 +61,7 @@ const options = {
   sourcemap: env.IMMOZEN_ENV !== 'production',
   minify: env.IMMOZEN_ENV === 'production',
   define,
-  outdir: join(out, 'assets'),
+  outdir: join(appOut, 'assets'),
   entryNames: serve ? 'app' : 'app-[hash]',
   assetNames: '[name]-[hash]',
   loader: { '.css': 'css' },
@@ -71,7 +74,7 @@ function writeShell(jsFile, cssFile) {
   const html = readFileSync(join(root, 'src/index.html'), 'utf8')
     .replace('%APP_CSS%', cssFile ? `<link rel="stylesheet" href="assets/${cssFile}">` : '')
     .replace('%APP_JS%', `<script type="module" src="assets/${jsFile}"></script>`);
-  writeFileSync(join(out, 'index.html'), html);
+  writeFileSync(join(appOut, 'index.html'), html);
 }
 
 function writeServiceWorker(files, version) {
@@ -79,12 +82,25 @@ function writeServiceWorker(files, version) {
   const sw = readFileSync(join(root, 'src/service-worker.template.js'), 'utf8')
     .replace('__CACHE_VERSION__', version)
     .replace('__FILES__', JSON.stringify(files));
-  writeFileSync(join(out, 'service-worker.js'), sw);
+  writeFileSync(join(appOut, 'service-worker.js'), sw);
+}
+
+// Site vitrine : fichiers statiques de site/, avec l'URL et la clé publique Supabase (formulaire de contact).
+function writeSite() {
+  cpSync(join(root, 'site'), out, { recursive: true });
+  for (const f of readdirSync(out).filter((x) => x.endsWith('.html'))) {
+    const html = readFileSync(join(out, f), 'utf8')
+      .replaceAll('%IMMOZEN_SUPABASE_URL%', env.IMMOZEN_SUPABASE_URL)
+      .replaceAll('%IMMOZEN_SUPABASE_ANON_KEY%', env.IMMOZEN_SUPABASE_ANON_KEY);
+    writeFileSync(join(out, f), html);
+  }
+  for (const icon of ['icon-192.png', 'icon-512.png']) cpSync(join(root, 'public', icon), join(out, icon));
 }
 
 rmSync(out, { recursive: true, force: true });
-mkdirSync(out, { recursive: true });
-cpSync(join(root, 'public'), out, { recursive: true });
+mkdirSync(appOut, { recursive: true });
+cpSync(join(root, 'public'), appOut, { recursive: true });
+writeSite();
 
 if (serve) {
   const ctx = await esbuild.context(options);
@@ -93,7 +109,7 @@ if (serve) {
   writeServiceWorker([], 'dev');
   await ctx.watch();
   const { port } = await ctx.serve({ servedir: out, port: Number(process.env.PORT || 5173), host: '127.0.0.1' });
-  console.log(`Immo-Zen (${env.IMMOZEN_ENV}) : http://127.0.0.1:${port}/`);
+  console.log(`Immo-Zen (${env.IMMOZEN_ENV}) : site http://127.0.0.1:${port}/ · application http://127.0.0.1:${port}/app/`);
 } else {
   const result = await esbuild.build(options);
   const outputs = Object.keys(result.metafile.outputs).map((p) => p.split('/').pop());
@@ -101,13 +117,13 @@ if (serve) {
   const css = outputs.find((f) => f.startsWith('app-') && f.endsWith('.css'));
   writeShell(js, css);
   // Garde-fou : la configuration doit réellement figurer dans le script livré.
-  const bundle = readFileSync(join(out, 'assets', js), 'utf8');
+  const bundle = readFileSync(join(appOut, 'assets', js), 'utf8');
   if (/import\.meta\.env/.test(bundle)) throw new Error('import.meta.env non remplacé dans le script livré.');
   if (env.IMMOZEN_SUPABASE_URL && !bundle.includes(env.IMMOZEN_SUPABASE_URL)) {
     throw new Error('L’URL Supabase n’est pas intégrée au script livré : l’application tournerait en mode démonstration.');
   }
-  const statics = ['./', 'index.html', 'manifest.webmanifest', ...readdirSync(join(out)).filter((f) => f.endsWith('.png')), `assets/${js}`, ...(css ? [`assets/${css}`] : [])];
+  const statics = ['./', 'index.html', 'manifest.webmanifest', ...readdirSync(appOut).filter((f) => f.endsWith('.png')), `assets/${js}`, ...(css ? [`assets/${css}`] : [])];
   const version = createHash('sha256').update(statics.join('|') + js).digest('hex').slice(0, 12);
   writeServiceWorker(statics, version);
-  console.log(`Build ${env.IMMOZEN_ENV} terminé → dist/ (cache ${version})${env.IMMOZEN_SUPABASE_URL ? '' : ' – AUCUN projet Supabase configuré : mode démonstration local uniquement'}`);
+  console.log(`Build ${env.IMMOZEN_ENV} terminé → dist/ (site) et dist/app/ (application, cache ${version})${env.IMMOZEN_SUPABASE_URL ? '' : ' – AUCUN projet Supabase configuré : mode démonstration local uniquement'}`);
 }

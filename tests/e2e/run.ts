@@ -19,7 +19,7 @@ const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.j
 async function serve(): Promise<{ url: string; close: () => void }> {
   const server = createServer(async (req, res) => {
     const path = decodeURIComponent((req.url ?? '/').split('?')[0]!);
-    const file = join(dist, path === '/' ? 'index.html' : path);
+    const file = join(dist, path.endsWith('/') ? `${path}index.html` : path);
     if (!file.startsWith(dist) || !existsSync(file)) { res.writeHead(404); res.end(); return; }
     res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' });
     res.end(await readFile(file));
@@ -49,9 +49,11 @@ async function noHorizontalScroll(page: Page) {
 }
 
 async function main() {
-  if (!existsSync(join(dist, 'index.html'))) throw new Error('Lancez d’abord npm run build');
+  if (!existsSync(join(dist, 'app', 'index.html'))) throw new Error('Lancez d’abord npm run build');
   await mkdir(out, { recursive: true });
-  const { url, close } = await serve();
+  const { url: siteUrl, close } = await serve();
+  // l'application est publiée sous /app/, le site vitrine à la racine
+  const url = siteUrl + 'app/';
   const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
   const ctx = await browser.newContext({ locale: 'fr-FR', timezoneId: 'Europe/Paris', viewport: { width: 1360, height: 900 }, acceptDownloads: true });
   // services d'adresses publics simulés (aucun appel réseau pendant les tests)
@@ -68,6 +70,35 @@ async function main() {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+
+  await step('site vitrine : raison d’être, calculateur, contact, lien vers l’espace client', async () => {
+    await page.goto(siteUrl);
+    await page.getByRole('heading', { level: 1, name: /L'investissement locatif/ }).waitFor();
+    const fig = page.locator('#cf');
+    const before = await fig.innerText();
+    await page.getByLabel('Loyer hors charges').fill('1200');
+    assert.notEqual(await fig.innerText(), before, 'le calculateur se met à jour');
+    assert.match((await fig.innerText()).replace(/[\u202f\u00a0]/g, ' '), /^[+−]\d[\d ]* €$/);
+    await page.screenshot({ path: join(out, '29-site.png'), fullPage: true });
+    await page.getByRole('button', { name: 'Envoyer ma demande' }).click();
+    await page.getByText('Indiquez votre nom.').waitFor();
+    await page.getByLabel('Votre nom').fill('Marie Test');
+    await page.getByLabel('E-mail').fill('marie@example.test');
+    await page.getByRole('button', { name: 'Envoyer ma demande' }).click();
+    await page.getByText(/Formulaire indisponible pour le moment/).waitFor();
+    await page.getByRole('link', { name: 'Mentions légales' }).click();
+    await page.getByRole('heading', { name: 'Confidentialité et données personnelles' }).waitFor();
+    await page.getByRole('link', { name: 'Espace client' }).first().click();
+    await page.waitForURL(/\/app\/$/);
+    const m = await browser.newContext({ locale: 'fr-FR', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const mp = await m.newPage();
+    await mp.goto(siteUrl);
+    await noHorizontalScroll(mp);
+    await mp.getByRole('button', { name: 'Menu' }).click();
+    await mp.getByLabel('Navigation du site').getByRole('link', { name: 'Espace client' }).waitFor();
+    await mp.screenshot({ path: join(out, '30-site-mobile.png'), fullPage: true });
+    await m.close();
+  });
 
   await step('ouverture en mode démonstration, bannière visible', async () => {
     await page.goto(url);
