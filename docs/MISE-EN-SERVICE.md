@@ -79,7 +79,12 @@ Le workflow **Actions → « Fonctions serveur Supabase » → Run workflow** tr
 9. **Passage en production** : activez le compte Stripe (identité, IBAN), créez produit, prix et webhook en mode **live**, remplacez `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` et les `price_…`, relancez le workflow.
 10. Seulement ensuite, si vous le souhaitez : Administration → **Contrôle d'accès** (abonnement exigé après l'essai gratuit).
 
-## 5. Assistant conversationnel (facultatif)
+## 5. Estimation DVF
+
+1. Supabase SQL Editor : exécutez `supabase/migrations/20261018000400_estimation_dvf.sql` (fourchette d'estimation des biens).
+2. Lancez le workflow « Fonctions serveur Supabase » : il déploie la fonction `dvf`, utilisée seulement si le navigateur ne peut pas lire directement les fichiers publics de data.gouv.fr. Aucune clé n'est nécessaire.
+
+## 6. Assistant conversationnel (facultatif)
 
 Sans réglage, l'assistant répond à partir de l'aide intégrée (gratuit). Pour des réponses aux questions libres :
 1. Supabase SQL Editor : exécutez `supabase/migrations/20261018000200_assistant.sql` (quota quotidien).

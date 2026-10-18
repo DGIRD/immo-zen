@@ -51,6 +51,14 @@ export function cfTitle(cf: CashflowEstimate | null): string {
   return `Loyer CC ${money(cf.income)} − charges ${money(cf.charges)} − crédit ${money(cf.loan)}${cf.loanSource === 'simulation' ? ' (simulation)' : ''}, par mois, avant impôts`;
 }
 
+export const estimateMid = (p: Property) => p.estimate_median ?? (p.estimate_low != null && p.estimate_high != null ? Math.round((p.estimate_low + p.estimate_high) / 2) : null);
+export const estimateRange = (p: Property) => (p.estimate_low != null && p.estimate_high != null ? `${money(p.estimate_low)} – ${money(p.estimate_high)}` : '—');
+export function estimateGap(price: number | null | undefined, p: Property): number | null {
+  const mid = estimateMid(p);
+  return price && mid ? Math.round(((price - mid) / mid) * 1000) / 10 : null;
+}
+const latentGain = (p: Property) => { const mid = estimateMid(p); const cost = p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null; return mid != null && cost ? mid - cost : null; };
+
 const tone = (x: number | null | undefined) => (x === null || x === undefined ? '' : x >= 0 ? 'pos' : 'neg');
 
 export function prospectColumns(): Column<PropertyRow>[] {
@@ -59,14 +67,18 @@ export function prospectColumns(): Column<PropertyRow>[] {
     { id: 'city', label: 'Ville', value: (r) => r.p.city, mobile: true },
     { id: 'address', label: 'Adresse', value: (r) => r.p.address, defaultHidden: true },
     { id: 'type', label: 'Type', value: (r) => TYPE_LABELS[r.p.property_type], defaultHidden: true },
-    { id: 'surface', label: 'Surface', value: (r) => r.p.surface, kind: 'number', align: 'right', render: (r) => (r.p.surface ? `${number(r.p.surface)} m²` : '—'), mobile: true },
+    { id: 'surface', label: 'Surface du logement', value: (r) => r.p.surface, kind: 'number', align: 'right', render: (r) => (r.p.surface ? `${number(r.p.surface)} m²` : '—'), mobile: true },
     { id: 'rooms', label: 'Pièces', value: (r) => r.p.rooms, kind: 'number', align: 'right', defaultHidden: true },
     { id: 'dpe', label: 'DPE', value: (r) => r.p.dpe, render: (r) => (r.p.dpe ? <span className={`dpe dpe-${r.p.dpe}`}>{r.p.dpe}</span> : '—') },
-    { id: 'asking', label: 'Prix affiché', value: (r) => r.p.asking_price, kind: 'money', align: 'right', render: (r) => money(r.p.asking_price), mobile: true },
+    { id: 'asking', label: 'Prix de présentation FAI', value: (r) => r.p.asking_price, kind: 'money', align: 'right', render: (r) => money(r.p.asking_price), mobile: true },
     { id: 'offer', label: 'Prix proposé', value: (r) => r.p.offer_price, kind: 'money', align: 'right', render: (r) => money(r.p.offer_price) },
+    { id: 'nego', label: 'Négociation', value: (r) => r.m.result?.negotiationPct ?? null, kind: 'percent', align: 'right', render: (r) => pct(r.m.result?.negotiationPct), defaultHidden: true },
     { id: 'm2', label: 'Prix / m²', value: (r) => r.m.pricePerM2, kind: 'money', align: 'right', render: (r) => money(r.m.pricePerM2) },
+    { id: 'estimate', label: 'Estimation DVF', value: (r) => estimateMid(r.p), kind: 'money', align: 'right', render: (r) => estimateRange(r.p) },
+    { id: 'gap', label: 'Écart prix / estimation', value: (r) => estimateGap(r.m.result?.offerFai ?? r.p.offer_price, r.p), kind: 'percent', align: 'right',
+      render: (r) => { const g = estimateGap(r.m.result?.offerFai ?? r.p.offer_price, r.p); return g === null ? '—' : <span className={g > 5 ? 'neg' : g < -5 ? 'pos' : ''}>{g > 0 ? '+' : ''}{pct(g)}</span>; } },
     { id: 'works', label: 'Travaux', value: (r) => r.p.works_budget, kind: 'money', align: 'right', render: (r) => money(r.p.works_budget), defaultHidden: true },
-    { id: 'rent', label: 'Loyer estimé', value: (r) => r.p.estimated_rent, kind: 'money', align: 'right', render: (r) => money(r.p.estimated_rent), defaultHidden: true },
+    { id: 'rent', label: 'Loyer hors charges', value: (r) => r.p.estimated_rent, kind: 'money', align: 'right', render: (r) => money(r.p.estimated_rent), defaultHidden: true },
     { id: 'yield', label: 'Rendement brut', value: (r) => r.m.result?.grossYield ?? null, kind: 'percent', align: 'right', render: (r) => pct(r.m.result?.grossYield), mobile: true },
     { id: 'cashflow', label: 'Cash-flow / mois', value: (r) => r.m.result?.cashflowMonthlyYear1 ?? null, kind: 'money', align: 'right',
       render: (r) => <span className={tone(r.m.result?.cashflowMonthlyYear1)}>{money(r.m.result?.cashflowMonthlyYear1)}</span>, mobile: true },
@@ -98,6 +110,9 @@ export function ownedColumns(): Column<PropertyRow>[] {
     { id: 'acquired', label: 'Acquis le', value: (r) => r.p.acquired_at, kind: 'date', render: (r) => date(r.p.acquired_at), mobile: true },
     { id: 'cost', label: 'Coût d’acquisition', value: (r) => r.p.acquisition_cost ?? r.p.acquisition_snapshot?.results?.totalCost ?? null, kind: 'money', align: 'right',
       render: (r) => money(r.p.acquisition_cost ?? r.p.acquisition_snapshot?.results?.totalCost ?? null) },
+    { id: 'estimate', label: 'Estimation du prix actuel', value: (r) => estimateMid(r.p), kind: 'money', align: 'right', render: (r) => estimateRange(r.p) },
+    { id: 'gain', label: 'Plus-value latente', value: (r) => latentGain(r.p), kind: 'money', align: 'right', defaultHidden: true,
+      render: (r) => { const g = latentGain(r.p); return <span className={tone(g)} title="Estimation médiane − coût d’acquisition, avant impôts et frais de vente">{money(g)}</span>; } },
     { id: 'occupation', label: 'Occupation', value: occupationLabel, mobile: true },
     { id: 'tenant', label: 'Locataire actif', value: (r) => r.rs.tenantNames || null, mobile: true },
     { id: 'rent', label: 'Loyer HC', value: (r) => r.rs.activeLeases[0]?.rent_hc ?? r.p.estimated_rent, kind: 'money', align: 'right', render: (r) => money(r.rs.activeLeases[0]?.rent_hc ?? r.p.estimated_rent) },

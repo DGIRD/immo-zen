@@ -4,6 +4,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { RepoError } from './repo.ts';
+import type { DvfEstimate, DvfType } from '../../supabase/functions/_shared/dvf.ts';
 
 export type SubscriptionStatus = 'none' | 'trialing' | 'active' | 'past_due' | 'unpaid' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'paused';
 
@@ -31,11 +32,15 @@ export type LeadInput = Pick<Lead, 'name' | 'email' | 'phone' | 'source' | 'stat
 
 /** Assistant conversationnel non configuré (pas de clé d'API) ou indisponible en mode démonstration. */
 export class AssistantUnavailable extends Error {}
+/** Fonction serveur non déployée ou indisponible (mode démonstration). */
+export class FunctionUnavailable extends Error {}
 export interface ChatMessage { role: 'user' | 'assistant'; content: string }
 
 export interface PlatformApi {
   /** Réponse de l'assistant conversationnel (fonction « assistant »). */
   ask(messages: ChatMessage[], page: string): Promise<string>;
+  /** Estimation DVF calculée par la fonction serveur « dvf » (repli). */
+  dvf(payload: { citycode: string; type: DvfType; surface: number; lat: number | null; lon: number | null }): Promise<DvfEstimate | null>;
   /** null : tables du lot 3 absentes (migration non exécutée). */
   state(): Promise<PlatformState | null>;
   checkout(plan: Plan['code']): Promise<string>;
@@ -98,6 +103,17 @@ export function createSupabasePlatform(sb: SupabaseClient): PlatformApi {
         throw new RepoError(msg);
       }
       return String((data as { answer?: string }).answer ?? '');
+    },
+    async dvf(payload) {
+      const { data, error } = await sb.functions.invoke('dvf', { body: payload });
+      if (error) {
+        const ctx = (error as { context?: Response }).context;
+        if (!ctx || ctx.status === 404 || ctx.status === 503) throw new FunctionUnavailable('Fonction d’estimation non déployée.');
+        let msg = 'Données DVF momentanément indisponibles.';
+        try { const j = await ctx.json(); if (j?.error) msg = j.error; } catch { /* corps illisible */ }
+        throw new RepoError(msg);
+      }
+      return (data as { estimate: DvfEstimate | null }).estimate;
     },
     async state() {
       const acc = await sb.rpc('iz_my_access').maybeSingle();
@@ -167,6 +183,7 @@ export function createDemoPlatform(storage: Storage, userId: () => string | null
   const noPay = () => { throw new RepoError('Mode démonstration : aucun paiement n’est possible.'); };
   return {
     async ask() { throw new AssistantUnavailable('Mode démonstration : aide intégrée seulement.'); },
+    async dvf() { throw new FunctionUnavailable('Mode démonstration.'); },
     async state() {
       const d = read();
       return { access: { has_access: true, reason: 'administrateur', until: null, is_admin: true, enforce: d.config.enforce_subscription }, config: d.config, plans: d.plans, subscription: null, supportUntil: d.supportUntil };

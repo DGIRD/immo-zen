@@ -7,7 +7,8 @@ import { downloadBlob, stamp, toXlsx } from '../domain/exporting.ts';
 import { money, money2, pct } from '../domain/format.ts';
 import { inputsFromProperty, isProspect, prospectFieldsFromSimulation } from '../domain/property.ts';
 import { autoProvisionMonthly, autoRecoverableAnnual, ENGINE_VERSION, normalizeInputs, simulate, summarize, type FieldError, type SimulationInputs } from '../domain/simulator.ts';
-import { Button, Checkbox, NumberInput, PageHeader, Section, Select, TextInput } from '../ui/components.tsx';
+import { Button, Checkbox, NumberInput, PageHeader, Section, Select, TextArea, TextInput } from '../ui/components.tsx';
+import { EstimatePanel, type EstimateFields } from '../ui/EstimatePanel.tsx';
 import { href, navigate } from '../ui/router.ts';
 
 export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string; propertyId?: string }) {
@@ -36,7 +37,14 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
   const bienOf = (p?: Property): Bien => ({
     title: p?.title ?? '', address: p?.address ?? null, zip: p?.zip ?? null, city: p?.city ?? null, property_type: p?.property_type ?? 'appartement',
     rooms: p?.rooms ?? null, dpe: p?.dpe ?? null, listing_url: p?.listing_url ?? null, status: p?.status ?? 'repere',
+    agency_id: p?.agency_id ?? null, agent_id: p?.agent_id ?? null, next_action: p?.next_action ?? null, follow_up_date: p?.follow_up_date ?? null,
+    visit_at: p?.visit_at ?? null, comments: p?.comments ?? null, vigilance: p?.vigilance ?? [],
+    estimate_low: p?.estimate_low ?? null, estimate_high: p?.estimate_high ?? null, estimate_median: p?.estimate_median ?? null,
+    estimate_on: p?.estimate_on ?? null, estimate_source: p?.estimate_source ?? null, estimate_details: p?.estimate_details ?? null,
   });
+  // nouvelle agence ou nouvel agent créés à l'enregistrement
+  const [newAgency, setNewAgency] = useState('');
+  const [newAgent, setNewAgent] = useState('');
   const [bien, setBien] = useState<Bien>(() => bienOf(property));
   const [bienBase, setBienBase] = useState<Bien>(() => bienOf(property));
   const changeLinked = (id: string | null) => {
@@ -72,14 +80,23 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
     const editable = !linkedProp || isProspect(linkedProp);
     if (editable && !bien.title.trim()) { notify('Donnez un titre au bien.', 'error'); return; }
     if (editable && bien.listing_url && !/^https?:\/\//i.test(bien.listing_url)) { notify('Le lien de l’annonce doit commencer par http:// ou https://', 'error'); return; }
+    if (bien.agency_id === NEW && !newAgency.trim()) { notify('Indiquez le nom de la nouvelle agence.', 'error'); return; }
+    if (bien.agent_id === NEW && !newAgent.trim()) { notify('Indiquez le nom du nouvel agent.', 'error'); return; }
     setBusy(true);
     try {
       const fields = prospectFieldsFromSimulation(inputs, outcome.result);
+      // contacts créés depuis la fiche
+      let agencyId = bien.agency_id, agentId = bien.agent_id;
+      if (agencyId === NEW) { const c = await create('pro_contacts', { kind: 'agence', name: newAgency.trim() } as never); if (!c) return; agencyId = (c as { id: string }).id; setNewAgency(''); }
+      if (agentId === NEW) { const c = await create('pro_contacts', { kind: 'agent', name: newAgent.trim(), organization_id: agencyId } as never); if (!c) return; agentId = (c as { id: string }).id; setNewAgent(''); }
+      const bienOut: Partial<Property> = { ...bien, agency_id: agencyId, agent_id: agentId, title: bien.title.trim().slice(0, 200) };
+      // estimation : envoyée seulement si renseignée (base pas encore migrée)
+      for (const k of ['estimate_low', 'estimate_high', 'estimate_median', 'estimate_on', 'estimate_source', 'estimate_details'] as const) if (bienOut[k] == null) delete bienOut[k];
       let prop: Property | null | undefined = linkedProp;
       let created = false;
       if (!prop) {
         // Le simulateur alimente la prospection : nouveau bien « Repéré » avec les valeurs simulées
-        prop = await create('properties', { ...bien, title: bien.title.trim().slice(0, 200), vigilance: [], ...fields });
+        prop = await create('properties', { ...bienOut, ...fields } as never);
         if (!prop) return;
         created = true;
         setLinked(prop.id);
@@ -95,11 +112,12 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
       // Le scénario principal met à jour la fiche du bien en prospection (prix, surface, travaux, loyer)
       if (isProspect(prop) && !created) {
         // fiche du bien (titre, adresse, type, DPE, statut…) : toujours ; prix, surface, travaux et loyer : scénario principal
-        const own = { ...bien, title: bien.title.trim().slice(0, 200) };
+        const own = bienOut;
         for (const [k, v] of Object.entries({ ...own, ...(primary ? fields : {}) }) as [keyof Property, never][]) if (prop[k] !== v) (patch as Record<string, unknown>)[k] = v;
       }
       if (Object.keys(patch).length) await update('properties', prop, patch, `Le bien « ${prop.title} »`);
-      setBienBase(bien);
+      const saved2 = { ...bien, agency_id: agencyId, agent_id: agentId };
+      setBien(saved2); setBienBase(saved2);
       notify(created ? `Bien « ${prop.title} » ajouté à la prospection avec sa simulation.` : 'Bien et simulation enregistrés.');
       if (!scenario || asNew || saved.id !== scenarioId) navigate(`/simulateur/${saved.id}`);
     } finally {
@@ -148,7 +166,7 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
           <Section title="Le bien">
             <div className="grid">
               <Select label="Bien" wide value={linked} onChange={changeLinked} allowEmpty="Nouveau bien en prospection"
-                options={data.properties.filter((p) => p.status !== 'archive' || p.id === linked).map((p) => [p.id, p.title] as const)} />
+                options={data.properties.filter((p) => (isProspect(p) && p.status !== 'archive') || p.id === linked).map((p) => [p.id, p.title] as const)} />
               {(!linkedProperty || isProspect(linkedProperty)) ? (
                 <>
                   <TextInput label="Titre du bien" required wide value={bien.title} onChange={(v) => setB('title', v)} maxLength={200} placeholder="Ex. T2 lumineux proche gare" />
@@ -163,8 +181,32 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
               ) : <p className="muted small field-full">Bien détenu : sa fiche se modifie dans Mes biens. La simulation ne la change pas.</p>}
               <TextInput label="Nom du scénario" value={name} onChange={setName} maxLength={120} />
             </div>
-            {(!linkedProperty || isProspect(linkedProperty)) && <p className="muted small">Une seule saisie : la fiche du bien en prospection est enregistrée avec la simulation. Prix, surface, travaux et loyer du scénario principal s’affichent dans la prospection. Agence, relances et commentaires : fiche du bien.</p>}
+            {(!linkedProperty || isProspect(linkedProperty)) && <p className="muted small">Une seule fiche : tout ce qui est saisi ici (bien, suivi, estimation, simulation) est enregistré ensemble et repris tel quel dans la prospection.</p>}
           </Section>
+
+          {(!linkedProperty || isProspect(linkedProperty)) && (
+            <>
+              <Section title="Estimation du prix">
+                <EstimatePanel value={bien} input={{ ...bien, surface: inputs.surface }} onChange={(p) => setBien((b) => ({ ...b, ...p }))}
+                  compareTo={live?.offerFai || null} compareLabel="Prix proposé (frais d’agence inclus)" />
+              </Section>
+              <Section title="Suivi">
+                <div className="grid">
+                  <Select label="Agence" value={bien.agency_id} onChange={(v) => setB('agency_id', v)} allowEmpty="Aucune"
+                    options={[...data.contacts.filter((c) => c.kind === 'agence' && !c.archived_at).map((c) => [c.id, c.name] as const), [NEW, '+ Nouvelle agence…'] as const]} />
+                  {bien.agency_id === NEW && <TextInput label="Nom de la nouvelle agence" value={newAgency} onChange={setNewAgency} maxLength={200} />}
+                  <Select label="Agent" value={bien.agent_id} onChange={(v) => setB('agent_id', v)} allowEmpty="Aucun"
+                    options={[...data.contacts.filter((c) => c.kind === 'agent' && !c.archived_at && (!bien.agency_id || bien.agency_id === NEW || !c.organization_id || c.organization_id === bien.agency_id)).map((c) => [c.id, c.name] as const), [NEW, '+ Nouvel agent…'] as const]} />
+                  {bien.agent_id === NEW && <TextInput label="Nom du nouvel agent" value={newAgent} onChange={setNewAgent} maxLength={200} />}
+                  <TextInput label="Prochaine action" wide value={bien.next_action} onChange={(v) => setB('next_action', v || null)} maxLength={300} placeholder="Ex. Demander les PV d’AG" />
+                  <TextInput label="Date de relance" type="date" value={bien.follow_up_date} onChange={(v) => setB('follow_up_date', v || null)} />
+                  <TextInput label="Date et heure de visite" type="datetime-local" value={bien.visit_at ? toLocalInput(bien.visit_at) : ''} onChange={(v) => setB('visit_at', v ? new Date(v).toISOString() : null)} />
+                  <TextArea label="Commentaires" value={bien.comments} onChange={(v) => setB('comments', v || null)} rows={3} />
+                  <TextArea label="Points de vigilance (un par ligne)" value={bien.vigilance.join('\n')} onChange={(v) => setB('vigilance', v.split('\n').map((x) => x.trim()).filter(Boolean))} rows={3} />
+                </div>
+              </Section>
+            </>
+          )}
 
           <Section title="Acquisition">
             <div className="grid">
@@ -333,4 +375,11 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
   );
 }
 
-type Bien = Pick<Property, 'title' | 'address' | 'zip' | 'city' | 'property_type' | 'rooms' | 'dpe' | 'listing_url' | 'status'>;
+type Bien = Pick<Property, 'title' | 'address' | 'zip' | 'city' | 'property_type' | 'rooms' | 'dpe' | 'listing_url' | 'status'
+  | 'agency_id' | 'agent_id' | 'next_action' | 'follow_up_date' | 'visit_at' | 'comments' | 'vigilance'> & EstimateFields;
+const NEW = '__new__';
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}

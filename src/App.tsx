@@ -46,7 +46,9 @@ export function App() {
     const p = data.properties.find((x) => x.id === b);
     active = p?.status === 'acquis' ? 'biens' : 'prospection';
     if (!p && sync.state === 'loading') page = <p className="muted">Chargement…</p>;
-    else page = c === 'modifier' ? <PropertyFormPage key={key} id={b} mode={p?.status === 'acquis' ? 'owned' : 'prospect'} /> : <PropertyDetailPage id={b} />;
+    // bien en prospection : sa fiche se modifie dans le simulateur (une seule saisie)
+    else if (c === 'modifier' && p && p.status !== 'acquis') { active = 'prospection'; page = <SimulatorPage key={key} propertyId={b} scenarioId={p.primary_scenario_id ?? undefined} />; }
+    else page = c === 'modifier' ? <PropertyFormPage key={key} id={b} mode="owned" /> : <PropertyDetailPage id={b} />;
   } else if (a === 'simulateur') {
     active = 'simulateur';
     if (b && !data.scenarios.some((s) => s.id === b) && sync.state === 'loading') page = <p className="muted">Chargement…</p>;

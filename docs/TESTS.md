@@ -5,8 +5,8 @@ Exécution du 18/10/2026.
 | Suite | Commande | Résultat |
 |---|---|---|
 | Typage strict (`strict`, `noUncheckedIndexedAccess`) | `npm run typecheck` | 0 erreur |
-| Unitaires : révision IRL (4), import de loyers, adresses, quittance avec rappel (4), simulateur, biens, signature et événements Stripe (3), crédit et cash-flow, import de relevés (6), déclaration fiscale (5), reprise, sauvegarde/import, CSV, XLSX, gestion locative et quittance PDF, file d’e-mails | `npm test` | **74/74** |
-| SQL lot 1 : reprise (16), isolation (13), règles et concurrence (16), compte (2), annulation (5) ; lot 2 : baux, échéances, paiements, quittances, relances, documents, dépenses, isolation, tâches quotidiennes, file d’e-mails (61) ; lot 3 : import de relevés, isolation, saisies fiscales (6), plateforme : droits, contrôle d’accès, résiliation, expiration, accès manuel et support, journal (25) ; import de loyers, révision IRL, rappel de charges, isolation (15) | `npm run test:db` | **169/169** |
+| Unitaires : estimation DVF (4), révision IRL (4), import de loyers, adresses, quittance avec rappel (4), simulateur, biens, signature et événements Stripe (3), crédit et cash-flow, import de relevés (6), déclaration fiscale (5), reprise, sauvegarde/import, CSV, XLSX, gestion locative et quittance PDF, file d’e-mails | `npm test` | **78/78** |
+| SQL lot 1 : reprise (16), isolation (13), règles et concurrence (16), compte (2), annulation (5) ; lot 2 : baux, échéances, paiements, quittances, relances, documents, dépenses, isolation, tâches quotidiennes, file d’e-mails (61) ; lot 3 : import de relevés, isolation, saisies fiscales (6), plateforme : droits, contrôle d’accès, résiliation, expiration, accès manuel et support, journal (25) ; import de loyers, révision IRL, rappel de charges, isolation (15) ; estimation du prix (3) | `npm run test:db` | **172/172** |
 | Navigateur (Chromium, bureau 1360 px et mobile 390 px, mode démonstration) | `npm run build && npm run test:e2e` | **36/36 étapes** |
 
 ## Couverture des exigences minimales

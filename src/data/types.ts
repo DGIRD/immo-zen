@@ -47,6 +47,13 @@ export interface Property extends Versioned {
   management_annual?: number | null;
   gli_annual?: number | null;
   other_charges_annual?: number | null;
+  /** Fourchette d'estimation de la valeur (DVF ou saisie). */
+  estimate_low?: number | null;
+  estimate_high?: number | null;
+  estimate_median?: number | null;
+  estimate_on?: string | null;
+  estimate_source?: string | null;
+  estimate_details?: EstimateDetails | null;
   /** Crédit d'un bien détenu. */
   loan_amount?: number | null;
   loan_rate?: number | null;
@@ -69,6 +76,16 @@ export interface Property extends Versioned {
   primary_scenario_id: string | null;
   legacy_simulation_id: string | null;
   legacy_ref: string | null;
+}
+
+export interface EstimateDetails {
+  perM2?: { p25: number; median: number; p75: number };
+  count?: number;
+  radius?: number | null;
+  from?: string;
+  to?: string;
+  surface?: number;
+  comparables?: { date: string; address: string; surface: number; value: number; perM2: number; distance: number | null }[];
 }
 
 export interface AcquisitionSnapshot {

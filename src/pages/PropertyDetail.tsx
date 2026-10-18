@@ -5,6 +5,7 @@ import { date, dateTime, money, money2, number, pct, todayParis } from '../domai
 import { CHANNEL_LABELS, EVENT_LABELS, OCCUPATION_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, STATUS_ORDER, TAX_REGIME_LABELS, TYPE_LABELS } from '../domain/labels.ts';
 import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, isOwned, loanInfo, metrics, ownedCashflow, rentWithCharges, scenarioResult } from '../domain/property.ts';
 import { cfTitle } from './propertyShared.tsx';
+import { EstimatePanel } from '../ui/EstimatePanel.tsx';
 import { normalizeInputs, simulate } from '../domain/simulator.ts';
 import { Button, EmptyState, KeyValue, PageHeader, Section, StatusBadge, Tabs, TextInput, useConfirm } from '../ui/components.tsx';
 import { href, navigate } from '../ui/router.ts';
@@ -40,7 +41,7 @@ export function PropertyDetailPage({ id }: { id: string }) {
 
   const tabs: [Tab, string][] = [
     ['synthese', 'Synthèse'],
-    ['simulations', `Simulations (${scenarios.length})`],
+    ...(owned ? [] : [['simulations', `Simulations (${scenarios.length})`] as [Tab, string]]),
     ['historique', `Historique et échanges (${events.length})`],
     ['taches', `Tâches (${openTasks})`],
     ['documents', 'Photos et documents'],
@@ -54,8 +55,9 @@ export function PropertyDetailPage({ id }: { id: string }) {
         title={p.title}
         subtitle={<>{[TYPE_LABELS[p.property_type], p.surface ? `${number(p.surface)} m²` : null, p.rooms ? `${p.rooms} pièces` : null, [p.zip, p.city].filter(Boolean).join(' ') || null].filter(Boolean).join(', ')}</>}
         actions={<>
-          <Button onClick={() => navigate(`/bien/${p.id}/modifier`)}>Modifier</Button>
-          <Button onClick={() => navigate(m.scenario ? `/simulateur/${m.scenario.id}` : `/simulateur?bien=${p.id}`)}>Simuler</Button>
+          {owned
+            ? <Button onClick={() => navigate(`/bien/${p.id}/modifier`)}>Modifier</Button>
+            : <Button onClick={() => navigate(m.scenario ? `/simulateur/${m.scenario.id}` : `/simulateur?bien=${p.id}`)}>Modifier la fiche et la simulation</Button>}
           {!owned && p.status !== 'archive' && <Button variant="primary" onClick={() => void actions.setStatus(p, 'acquis')}>Marquer comme acquis</Button>}
           <details className="menu menu-right">
             <summary className="btn btn-secondary">Plus</summary>
@@ -83,9 +85,16 @@ export function PropertyDetailPage({ id }: { id: string }) {
       </div>
 
       <div className="figures">
-        <Figure label="Prix affiché" value={money(p.asking_price)} />
-        <Figure label="Prix proposé" value={money(p.offer_price)} />
-        <Figure label="Prix / m²" value={money(m.pricePerM2)} />
+        {owned ? (
+          <Figure label="Estimation du prix actuel" value={p.estimate_low != null && p.estimate_high != null ? `${money(p.estimate_low)} – ${money(p.estimate_high)}` : '—'}
+            hint={p.estimate_source ?? 'Fiche du bien → Modifier'} />
+        ) : (
+          <>
+            <Figure label="Prix de présentation FAI" value={money(p.asking_price)} />
+            <Figure label="Prix proposé" value={money(p.offer_price)} hint={r?.negotiationAmount != null ? `négociation ${money(r.negotiationAmount)} (${pct(r.negotiationPct)})` : undefined} />
+            <Figure label="Estimation DVF" value={p.estimate_low != null && p.estimate_high != null ? `${money(p.estimate_low)} – ${money(p.estimate_high)}` : '—'} />
+          </>
+        )}
         <Figure label="Rendement brut" value={pct(r?.grossYield)} />
         {owned
           ? <Figure label="Cash-flow / mois" value={money(cf?.monthly)} tone={cf ? (cf.monthly >= 0 ? 'pos' : 'neg') : undefined} hint={cfTitle(cf)} />
@@ -112,8 +121,9 @@ export function PropertyDetailPage({ id }: { id: string }) {
                   ...(loan.remaining != null ? [['Capital restant dû', `${money2(loan.remaining)}${loan.endDate ? ` (fin le ${date(loan.endDate)})` : ''}`]] : []),
                 ] as [string, string][] : [['Crédit', 'Non renseigné']] as [string, string][]),
               ] as [string, string][] : [
-                ['Budget travaux', money(p.works_budget)],
-                ['Loyer estimé', p.estimated_rent ? `${money(p.estimated_rent)} / mois` : '—'],
+                ['Surface du logement', p.surface ? `${number(p.surface)} m²` : '—'],
+                ['Travaux', money(p.works_budget)],
+                ['Loyer hors charges', p.estimated_rent ? `${money(p.estimated_rent)} / mois` : '—'],
               ] as [string, string][]),
               ['Agence', agency ? <a href={href(`/contacts/${agency.id}`)}>{agency.name}</a> : '—'],
               ['Agent', agent ? <a href={href(`/contacts/${agent.id}`)}>{agent.name}</a> : '—'],
@@ -136,6 +146,11 @@ export function PropertyDetailPage({ id }: { id: string }) {
                 <ul>{p.vigilance.map((v, i) => <li key={i}>{v}</li>)}</ul>
               </Section>
             )}
+            <Section title={owned ? 'Estimation du prix actuel' : 'Estimation DVF'}>
+              <EstimatePanel value={p} input={p} onChange={async (patch) => { await update('properties', p, patch, `Le bien « ${p.title} »`); }}
+                compareTo={owned ? (p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null) : (r?.offerFai ?? p.offer_price)}
+                compareLabel={owned ? 'Coût d’acquisition' : 'Prix proposé (frais d’agence inclus)'} />
+            </Section>
             <Section title="Commentaires">
               {p.comments ? <p className="prewrap">{p.comments}</p> : <p className="muted">Aucun commentaire.</p>}
             </Section>

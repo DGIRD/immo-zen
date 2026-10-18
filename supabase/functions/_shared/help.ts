@@ -41,10 +41,19 @@ Avec des baux : impayés échus, quittances à émettre, relances à valider, lo
     id: 'prospection', title: 'Prospection et simulateur : une seule saisie', pages: ['prospection', 'simulateur'],
     keywords: ['prospection', 'ajouter', 'bien', 'annonce', 'repere', 'statut', 'visite', 'offre', 'simulation', 'saisie', 'double', 'fiche', 'agence', 'agent', 'relance'],
     body: `« Ajouter un bien » (Prospection) ouvre le **simulateur**, qui contient la fiche du bien (titre, statut, adresse avec saisie automatique, type, pièces, DPE, lien de l'annonce) et la simulation. **Enregistrer** crée le bien en prospection et son scénario.
-Prix, surface, travaux et loyer se saisissent uniquement dans le simulateur ; le **scénario principal** met à jour la fiche. La fiche du bien garde l'agence, l'agent, la date de relance, la prochaine action, la visite, les commentaires et la vigilance (bouton Modifier).
+Toutes les données du bien se saisissent au même endroit, dans le simulateur : fiche, prix, surface, travaux, loyer, **estimation DVF** et **suivi** (agence, agent, prochaine action, date de relance, visite, commentaires, points de vigilance). Sur la fiche, « Modifier la fiche et la simulation » rouvre ce même écran ; le **scénario principal** alimente le tableau Prospection.
+Prospection et simulateur ne listent que les biens recherchés : les biens détenus restent dans **Mes biens**.
 Le tableau Prospection permet recherche, tri, filtres par statut, colonnes personnalisables, comparaison de 2 à 4 biens, exports Excel/CSV/JSON. 15 statuts suivent le parcours, de « Repéré » à « Sous compromis ».`,
     actions: [{ label: 'Ajouter un bien', path: '/simulateur' }, { label: 'Prospection', path: '/prospection' }],
     questions: ['Comment ajouter un bien en prospection ?', 'Comment comparer plusieurs biens ?', 'Où saisir l’agence et la date de relance ?'],
+  },
+  {
+    id: 'estimation', title: 'Estimation du prix par les ventes DVF', pages: ['prospection', 'simulateur', 'biens'],
+    keywords: ['estimation', 'estimer', 'dvf', 'valeur', 'valorisation', 'prix actuel', 'fourchette', 'marche', 'ventes', 'comparables', 'plus-value', 'm2'],
+    body: `« Estimer avec les ventes DVF » calcule une **fourchette de prix** à partir des ventes publiques (Demandes de valeurs foncières, DGFiP / Etalab) des trois dernières années publiées dans la commune : ventes d'un seul appartement ou d'une seule maison, les plus proches de l'adresse (rayon élargi de 300 m à 2 km jusqu'à obtenir assez de ventes), surfaces comparables, valeurs extrêmes écartées. Fourchette = 1er et 3e quartiles du prix au m² × surface ; la médiane sert de repère.
+Il faut le type (appartement ou maison), la surface et une adresse (au moins code postal et ville). Les ventes comparables sont consultables. Les fourchettes basse et haute peuvent aussi être saisies à la main.
+En prospection, l'écart entre le prix proposé et l'estimation s'affiche ; dans Mes biens, l'estimation remplace prix affiché et prix proposé, et la **plus-value latente** = estimation médiane − coût d'acquisition. Données publiées jusqu'à fin 2025, non indexées : un repère, pas une expertise.`,
+    questions: ['Comment est calculée l’estimation DVF ?', 'Pourquoi l’estimation est-elle indisponible ?'],
   },
   {
     id: 'simulateur', title: 'Simulateur : calculs, rendement et cash-flow', pages: ['simulateur'],
@@ -67,7 +76,7 @@ Plusieurs scénarios par bien ; le premier devient principal (modifiable dans l'
     id: 'mes-biens', title: 'Mes biens : loyer, charges, crédit, cash-flow', pages: ['biens'],
     keywords: ['mes biens', 'detenu', 'proprietaire', 'charges', 'annuelles', 'taxe', 'fonciere', 'pno', 'gli', 'gestion', 'credit', 'pret', 'capital', 'restant', 'cash', 'flow', 'regime', 'fiscal', 'occupation', 'loue'],
     body: `Un bien détenu porte : mode de détention, **régime fiscal** (micro-foncier, réel foncier, micro-BIC, LMNP réel, IS), date et coût d'acquisition, loyer et provision, **charges annuelles** (taxe foncière, copropriété, PNO, gestion locative, GLI, autres) et **crédit** (montant, taux, durée, première échéance, assurance ; mensualité calculée ou saisie, capital restant dû). « Reprendre le crédit de la simulation » recopie celui du scénario acquis.
-Le tableau Mes biens affiche locataire actif, « Loué » dès qu'un bail est en cours, encaissements et dépenses de l'année, solde locatif, **cash-flow prévisionnel** (loyer CC − charges / 12 − crédit) et cash-flow réel (encaissé − payé).`,
+Le tableau Mes biens affiche locataire actif, « Loué » dès qu'un bail est en cours, encaissements et dépenses de l'année, solde locatif, **cash-flow prévisionnel** (loyer CC − charges / 12 − crédit), cash-flow réel (encaissé − payé) et l'**estimation du prix actuel** (fourchette DVF ou saisie manuelle).`,
     actions: [{ label: 'Ajouter un bien détenu', path: '/bien/nouveau?mode=owned' }],
     questions: ['Comment renseigner mon crédit ?', 'Comment est calculé le cash-flow d’un bien ?', 'Où indiquer le régime fiscal ?'],
   },
