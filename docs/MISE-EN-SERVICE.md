@@ -4,6 +4,13 @@ Ordre conseillé : **1. OVH (nom de domaine)** → **2. jeton Supabase** → **3
 Chaque étape est indépendante : l'application fonctionne déjà sans elles (adresse GitHub, pas d'e-mails, pas de paiement).
 Dans les exemples, remplacez `immo-zen.fr` par votre domaine.
 
+## Organisation de l'adresse
+
+- `https://immo-zen.fr/` : **site vitrine** (dossier `site/` du dépôt) — raison d'être, solution, accompagnement, guides, tarifs, questions, formulaire « Être recontacté ».
+- `https://immo-zen.fr/app/` : **application** (Espace client). Tant que le domaine n'est pas branché : https://dgird.github.io/immo-zen/ et https://dgird.github.io/immo-zen/app/.
+- Les demandes du formulaire arrivent dans **Administration → Prospects commerciaux** (migration `20261018000300_site_contact.sql` à exécuter).
+- **Mentions légales** (`site/mentions-legales.html`) : éditeur, SIREN, adresse et e-mail de contact **à compléter** avant d'annoncer le site.
+
 ## 0. Avant de commencer (une fois)
 
 Dans Supabase → SQL Editor, exécutez les migrations pas encore passées (dans l'ordre des noms de fichiers du dossier `supabase/migrations`), notamment :
@@ -25,9 +32,9 @@ insert into public.admins (user_id) select id from auth.users where email = 'vot
    - **CNAME** `www` → `dgird.github.io.` (sans le nom du dépôt).
 3. GitHub → **Settings → Pages → Custom domain** : `immo-zen.fr` → Save. Attendez la vérification DNS (quelques minutes à 24 h), puis cochez **Enforce HTTPS**.
    Conseillé : GitHub → votre profil → Settings → Pages → **Add a domain** pour vérifier le domaine (protection contre la prise de contrôle).
-4. Supabase → **Authentication → URL Configuration** : *Site URL* `https://immo-zen.fr/` ; *Redirect URLs* : ajoutez `https://immo-zen.fr/**` (gardez l'ancienne adresse quelques semaines).
-5. GitHub → Settings → Secrets and variables → Actions → **Variables** : `APP_URL` = `https://immo-zen.fr/` (adresse des liens de paiement et d'invitation).
-6. Vérifiez https://immo-zen.fr : connexion, puis « Mot de passe oublié » (le lien doit revenir sur le nouveau domaine). Réinstallez l'application mobile depuis la nouvelle adresse.
+4. Supabase → **Authentication → URL Configuration** : *Site URL* `https://immo-zen.fr/app/` ; *Redirect URLs* : ajoutez `https://immo-zen.fr/**` (gardez l'ancienne adresse quelques semaines).
+5. GitHub → Settings → Secrets and variables → Actions → **Variables** : `APP_URL` = `https://immo-zen.fr/app/` (adresse de l'application : liens de paiement et d'invitation).
+6. Vérifiez https://immo-zen.fr (site vitrine), puis « Espace client » → https://immo-zen.fr/app/ : connexion, puis « Mot de passe oublié » (le lien doit revenir sur le nouveau domaine). Réinstallez l'application mobile depuis la nouvelle adresse.
 
 *Si vous tenez à un serveur OVH* (VPS) : il faudra un serveur web (nginx), un certificat (Let's Encrypt), et remplacer la publication GitHub Pages par un envoi du dossier `dist` sur le serveur. Dites-le-moi, j'adapterai le déploiement ; Supabase reste nécessaire pour la base et les comptes.
 
@@ -90,7 +97,7 @@ Seules les questions et le nom de la rubrique affichée sont transmis au modèle
 | `RESEND_API_KEY` | secret | `re_…` |
 | `STRIPE_SECRET_KEY` | secret | `sk_test_…` puis `sk_live_…` |
 | `STRIPE_WEBHOOK_SECRET` | secret | `whsec_…` |
-| `APP_URL` | variable | `https://immo-zen.fr/` |
+| `APP_URL` | variable | `https://immo-zen.fr/app/` |
 | `EMAIL_FROM` | variable | `Immo-Zen <quittances@mail.immo-zen.fr>` |
 | `EMAIL_REPLY_TO` | variable | votre adresse |
 | `EMAIL_ENABLED` | variable | `false`, puis `true` après vérification |

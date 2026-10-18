@@ -2,7 +2,7 @@
 
 *Prospectez, investissez et gérez vos locations sereinement.*
 
-Application web progressive (PWA) de prospection immobilière et de gestion locative pour particuliers. Elle succède à l'ancienne version de l'application, dont les données sont reprises.
+Site vitrine (`site/`, publié à la racine) et application web progressive (PWA, publiée sous `/app/`) de prospection immobilière et de gestion locative pour particuliers. Elle succède à l'ancienne version de l'application, dont les données sont reprises.
 
 > **État : lots 1, 2 et 3 livrés** (prospection, simulateur, Mes biens ; gestion locative ; import de relevés, déclaration fiscale, abonnements Stripe et administration). Les paiements et e-mails réels restent à configurer. Détail : [docs/ETAT-DU-PROJET.md](docs/ETAT-DU-PROJET.md).
 

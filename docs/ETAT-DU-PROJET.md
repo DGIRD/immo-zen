@@ -100,6 +100,14 @@ Limites : les valeurs IRL sont intégrées jusqu'au 3e trimestre 2026 (à compl�
 | Assistant d'aide (bouton « ? Assistant ») : questions proposées par rubrique, réponses de l'aide intégrée, liens vers les écrans | Implémenté et testé | unitaires (pertinence de 13 questions types) + e2e |
 | Mode conversationnel via l'API Claude (fonction `assistant`, quota quotidien, aucune donnée utilisateur transmise) | Implémenté et testé (quota SQL) / **à configurer** (clé d'API) ; appel réel non testé | SQL |
 
+## Site vitrine (18 octobre 2026)
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Site vitrine à la racine (raison d'être, parcours tout compris, accompagnement, guides, sécurité, tarifs, questions), calculateur de cash-flow, lien « Espace client » vers l'application publiée sous `/app/` | Implémenté et testé | e2e (bureau et mobile) |
+| Formulaire « Être recontacté » → prospects commerciaux de l'administration (anti-robot, limites de fréquence) | Implémenté et testé (SQL) / **à configurer** (migration) | SQL + e2e |
+| Mentions légales et confidentialité | **À compléter** (identité de l'éditeur, contact) | — |
+
 ## Restant
 
 Tout le périmètre du cahier des charges est livré. Reste **à configurer** : compte Stripe et fonctions `platform` / `stripe-webhook` ([ABONNEMENTS](ABONNEMENTS.md)), premier administrateur, envoi réel des e-mails (Resend). Pistes ultérieures : vérification de l'abonnement dans les fonctions serveur (quittances, relances), réimport de la gestion locative depuis une sauvegarde, liasse 2031/2033 complète, travaux de rénovation énergétique et déficits antérieurs dans la déclaration.
