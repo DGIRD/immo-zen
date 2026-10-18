@@ -3,6 +3,7 @@ import { useStore } from '../data/store.tsx';
 import { dateTime } from '../domain/format.ts';
 import { Button, Modal } from './components.tsx';
 import { href } from './router.ts';
+import { AssistantButton } from './Assistant.tsx';
 
 export interface NavItem {
   key: string;
@@ -82,6 +83,7 @@ export function Layout({ active, children }: { active: string; children: ReactNo
           <span>Immo-Zen</span>
         </a>
         <div className="topbar-right">
+          <AssistantButton page={active} />
           <SyncIndicator />
           <span className="user-email" title={session?.email}>{session?.email}</span>
           <Button size="sm" onClick={() => void signOut()}>Déconnexion</Button>

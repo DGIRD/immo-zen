@@ -32,6 +32,10 @@ Vérifié par `npm run test:db` avec deux comptes (lecture, modification, suppre
 
 - Saisie automatique des adresses : `data.geopf.fr` (IGN) et `geo.api.gouv.fr`, services publics sans compte. Seul le texte de l'adresse ou le code postal saisi est envoyé, sans identifiant de compte.
 
+## Assistant
+
+- L'aide intégrée fonctionne entièrement dans le navigateur. Le mode conversationnel transmet au modèle Claude uniquement les questions de la conversation et le nom de la rubrique affichée, jamais les données de l'utilisateur ; la clé d'API reste un secret de la fonction serveur ; quota quotidien par compte (`assistant_usage`), non modifiable par l'utilisateur.
+
 ## Secrets
 
 - Le frontend ne contient que l'URL et la clé **publique** du projet. Le build échoue si la clé fournie est une clé `service_role` ou `sb_secret_`.

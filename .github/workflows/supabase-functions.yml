@@ -3,8 +3,8 @@
 # À définir dans Settings → Secrets and variables → Actions :
 #   Secret obligatoire : SUPABASE_ACCESS_TOKEN (supabase.com → Account → Access Tokens)
 #   Secrets facultatifs (transmis tels quels aux fonctions s'ils existent) :
-#     CRON_SECRET, RESEND_API_KEY, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
-#   Variables facultatives : SUPABASE_PROJECT_REF, APP_URL, EMAIL_FROM, EMAIL_REPLY_TO, EMAIL_ENABLED
+#     CRON_SECRET, RESEND_API_KEY, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, ANTHROPIC_API_KEY (assistant)
+#   Variables facultatives : SUPABASE_PROJECT_REF, APP_URL, EMAIL_FROM, EMAIL_REPLY_TO, EMAIL_ENABLED, ASSISTANT_MODEL, ASSISTANT_DAILY_LIMIT
 name: Fonctions serveur Supabase
 
 on:
@@ -23,6 +23,9 @@ jobs:
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ASSISTANT_MODEL: ${{ vars.ASSISTANT_MODEL }}
+      ASSISTANT_DAILY_LIMIT: ${{ vars.ASSISTANT_DAILY_LIMIT }}
       APP_URL: ${{ vars.APP_URL || 'https://dgird.github.io/immo-zen/' }}
       EMAIL_FROM: ${{ vars.EMAIL_FROM }}
       EMAIL_REPLY_TO: ${{ vars.EMAIL_REPLY_TO }}
@@ -38,7 +41,7 @@ jobs:
       - name: Secrets des fonctions
         run: |
           args=()
-          for k in CRON_SECRET RESEND_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET APP_URL EMAIL_FROM EMAIL_REPLY_TO EMAIL_ENABLED; do
+          for k in CRON_SECRET RESEND_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET ANTHROPIC_API_KEY ASSISTANT_MODEL ASSISTANT_DAILY_LIMIT APP_URL EMAIL_FROM EMAIL_REPLY_TO EMAIL_ENABLED; do
             v="${!k}"
             if [ -n "$v" ]; then args+=("$k=$v"); echo "→ $k transmis"; fi
           done
@@ -49,6 +52,8 @@ jobs:
         run: supabase functions deploy stripe-webhook --project-ref "$PROJECT_REF" --no-verify-jwt
       - name: Fonction platform (paiement, espace client, invitations)
         run: supabase functions deploy platform --project-ref "$PROJECT_REF"
+      - name: Fonction assistant (aide conversationnelle)
+        run: supabase functions deploy assistant --project-ref "$PROJECT_REF"
       - name: Adresses à utiliser
         run: |
           echo "Webhook Stripe : https://${PROJECT_REF}.supabase.co/functions/v1/stripe-webhook" >> "$GITHUB_STEP_SUMMARY"

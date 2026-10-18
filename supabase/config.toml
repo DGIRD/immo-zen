@@ -14,3 +14,7 @@ verify_jwt = false
 [functions.platform]
 # Appelée par l'application avec la session de l'utilisateur.
 verify_jwt = true
+
+[functions.assistant]
+# Appelée par l'application avec la session de l'utilisateur.
+verify_jwt = true

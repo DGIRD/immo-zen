@@ -1,5 +1,9 @@
 # Guide utilisateur — lots 1 et 2
 
+## Assistant
+
+Le bouton **? Assistant** (en haut) ouvre un panneau qui explique le fonctionnement de l'application : questions proposées selon la rubrique affichée, réponse avec les étapes, boutons pour s'y rendre et sujets liés. Sans configuration, il répond à partir de l'aide intégrée ; avec une clé d'API Claude ([MISE-EN-SERVICE](MISE-EN-SERVICE.md)), il répond aux questions formulées librement et tient compte de la conversation. Il ne voit pas vos données et ne remplace pas un conseil fiscal ou juridique.
+
 ## Se connecter
 
 Utilisez le même e-mail et le même mot de passe qu'avec l'ancienne version : vos simulations ont été reprises en biens de prospection. « Mot de passe oublié » envoie un lien de réinitialisation. Sur téléphone ou ordinateur, le navigateur propose d'**installer** l'application (icône sur l'écran d'accueil).

@@ -73,4 +73,13 @@ select tests.fails($q$ select public.iz_revise_rent('cccccccc-6666-0000-0000-000
 select tests.ok((select count(*) from public.lease_revisions) = 0, 'révision : historique invisible pour un autre compte');
 commit;
 
+-- Quota de l'assistant : réservé au serveur, limite quotidienne respectée
+select tests.ok(public.iz_assistant_take('11111111-1111-1111-1111-111111111111', 2) and public.iz_assistant_take('11111111-1111-1111-1111-111111111111', 2)
+  and not public.iz_assistant_take('11111111-1111-1111-1111-111111111111', 2), 'assistant : quota quotidien appliqué');
+begin;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+select tests.fails($q$ select public.iz_assistant_take('11111111-1111-1111-1111-111111111111', 1000) $q$, 'assistant : quota non manipulable par l''utilisateur');
+commit;
+
 select 'Tests SQL loyers, IRL et rappels passés' as fin;
