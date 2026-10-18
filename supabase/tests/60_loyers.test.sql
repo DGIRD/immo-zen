@@ -97,4 +97,16 @@ commit;
 select tests.ok((select count(*) from public.platform_leads where email = 'marie@example.test' and source = 'Site – Accompagnement') = 1
   and not exists (select 1 from public.platform_leads where email = 'robot@spam.test'), 'site : prospect visible en administration, robot écarté');
 
+-- Estimation du prix (DVF ou saisie manuelle)
+begin;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+update public.properties set estimate_low = 380000, estimate_high = 430000, estimate_median = 405000, estimate_on = '2026-10-18',
+  estimate_source = 'DVF 2023–2025, 24 ventes d''appartements à moins de 500 m', estimate_details = '{"count":24,"radius":500}'
+  where id = 'aaaaaaaa-6666-0000-0000-000000000001';
+select tests.ok((select estimate_median = 405000 and estimate_details->>'radius' = '500' from public.properties where id = 'aaaaaaaa-6666-0000-0000-000000000001'), 'estimation : fourchette enregistrée avec sa source');
+select tests.fails($q$ update public.properties set estimate_low = 500000, estimate_high = 400000 where id = 'aaaaaaaa-6666-0000-0000-000000000001' $q$, 'estimation : fourchette basse supérieure à la haute refusée');
+select tests.fails($q$ update public.properties set estimate_low = -1 where id = 'aaaaaaaa-6666-0000-0000-000000000001' $q$, 'estimation : montant négatif refusé');
+commit;
+
 select 'Tests SQL loyers, IRL et rappels passés' as fin;

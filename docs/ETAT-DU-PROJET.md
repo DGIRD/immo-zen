@@ -108,6 +108,16 @@ Limites : les valeurs IRL sont intégrées jusqu'au 3e trimestre 2026 (à compl�
 | Formulaire « Être recontacté » → prospects commerciaux de l'administration (anti-robot, limites de fréquence) | Implémenté et testé (SQL) / **à configurer** (migration) | SQL + e2e |
 | Mentions légales et confidentialité | **À compléter** (identité de l'éditeur, contact) | — |
 
+## Fiche unique et estimation DVF (18 octobre 2026)
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Prospection et simulation sur un seul écran : fiche, suivi (agence, agent, relance, visite, commentaires, vigilance), estimation et simulation ; plus de second formulaire ; libellés identiques entre simulateur, fiche et tableau | Implémenté et testé | e2e |
+| Biens détenus exclus de la prospection et du simulateur | Implémenté et testé | e2e |
+| Estimation par les ventes publiques DVF (3 dernières années, ventes proches et comparables, quartiles), ventes comparables consultables, saisie manuelle possible | Implémenté et testé (données simulées) / **à configurer** (migration `20261018000400`, fonction `dvf` de secours) | unitaires + SQL + e2e |
+| Mes biens : fourchette « Estimation du prix actuel » à la place des prix affiché et proposé, plus-value latente | Implémenté et testé | e2e |
+| Lecture réelle des fichiers data.gouv.fr depuis le navigateur | **Non testé en ligne** (réseau fermé pendant les tests) ; repli serveur prévu | — |
+
 ## Restant
 
 Tout le périmètre du cahier des charges est livré. Reste **à configurer** : compte Stripe et fonctions `platform` / `stripe-webhook` ([ABONNEMENTS](ABONNEMENTS.md)), premier administrateur, envoi réel des e-mails (Resend). Pistes ultérieures : vérification de l'abonnement dans les fonctions serveur (quittances, relances), réimport de la gestion locative depuis une sauvegarde, liasse 2031/2033 complète, travaux de rénovation énergétique et déficits antérieurs dans la déclaration.

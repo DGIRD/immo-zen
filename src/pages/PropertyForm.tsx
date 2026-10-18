@@ -7,6 +7,7 @@ import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, LOAN_FIELDS, loanInfo, rentWi
 import { Button, NumberInput, PageHeader, Section, Select, TextArea, TextInput } from '../ui/components.tsx';
 import { navigate } from '../ui/router.ts';
 import { AddressFields } from '../ui/AddressFields.tsx';
+import { EstimatePanel } from '../ui/EstimatePanel.tsx';
 
 type Draft = Insert<Property> & { title: string };
 const NEW = '__new__';
@@ -44,6 +45,7 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
     if ((draft.loan_rate ?? 0) > 30) e.loan_rate = 'Taux annuel en %, 30 au plus.';
     if ((draft.loan_years ?? 0) > 40) e.loan_years = 'Durée de 40 ans au plus.';
     if (draft.loan_amount && !draft.loan_years && draft.loan_monthly_payment == null) e.loan_years = 'Indiquez la durée, ou la mensualité si vous la connaissez.';
+    if (draft.estimate_low != null && draft.estimate_high != null && draft.estimate_low > draft.estimate_high) e.estimate = 'La fourchette basse dépasse la fourchette haute.';
     if (draft.surface === 0) e.surface = 'La surface doit être supérieure à zéro.';
     if (!owned && draft.listing_url && !/^https?:\/\//i.test(draft.listing_url)) e.listing_url = 'Adresse web commençant par http:// ou https://';
     if (agencyChoice === NEW && !newAgency.trim()) e.agency = 'Nom de l’agence à créer.';
@@ -72,7 +74,7 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
       const payload: Insert<Property> = { ...rest, title: draft.title.trim(), agency_id: agencyId, agent_id: agentId };
       if (!owned) { payload.occupation_status = null; }
       // N'envoyer la provision que si elle est renseignée (compatibilité avec une base pas encore migrée)
-      for (const k of ['charges_provision', ...ANNUAL_CHARGE_FIELDS.map(([f]) => f), ...LOAN_FIELDS] as const) if (payload[k] === null || payload[k] === undefined) delete payload[k];
+      for (const k of ['charges_provision', ...ANNUAL_CHARGE_FIELDS.map(([f]) => f), ...LOAN_FIELDS, 'estimate_low', 'estimate_high', 'estimate_median', 'estimate_on', 'estimate_source', 'estimate_details'] as const) if (payload[k] === null || payload[k] === undefined) delete payload[k];
       if (existing) {
         const row = await update('properties', existing, payload, `Le bien « ${existing.title} »`);
         if (row) navigate(`/bien/${row.id}`);
@@ -145,6 +147,13 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
           <p>{[draft.surface ? `${String(draft.surface).replace('.', ',')} m²` : null, draft.asking_price ? `présentation ${money2(draft.asking_price)}` : null, draft.offer_price ? `proposé ${money2(draft.offer_price)}` : null, draft.estimated_rent ? `loyer ${money2(draft.estimated_rent)} / mois` : null].filter(Boolean).join(' · ') || 'Pas encore simulé.'}</p>
           <p className="muted small">Ces valeurs se saisissent une seule fois, dans le simulateur, qui met à jour la fiche du bien.</p>
           {existing && <Button onClick={() => navigate(existing.primary_scenario_id ? `/simulateur/${existing.primary_scenario_id}` : `/simulateur?bien=${existing.id}`)}>Ouvrir le simulateur</Button>}
+        </Section>
+      )}
+
+      {owned && (
+        <Section title="Estimation du prix actuel">
+          <EstimatePanel value={draft} input={draft} onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+            compareTo={draft.acquisition_cost ?? existing?.acquisition_snapshot?.results?.totalCost ?? null} compareLabel="Coût d’acquisition" />
         </Section>
       )}
 

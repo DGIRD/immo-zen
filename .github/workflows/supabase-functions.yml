@@ -54,6 +54,8 @@ jobs:
         run: supabase functions deploy platform --project-ref "$PROJECT_REF"
       - name: Fonction assistant (aide conversationnelle)
         run: supabase functions deploy assistant --project-ref "$PROJECT_REF"
+      - name: Fonction dvf (estimation, repli serveur)
+        run: supabase functions deploy dvf --project-ref "$PROJECT_REF"
       - name: Adresses à utiliser
         run: |
           echo "Webhook Stripe : https://${PROJECT_REF}.supabase.co/functions/v1/stripe-webhook" >> "$GITHUB_STEP_SUMMARY"

@@ -10,6 +10,7 @@ import { extname, join } from 'node:path';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import { chromium, type Page } from 'playwright';
+import { csv, salesAround } from '../fixtures/dvf.ts';
 
 const root = join(import.meta.dirname, '..', '..');
 const dist = join(root, 'dist');
@@ -58,9 +59,18 @@ async function main() {
   const ctx = await browser.newContext({ locale: 'fr-FR', timezoneId: 'Europe/Paris', viewport: { width: 1360, height: 900 }, acceptDownloads: true });
   // services d'adresses publics simulés (aucun appel réseau pendant les tests)
   await ctx.route('https://data.geopf.fr/geocodage/**', (r) => r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ features: [
-    { properties: { label: '12 Rue de Paris 93100 Montreuil', name: '12 Rue de Paris', postcode: '93100', city: 'Montreuil', type: 'housenumber' } },
-    { properties: { label: '12 Rue de Paris 75012 Paris', name: '12 Rue de Paris', postcode: '75012', city: 'Paris', type: 'housenumber' } },
+    { geometry: { coordinates: [2.441, 48.861] }, properties: { label: '12 Rue de Paris 93100 Montreuil', name: '12 Rue de Paris', postcode: '93100', city: 'Montreuil', citycode: '93048', type: 'housenumber' } },
+    { geometry: { coordinates: [2.39, 48.84] }, properties: { label: '12 Rue de Paris 75012 Paris', name: '12 Rue de Paris', postcode: '75012', city: 'Paris', citycode: '75112', type: 'housenumber' } },
   ] }) }));
+  // ventes DVF simulées : 18 appartements autour du 12 rue de Paris à Montreuil, 5 000 €/m² en médiane
+  const dvfFiles: string[] = [];
+  await ctx.route('https://files.data.gouv.fr/geo-dvf/**', (r) => {
+    const u = r.request().url();
+    dvfFiles.push(u);
+    return u.endsWith('/2025/communes/93/93048.csv')
+      ? r.fulfill({ contentType: 'text/csv', headers: { 'access-control-allow-origin': '*' }, body: csv(salesAround(18, 5000, { lat: 48.861, lon: 2.441, date: '2025-04-10' })) })
+      : r.fulfill({ contentType: 'text/csv', headers: { 'access-control-allow-origin': '*' }, body: csv([]) }); // aucune vente ces années-là
+  });
   await ctx.route('https://geo.api.gouv.fr/communes**', (r) => {
     const zip = new URL(r.request().url()).searchParams.get('codePostal');
     const list = zip === '93100' ? [{ nom: 'Montreuil' }] : zip === '75018' ? [{ nom: 'Paris' }] : [];
@@ -120,7 +130,7 @@ async function main() {
     assert.ok(!/etat-des-lieux|etats-des-lieux|edl/i.test(await page.content()), 'aucune route états des lieux');
   });
 
-  await step('prospection et simulation en une seule saisie, puis agence et relance', async () => {
+  await step('prospection et simulation en une seule saisie : fiche, suivi, estimation DVF', async () => {
     await page.goto(url + '#/prospection');
     await page.getByRole('button', { name: 'Ajouter un premier bien' }).click();
     await page.getByRole('heading', { name: 'Le bien' }).waitFor();
@@ -141,21 +151,38 @@ async function main() {
     await page.getByLabel('Prix proposé', { exact: true }).fill('300000');
     await page.getByRole('radio', { name: 'Saisie libre' }).click();
     await page.getByLabel('Loyer hors charges', { exact: true }).fill('1350');
-    await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
-    await page.getByText('Bien « T3 test balcon » ajouté à la prospection avec sa simulation.').waitFor();
-    // une seule saisie : la fiche du bien porte les valeurs simulées
-    await page.goto(url + '#/prospection');
-    await page.getByRole('button', { name: 'T3 test balcon' }).first().click();
-    await page.getByRole('heading', { name: 'T3 test balcon' }).waitFor();
-    assert.match((await page.locator('.figures').first().innerText()).replace(/[\u202f\u00a0]/g, ' '), /320 000 €[\s\S]*300 000 €/);
-    await page.getByRole('button', { name: 'Modifier' }).first().click();
-    assert.equal(await page.getByLabel('Prix affiché').count(), 0, 'plus de double saisie des prix dans la fiche');
-    await page.getByText('Ces valeurs se saisissent une seule fois, dans le simulateur').waitFor();
+    // estimation par les ventes publiques DVF
+    await page.getByRole('button', { name: 'Estimer avec les ventes DVF' }).click();
+    await page.getByText(/DVF 2025–2025, 18 ventes d'appartements à moins de 300 m/).waitFor();
+    const est = (await page.locator('.estimate').innerText()).replace(/[\u202f\u00a0]/g, ' ');
+    assert.match(est, /\d[\d ]* € – \d[\d ]* €/, `fourchette affichée : ${est}`);
+    assert.match(est, /en dessous de l’estimation médiane \(313 000 €\)/, 'écart prix proposé / estimation');
+    assert.ok(dvfFiles.some((u) => u.endsWith('/2025/communes/93/93048.csv')), 'fichier DVF de la commune lu');
+    await page.getByRole('button', { name: /Voir les ventes comparables/ }).click();
+    assert.equal(await page.locator('.estimate tbody tr').count(), 10, '10 ventes comparables');
+    // suivi saisi au même endroit
     await page.getByLabel('Agence', { exact: true }).selectOption({ label: '+ Nouvelle agence…' });
     await page.getByLabel('Nom de la nouvelle agence').fill('Agence Test');
     await page.getByLabel('Date de relance').fill('2020-01-01');
-    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    await page.getByLabel('Points de vigilance (un par ligne)').fill('Toiture à vérifier');
+    await page.screenshot({ path: join(out, '31-fiche-unique-estimation.png'), fullPage: true });
+    await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+    await page.getByText('Bien « T3 test balcon » ajouté à la prospection avec sa simulation.').waitFor();
+    // la fiche du bien reprend tout, sans second formulaire
+    await page.goto(url + '#/prospection');
+    await page.getByRole('button', { name: 'T3 test balcon' }).first().click();
     await page.getByRole('heading', { name: 'T3 test balcon' }).waitFor();
+    const fig = (await page.locator('.figures').first().innerText()).replace(/[\u202f\u00a0]/g, ' ');
+    assert.match(fig, /Prix de présentation FAI[\s\S]*320 000 €[\s\S]*300 000 €[\s\S]*Estimation DVF/, fig);
+    await page.getByText('Agence Test').first().waitFor();
+    await page.getByText('Toiture à vérifier').first().waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Modifier', exact: true }).count(), 0, 'plus de formulaire séparé pour un bien en prospection');
+    await page.getByRole('button', { name: 'Modifier la fiche et la simulation' }).click();
+    await page.getByRole('heading', { name: 'Le bien' }).waitFor();
+    assert.equal(await page.getByLabel('Titre du bien *').inputValue(), 'T3 test balcon');
+    assert.equal(await page.getByLabel('Date de relance').inputValue(), '2020-01-01');
+    assert.equal(await page.getByLabel('Agence', { exact: true }).locator('option:checked').innerText(), 'Agence Test');
+    await page.goto(url + '#/bien/' + (await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!).properties.find((p: { title: string }) => p.title === 'T3 test balcon').id)));
     await page.getByRole('tab', { name: /Historique/ }).click();
     await page.getByText('Bien ajouté à la prospection').first().waitFor();
   });
@@ -163,7 +190,7 @@ async function main() {
   await step('simulation liée au bien, enregistrée comme scénario principal', async () => {
     await page.goto(url + '#/prospection');
     await page.getByRole('button', { name: 'T3 test balcon' }).first().click();
-    await page.getByRole('button', { name: 'Simuler' }).click();
+    await page.getByRole('button', { name: 'Modifier la fiche et la simulation' }).click();
     await page.getByLabel('Apport').fill('40000');
     await page.getByLabel('Taxe foncière').fill('1100');
     const cash = await page.locator('.cashflow strong').innerText();
@@ -230,6 +257,7 @@ async function main() {
     const text = (await row.innerText()).replace(/[\u202f\u00a0]/g, ' ');
     assert.match(text, /4,87 %/, 'rendement brut affiché (16 200 / 332 500)');
     assert.match(text, /4 800 €/, 'prix au m² (300 000 / 62,5)');
+    assert.match(text, /-\d+,\d+ %/, `écart prix proposé / estimation DVF : ${text}`);
     await page.getByLabel(/Relances à faire/).check();
     assert.ok(await page.locator('tbody tr', { hasText: 'T3 test balcon' }).count() === 1);
     await page.getByLabel(/Relances à faire/).uncheck();
@@ -241,7 +269,7 @@ async function main() {
     await page.locator('.menu-columns').getByLabel('Agence').check();
     await page.locator('thead').getByText('Agence').waitFor();
     await page.getByText('Colonnes', { exact: true }).click();
-    await page.locator('thead').getByRole('button', { name: /Prix affiché/ }).click();
+    await page.locator('thead').getByRole('button', { name: /Prix de présentation FAI/ }).click();
     assert.equal(await page.locator('thead th[aria-sort="ascending"]').count(), 1);
   });
 
@@ -299,6 +327,22 @@ async function main() {
     await page.getByText('Bien acquis : transféré dans Mes biens').waitFor();
     await page.getByText('Bien ajouté à la prospection').waitFor();
     await page.screenshot({ path: join(out, '05-fiche-bien-acquis.png'), fullPage: true });
+    // Mes biens : fourchette d'estimation du prix actuel à la place des prix affiché et proposé
+    await page.getByRole('tab', { name: /Synthèse/ }).click().catch(() => undefined);
+    const figs = (await page.locator('.figures').first().innerText()).replace(/[\u202f\u00a0]/g, ' ');
+    assert.ok(!/Prix de présentation|Prix proposé|Prix affiché/.test(figs), `plus de prix affiché ni proposé : ${figs}`);
+    assert.match(figs, /Estimation du prix actuel/);
+    await page.getByRole('heading', { name: 'Estimation du prix actuel' }).waitFor();
+    await page.getByRole('button', { name: 'Recalculer avec les ventes DVF' }).click();
+    await page.getByText(/calculée le/).first().waitFor();
+    await page.goto(url + '#/biens');
+    const ownedRow = page.locator('tbody tr', { hasText: 'T3 test balcon' });
+    assert.match((await ownedRow.innerText()).replace(/[\u202f\u00a0]/g, ' '), /\d[\d ]* € – \d[\d ]* €/, 'fourchette dans le tableau Mes biens');
+    assert.equal(await page.locator('thead').getByText(/Prix affiché|Prix proposé|Prix de présentation/).count(), 0);
+    // les biens détenus ne sont plus proposés dans le simulateur
+    await page.goto(url + '#/simulateur');
+    const options = await page.getByLabel('Bien', { exact: true }).locator('option').allInnerTexts();
+    assert.ok(!options.includes('T3 test balcon'), `bien détenu absent du simulateur : ${options.join(', ')}`);
   });
 
   await step('ajout direct d’un bien déjà détenu', async () => {
@@ -760,7 +804,7 @@ async function main() {
   });
 
   await step('aucune erreur JavaScript', async () => {
-    assert.deepEqual(errors.filter((e) => !/favicon|ERR_FILE_NOT_FOUND/.test(e)), []);
+    assert.deepEqual(errors.filter((e) => !/favicon|ERR_FILE_NOT_FOUND/.test(e)), [], errors.join(' | '));
   });
 
   void duplicateOk;

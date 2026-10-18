@@ -472,3 +472,11 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 .assistant-form textarea { flex: 1; resize: none; }
 .assistant-foot { margin: 0; padding: 0 1rem .7rem; }
 @media (max-width: 760px) { .assistant-toggle { padding: .3rem .5rem; } }
+
+/* Estimation DVF */
+.estimate { display: flex; flex-direction: column; gap: .7rem; }
+.estimate-figures { display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: flex-end; }
+.estimate-figures > div { display: flex; flex-direction: column; gap: .25rem; max-width: 40rem; }
+.estimate-gap { margin: 0; font-weight: 600; }
+.estimate-edit { display: grid; grid-template-columns: auto minmax(0, 12rem) minmax(0, 12rem); gap: .8rem; align-items: end; }
+@media (max-width: 760px) { .estimate-edit { grid-template-columns: 1fr; } }
