@@ -106,7 +106,7 @@ Limites : les valeurs IRL sont intégrées jusqu'au 3e trimestre 2026 (à compl�
 |---|---|---|
 | Site vitrine à la racine (raison d'être, parcours tout compris, accompagnement, guides, sécurité, tarifs, questions), calculateur de cash-flow, lien « Espace client » vers l'application publiée sous `/app/` | Implémenté et testé | e2e (bureau et mobile) |
 | Formulaire « Être recontacté » → prospects commerciaux de l'administration (anti-robot, limites de fréquence) | Implémenté et testé (SQL) / **à configurer** (migration) | SQL + e2e |
-| Mentions légales et confidentialité | **À compléter** (identité de l'éditeur, contact) | — |
+| Mentions légales et confidentialité | **À compléter** (identité de l'éditeur ; contact : contact@immo-zen.fr) | — |
 
 ## Fiche unique et estimation DVF (18 octobre 2026)
 
