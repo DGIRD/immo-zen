@@ -61,9 +61,10 @@ L'adresse `contact@immo-zen.fr` sert à la fois à **recevoir** (boîte ou redir
    | Type | Sous-domaine (OVH) | Valeur |
    |---|---|---|
    | TXT | `resend._domainkey` | clé DKIM fournie par Resend |
-   | MX | `send` | `feedback-smtp.<région>.amazonses.com`, priorité 10 |
-   | TXT | `send` | `v=spf1 include:amazonses.com ~all` |
+   | CNAME | `rsend` | valeur fournie (ex. `rsend-euw1.forge.rmta.net.`) |
+   | CNAME | `send` | valeur fournie (ex. `send.forge.rmta.net.`) |
    | TXT | `_dmarc` (conseillé) | `v=DMARC1; p=none;` |
+   Selon la version de Resend, la partie envoi peut aussi apparaître en MX + TXT sur `send` : recopiez ce qui est affiché. N'ajoutez jamais le MX de la partie « Receiving ». Le domaine déclaré dans Resend doit être `immo-zen.fr` (et non `mail.immo-zen.fr`) pour envoyer depuis contact@immo-zen.fr.
    Ne touchez pas aux MX ni au SPF du domaine nu (`@`) : ils servent à la réception OVH. Dans OVH, le sous-domaine se saisit sans `.immo-zen.fr`. Puis **Verify** dans Resend.
 4. **API Keys → Create API Key** (« Sending access », domaine `immo-zen.fr`). Copiez-la.
 5. GitHub → Secrets : `RESEND_API_KEY` = la clé. Variables : `EMAIL_FROM` = `Immo-Zen <contact@immo-zen.fr>`, `EMAIL_REPLY_TO` = `contact@immo-zen.fr`, `EMAIL_ENABLED` = `false` pour commencer.
