@@ -452,3 +452,4 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 @media (max-width: 760px) { .quick-add { grid-template-columns: 1fr 1fr; } .quick-add button { grid-column: 1 / -1; } }
 .row-delete { font-size: 1rem; opacity: .65; }
 .row-delete:hover, .row-delete:focus-visible { opacity: 1; }
+.tax-amort { margin-bottom: 1rem; } .tax-amort > .label { margin: .3rem 0; }

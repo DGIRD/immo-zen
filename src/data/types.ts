@@ -341,6 +341,8 @@ export interface Expense extends Versioned {
   paid_on: string | null;
   document_id: string | null;
   notes: string | null;
+  /** Durée d'amortissement choisie (années) ; vide : durée par défaut de la catégorie. */
+  amortization_years?: number | null;
   /** Compte bancaire du mouvement (import). */
   account?: string | null;
   /** Empreinte de la ligne importée (anti-doublon). */

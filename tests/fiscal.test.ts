@@ -85,3 +85,23 @@ test('LMNP réel : amortissement limité au résultat, excédent reporté', () =
   assert.equal(r25.deferredAfter, 8500 + 1000 + 500 - 10000);
   assert.equal(r25.box5NY, 0, 'l’amortissement ne crée jamais de déficit');
 });
+
+test('amortissement : durée personnalisée sur la dépense, cumul et reste, pas de double déduction en LMNP', async () => {
+  const { depreciationItems, reelBic } = await import('../src/domain/fiscal.ts');
+  const p = prop({ tax_regime: 'reel_bic', acquired_at: '2024-01-01', acquisition_cost: 300000 });
+  const d = data(p, [
+    exp('loyer', 20000), exp('entretien', 5000, '2025-01-01', { amortization_years: 5, label: 'Cuisine' }),
+    exp('mobilier', 3500, '2024-01-01', { label: 'Canapé' }), exp('entretien', 400),
+  ]);
+  const { items } = depreciationItems(p, 2025, d, {}, false);
+  const cuisine = items.find((i) => i.label.includes('Cuisine'))!;
+  assert.equal(cuisine.years, 5);
+  assert.equal(cuisine.amount, 1000);
+  const canape = items.find((i) => i.label.includes('Canapé'))!;
+  assert.equal(canape.years, 7, 'durée par défaut des meubles');
+  assert.equal(canape.cumulated, 1000, 'deux années de 500 €');
+  assert.equal(canape.remaining, 2500);
+  const r = reelBic(p, 2025, d, () => ({}));
+  assert.equal(r.charges.find((c) => c.label.startsWith('Entretien'))!.amount, 400, 'la cuisine amortie n’est pas aussi déduite en charge');
+  assert.equal(r.depreciationYear, 8500 + 1000 + 500);
+});

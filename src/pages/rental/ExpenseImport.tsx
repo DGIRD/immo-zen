@@ -86,7 +86,7 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
       </> : <Button onClick={close}>Fermer</Button>}>
       {!owned.length ? <NotAvailable>Ajoutez d’abord vos logements dans Mes biens : chaque ligne doit être rattachée à un bien.</NotAvailable> : !rows ? (
         <div className="import-start">
-          <p>Fichier Excel (.xlsx) ou CSV avec les colonnes : <strong>{IMPORT_COLUMNS.join(' · ')}</strong>. Seules « Date » et « Montant » sont obligatoires ; les montants négatifs sont des dépenses, les positifs des recettes (catégorie Loyer).</p>
+          <p>Fichier Excel (.xlsx) ou CSV avec les colonnes : <strong>{IMPORT_COLUMNS.join(' · ')}</strong>. Seules « Date » et « Montant » sont obligatoires ; les montants négatifs sont des dépenses, les positifs des recettes (catégorie Loyer). Colonne facultative « Durée d’amortissement » (en années) pour les meubles et travaux amortissables.</p>
           <div className="row">
             <label className="btn btn-primary file-btn">Choisir un fichier
               <input type="file" accept=".xlsx,.xlsm,.csv,.txt,.xls" aria-label="Fichier à importer" onChange={async (e) => {

@@ -1,0 +1,55 @@
+# Déploiement des fonctions serveur Supabase (daily, platform, stripe-webhook) et de leurs secrets.
+# Lancement manuel : Actions → « Fonctions serveur Supabase » → Run workflow.
+# À définir dans Settings → Secrets and variables → Actions :
+#   Secret obligatoire : SUPABASE_ACCESS_TOKEN (supabase.com → Account → Access Tokens)
+#   Secrets facultatifs (transmis tels quels aux fonctions s'ils existent) :
+#     CRON_SECRET, RESEND_API_KEY, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
+#   Variables facultatives : SUPABASE_PROJECT_REF, APP_URL, EMAIL_FROM, EMAIL_REPLY_TO, EMAIL_ENABLED
+name: Fonctions serveur Supabase
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deployer:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF || 'sbxnjvjsapnsdeenmvtm' }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+      APP_URL: ${{ vars.APP_URL || 'https://dgird.github.io/immo-zen/' }}
+      EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+      EMAIL_REPLY_TO: ${{ vars.EMAIL_REPLY_TO }}
+      EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Vérifier le jeton
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then echo "::error::Secret SUPABASE_ACCESS_TOKEN manquant (Settings → Secrets and variables → Actions)."; exit 1; fi
+      - name: Secrets des fonctions
+        run: |
+          args=()
+          for k in CRON_SECRET RESEND_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET APP_URL EMAIL_FROM EMAIL_REPLY_TO EMAIL_ENABLED; do
+            v="${!k}"
+            if [ -n "$v" ]; then args+=("$k=$v"); echo "→ $k transmis"; fi
+          done
+          supabase secrets set --project-ref "$PROJECT_REF" "${args[@]}"
+      - name: Fonction daily (tâches quotidiennes, e-mails)
+        run: supabase functions deploy daily --project-ref "$PROJECT_REF" --no-verify-jwt
+      - name: Fonction stripe-webhook
+        run: supabase functions deploy stripe-webhook --project-ref "$PROJECT_REF" --no-verify-jwt
+      - name: Fonction platform (paiement, espace client, invitations)
+        run: supabase functions deploy platform --project-ref "$PROJECT_REF"
+      - name: Adresses à utiliser
+        run: |
+          echo "Webhook Stripe : https://${PROJECT_REF}.supabase.co/functions/v1/stripe-webhook" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tâche planifiée : https://${PROJECT_REF}.supabase.co/functions/v1/daily" >> "$GITHUB_STEP_SUMMARY"

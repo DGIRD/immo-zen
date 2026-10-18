@@ -38,7 +38,7 @@ export function ProspectionPage() {
   return (
     <>
       <PageHeader title="Prospection" subtitle="Les biens que vous étudiez et qui ne sont pas encore acquis."
-        actions={<><Button onClick={() => navigate('/simulateur')}>Nouvelle simulation</Button><Button variant="primary" onClick={() => navigate('/bien/nouveau?mode=prospect')}>Ajouter un bien</Button></>} />
+        actions={<Button variant="primary" onClick={() => navigate('/simulateur')}>Ajouter un bien</Button>} />
       <DataTable
         id="prospection"
         rows={rows}
@@ -88,8 +88,8 @@ export function ProspectionPage() {
           <Button size="sm" onClick={() => void exportRows('csv', 'prospection', columns, sel, data.scenarios)}>CSV</Button>
           <Button size="sm" onClick={() => void exportRows('json', 'prospection', columns, sel, data.scenarios)}>JSON</Button>
         </>}
-        empty={<EmptyState title="Aucun bien en prospection" action={<Button variant="primary" onClick={() => navigate('/bien/nouveau?mode=prospect')}>Ajouter un premier bien</Button>}>
-          Ajoutez un bien repéré sur une annonce ou lors d’une visite, puis suivez-le jusqu’à l’offre.
+        empty={<EmptyState title="Aucun bien en prospection" action={<Button variant="primary" onClick={() => navigate('/simulateur')}>Ajouter un premier bien</Button>}>
+          Saisissez le bien et sa simulation dans un seul écran, puis suivez-le jusqu’à l’offre.
         </EmptyState>}
       />
       <div className="export-row">

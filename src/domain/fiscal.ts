@@ -38,6 +38,8 @@ export interface YearAmounts {
   importedIncome: number;
   otherIncome: number;
   byCategory: Partial<Record<ExpenseCategory, number>>;
+  /** Mêmes montants hors dépenses amortissables (LMNP réel : elles sont amorties, pas déduites). */
+  byCategoryCurrent: Partial<Record<ExpenseCategory, number>>;
   /** Part récupérable de la taxe foncière (ordures ménagères), non déductible au foncier. */
   teom: number;
   /** Intérêts et assurance du crédit retenus (relevé si saisis, sinon tableau d'amortissement du bien). */
@@ -106,9 +108,11 @@ export function yearAmounts(p: Property, year: number, d: FiscalData, inputs: Ta
   }
 
   const byCategory: Partial<Record<ExpenseCategory, number>> = {};
+  const byCategoryCurrent: Partial<Record<ExpenseCategory, number>> = {};
   let teom = 0;
   for (const e of exp.filter((x) => !isIncome(x))) {
     byCategory[e.category] = round2((byCategory[e.category] ?? 0) + e.amount);
+    if (!isDepreciable(e)) byCategoryCurrent[e.category] = round2((byCategoryCurrent[e.category] ?? 0) + e.amount);
     if (e.category === 'taxe_fonciere') teom += e.recoverable_amount;
   }
 
@@ -124,7 +128,7 @@ export function yearAmounts(p: Property, year: number, d: FiscalData, inputs: Ta
 
   return {
     rentsHC: round2(rentsHC), chargesCollected: round2(chargesCollected), advances: round2(Math.max(0, advances)), importedIncome,
-    otherIncome: round2(inputs.other_income ?? 0), byCategory, teom: round2(teom),
+    otherIncome: round2(inputs.other_income ?? 0), byCategory, byCategoryCurrent, teom: round2(teom),
     interest: round2(interest), interestSource: interestExp > 0 ? 'depenses' : loan ? 'credit' : 'aucun',
     loanInsurance: round2(loanInsurance), loanInsuranceSource: insuranceExp > 0 ? 'depenses' : loan && loan.insurance > 0 ? 'credit' : 'aucun',
     repayments, warnings,
@@ -132,6 +136,7 @@ export function yearAmounts(p: Property, year: number, d: FiscalData, inputs: Ta
 }
 
 const cat = (a: YearAmounts, ...cs: ExpenseCategory[]) => sum(cs.map((c) => a.byCategory[c] ?? 0));
+const catCur = (a: YearAmounts, ...cs: ExpenseCategory[]) => sum(cs.map((c) => a.byCategoryCurrent[c] ?? 0));
 
 // ---------------------------------------------------------------- location nue au réel (2044)
 
@@ -204,7 +209,7 @@ export function foncierBoxes(list: Foncier2044[]) {
 
 // ---------------------------------------------------------------- meublé au réel (LMNP)
 
-export interface DepreciationItem { label: string; base: number; years: number; start: string; amount: number }
+export interface DepreciationItem { label: string; kind: 'bati' | 'meuble' | 'travaux'; expenseId?: string; base: number; years: number; start: string; amount: number; cumulated: number; remaining: number }
 export interface ReelBic {
   propertyId: string;
   receipts: number;
@@ -232,22 +237,47 @@ function yearFraction(start: string, years: number, year: number): number {
   return Math.min(1, days / 365);
 }
 
-function depreciationItems(p: Property, year: number, d: FiscalData, inputs: TaxPropertyInputs): { items: DepreciationItem[]; warnings: string[] } {
+/** Dépense amortissable : durée saisie sur la dépense, ou catégorie/nature d'immobilisation. */
+export function isDepreciable(e: Expense): boolean {
+  return (e.amortization_years ?? 0) > 0 || e.category === 'mobilier' || e.category === 'entretien_amortissable' || e.nature === 'immobilisation';
+}
+export function expenseYears(e: Expense, inputs: TaxPropertyInputs = {}): number {
+  const prm = { ...DEFAULT_TAX_INPUTS, ...inputs };
+  return e.amortization_years && e.amortization_years > 0 ? e.amortization_years : e.category === 'mobilier' ? prm.furniture_years : prm.works_years;
+}
+
+/** Dotation d'une année, cumul à la fin de l'année (plafonné à la base) et reste à amortir. */
+function slice(base: number, years: number, start: string, year: number) {
+  let cum = 0;
+  for (let y = Number(start.slice(0, 4)); y <= year; y++) cum += base / years * yearFraction(start, years, y);
+  const cumulated = round2(Math.min(base, cum));
+  const before = round2(Math.min(base, cum - base / years * yearFraction(start, years, year)));
+  return { amount: round2(cumulated - before), cumulated, remaining: round2(base - cumulated) };
+}
+
+/**
+ * Amortissements d'un bien pour l'année : bâti (si demandé), meubles et travaux amortissables.
+ * Durée de chaque dépense : celle saisie sur la dépense, sinon la durée par défaut de sa catégorie.
+ */
+export function depreciationItems(p: Property, year: number, d: FiscalData, inputs: TaxPropertyInputs, withBuilding = true): { items: DepreciationItem[]; warnings: string[] } {
   const prm = { ...DEFAULT_TAX_INPUTS, ...inputs };
   const items: DepreciationItem[] = [];
   const warnings: string[] = [];
-  const base = inputs.depreciable_base ?? p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null;
-  if (!base) warnings.push('Coût d’acquisition inconnu : amortissement du bâti non calculé (renseignez-le dans Mes biens ou ci-dessous).');
-  else if (!p.acquired_at) warnings.push('Date d’acquisition inconnue : amortissement du bâti non calculé.');
-  else {
-    const building = round2(base * (1 - prm.land_pct / 100));
-    items.push({ label: `Bâti (${100 - prm.land_pct} % de ${round2(base)} €)`, base: building, years: prm.building_years, start: p.acquired_at, amount: round2(building / prm.building_years * yearFraction(p.acquired_at, prm.building_years, year)) });
+  if (withBuilding) {
+    const base = inputs.depreciable_base ?? p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null;
+    if (!base) warnings.push('Coût d’acquisition inconnu : amortissement du bâti non calculé (renseignez-le dans Mes biens ou ci-dessous).');
+    else if (!p.acquired_at) warnings.push('Date d’acquisition inconnue : amortissement du bâti non calculé.');
+    else {
+      const building = round2(base * (1 - prm.land_pct / 100));
+      items.push({ label: `Bâti (${100 - prm.land_pct} % de ${round2(base)} €)`, kind: 'bati', base: building, years: prm.building_years, start: p.acquired_at, ...slice(building, prm.building_years, p.acquired_at, year) });
+    }
   }
-  for (const e of d.expenses.filter((x) => x.property_id === p.id && x.payment_status === 'paye' && (x.category === 'mobilier' || x.category === 'entretien_amortissable' || (x.category === 'travaux' && x.nature === 'immobilisation')))) {
+  for (const e of d.expenses.filter((x) => x.property_id === p.id && x.payment_status === 'paye' && isDepreciable(x))) {
     const start = e.paid_on ?? e.expense_date;
     if (start.slice(0, 4) > String(year)) continue;
-    const years = e.category === 'mobilier' ? prm.furniture_years : prm.works_years;
-    items.push({ label: `${e.category === 'mobilier' ? 'Meuble' : 'Travaux'} : ${e.label || e.supplier || start}`, base: e.amount, years, start, amount: round2(e.amount / years * yearFraction(start, years, year)) });
+    const years = expenseYears(e, inputs);
+    items.push({ label: `${e.category === 'mobilier' ? 'Meuble' : 'Travaux'} : ${e.label || e.supplier || start}`, kind: e.category === 'mobilier' ? 'meuble' : 'travaux', expenseId: e.id,
+      base: e.amount, years, start, ...slice(e.amount, years, start, year) });
   }
   return { items, warnings };
 }
@@ -262,15 +292,15 @@ export function reelBic(p: Property, year: number, d: FiscalData, inputsByYear: 
     const a = yearAmounts(p, y, d, inputs);
     const receipts = round2(a.rentsHC + a.chargesCollected + a.otherIncome);
     const charges = [
-      { label: 'Charges de copropriété', amount: cat(a, 'copropriete') },
-      { label: 'Taxe foncière', amount: cat(a, 'taxe_fonciere') },
-      { label: 'Assurances', amount: cat(a, 'assurance') },
-      { label: 'Entretien et petits travaux', amount: cat(a, 'entretien') },
-      { label: 'Gestion locative', amount: cat(a, 'gestion') },
-      { label: 'Frais bancaires et financiers', amount: cat(a, 'frais_bancaires') },
-      { label: 'Frais de crédit', amount: cat(a, 'frais_credit') },
+      { label: 'Charges de copropriété', amount: catCur(a, 'copropriete') },
+      { label: 'Taxe foncière', amount: catCur(a, 'taxe_fonciere') },
+      { label: 'Assurances', amount: catCur(a, 'assurance') },
+      { label: 'Entretien et petits travaux', amount: catCur(a, 'entretien') },
+      { label: 'Gestion locative', amount: catCur(a, 'gestion') },
+      { label: 'Frais bancaires et financiers', amount: catCur(a, 'frais_bancaires') },
+      { label: 'Frais de crédit', amount: catCur(a, 'frais_credit') },
       { label: 'Assurance emprunteur', amount: a.loanInsurance },
-      { label: 'Autres charges', amount: cat(a, 'autre') },
+      { label: 'Autres charges', amount: catCur(a, 'autre') },
     ].filter((c) => c.amount > 0);
     const chargesTotal = sum(charges.map((c) => c.amount));
     const r0 = round2(receipts - chargesTotal - a.interest);

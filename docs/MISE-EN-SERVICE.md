@@ -1,0 +1,87 @@
+# Mise en service : OVH, Resend, Stripe
+
+Ordre conseillé : **1. OVH (nom de domaine)** → **2. jeton Supabase** → **3. Resend (e-mails)** → **4. Stripe (abonnements)**.
+Chaque étape est indépendante : l'application fonctionne déjà sans elles (adresse GitHub, pas d'e-mails, pas de paiement).
+Dans les exemples, remplacez `immo-zen.fr` par votre domaine.
+
+## 0. Avant de commencer (une fois)
+
+Dans Supabase → SQL Editor, exécutez les migrations pas encore passées (dans l'ordre des noms de fichiers du dossier `supabase/migrations`), notamment :
+`20261017000100_lot3_import_fiscal.sql`, `20261017000200_lot3_plateforme.sql`, `20261017000300_loyers_irl_rappels.sql`, `20261018000100_amortissements.sql`.
+Puis désignez-vous administrateur :
+```sql
+insert into public.admins (user_id) select id from auth.users where email = 'votre@email.fr';
+```
+
+## 1. OVH : nom de domaine
+
+**Recommandé : OVH pour le domaine uniquement.** L'application reste servie par GitHub Pages (gratuit, HTTPS automatique) et Supabase (base, comptes, fonctions). Un serveur OVH (VPS) n'est pas nécessaire : il ne servirait qu'à héberger la page, déjà gratuite, et ajouterait mises à jour et sauvegardes à gérer.
+
+1. ovhcloud.com → **Noms de domaine** → réservez `immo-zen.fr` (ou autre).
+2. **Web Cloud → Noms de domaine → immo-zen.fr → Zone DNS** :
+   - supprimez les enregistrements A et AAAA existants sur le domaine nu (`@`, souvent la page « parking » d'OVH) ;
+   - ajoutez 4 enregistrements **A** pour `@` : `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153` ;
+   - (facultatif) 4 **AAAA** pour `@` : `2606:50c0:8000::153`, `2606:50c0:8001::153`, `2606:50c0:8002::153`, `2606:50c0:8003::153` ;
+   - **CNAME** `www` → `dgird.github.io.` (sans le nom du dépôt).
+3. GitHub → **Settings → Pages → Custom domain** : `immo-zen.fr` → Save. Attendez la vérification DNS (quelques minutes à 24 h), puis cochez **Enforce HTTPS**.
+   Conseillé : GitHub → votre profil → Settings → Pages → **Add a domain** pour vérifier le domaine (protection contre la prise de contrôle).
+4. Supabase → **Authentication → URL Configuration** : *Site URL* `https://immo-zen.fr/` ; *Redirect URLs* : ajoutez `https://immo-zen.fr/**` (gardez l'ancienne adresse quelques semaines).
+5. GitHub → Settings → Secrets and variables → Actions → **Variables** : `APP_URL` = `https://immo-zen.fr/` (adresse des liens de paiement et d'invitation).
+6. Vérifiez https://immo-zen.fr : connexion, puis « Mot de passe oublié » (le lien doit revenir sur le nouveau domaine). Réinstallez l'application mobile depuis la nouvelle adresse.
+
+*Si vous tenez à un serveur OVH* (VPS) : il faudra un serveur web (nginx), un certificat (Let's Encrypt), et remplacer la publication GitHub Pages par un envoi du dossier `dist` sur le serveur. Dites-le-moi, j'adapterai le déploiement ; Supabase reste nécessaire pour la base et les comptes.
+
+## 2. Jeton Supabase pour les déploiements
+
+1. supabase.com → avatar → **Account → Access Tokens → Generate new token** (nom : « GitHub Immo-Zen »).
+2. GitHub → Settings → Secrets and variables → Actions → **New repository secret** : `SUPABASE_ACCESS_TOKEN` = le jeton.
+3. Générez un **jeton de planification** long et aléatoire (ex. un gestionnaire de mots de passe, 40 caractères) et enregistrez-le en secret GitHub `CRON_SECRET`.
+
+Le workflow **Actions → « Fonctions serveur Supabase » → Run workflow** transmet ensuite les secrets aux fonctions et déploie `daily`, `platform` et `stripe-webhook`. Relancez-le après chaque changement de secret.
+
+## 3. Resend : e-mails (quittances, relances, confirmations)
+
+1. resend.com → créez un compte (offre gratuite : quelques milliers d'e-mails par mois, suffisant pour démarrer).
+2. **Domains → Add Domain** : utilisez un sous-domaine, par exemple `mail.immo-zen.fr`, région Europe si proposée.
+3. Resend affiche 3 enregistrements à créer dans la **zone DNS OVH** (copiez exactement les valeurs affichées) :
+   | Type | Sous-domaine (OVH) | Valeur |
+   |---|---|---|
+   | MX | `send.mail` | `feedback-smtp.<région>.amazonses.com`, priorité 10 |
+   | TXT | `send.mail` | `v=spf1 include:amazonses.com ~all` |
+   | TXT | `resend._domainkey.mail` | clé DKIM fournie par Resend |
+   Conseillé en plus : TXT `_dmarc` → `v=DMARC1; p=none;`.
+   Dans OVH, le sous-domaine se saisit sans `.immo-zen.fr`. Puis **Verify** dans Resend (quelques minutes à quelques heures).
+4. **API Keys → Create API Key** (permission « Sending access », domaine `mail.immo-zen.fr`). Copiez-la.
+5. GitHub → Secrets : `RESEND_API_KEY` = la clé. Variables : `EMAIL_FROM` = `Immo-Zen <quittances@mail.immo-zen.fr>`, `EMAIL_REPLY_TO` = votre adresse habituelle, `EMAIL_ENABLED` = `false` pour commencer.
+6. Lancez le workflow « Fonctions serveur Supabase ».
+7. Supabase → **Database → Extensions** : activez `pg_cron` et `pg_net`. Puis SQL Editor : exécutez `supabase/scheduling.example.sql` en remplaçant `VOTRE-PROJET` par `sbxnjvjsapnsdeenmvtm` et le jeton par la valeur de `CRON_SECRET`.
+8. Le lendemain, vérifiez `job_runs` (requêtes en fin de fichier) : les tâches tournent sans rien envoyer. Puis variable `EMAIL_ENABLED` = `true`, relancez le workflow, et envoyez-vous une quittance de test (locataire avec votre propre adresse).
+
+## 4. Stripe : abonnements
+
+1. stripe.com → créez le compte. Restez en **mode test** (interrupteur en haut) jusqu'à la recette.
+2. **Catalogue de produits → Ajouter un produit** « Immo-Zen » avec deux prix **récurrents** : mensuel et annuel (TTC, EUR). Notez les identifiants `price_…`.
+3. **Paramètres → Facturation → Portail client** : activez factures, moyen de paiement, annulation « à la fin de la période de facturation » ; enregistrez.
+4. **Développeurs → Clés API** : copiez la clé secrète `sk_test_…` → secret GitHub `STRIPE_SECRET_KEY`.
+5. **Développeurs → Webhooks → Ajouter une destination** : URL `https://sbxnjvjsapnsdeenmvtm.supabase.co/functions/v1/stripe-webhook`, événements :
+   `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.paused`, `customer.subscription.resumed`, `invoice.paid`, `invoice.payment_failed`, `charge.refunded`.
+   Copiez le **secret de signature** `whsec_…` → secret GitHub `STRIPE_WEBHOOK_SECRET`.
+6. Lancez le workflow « Fonctions serveur Supabase ».
+7. Immo-Zen → **Administration → Offres et tarifs** : prix affichés, identifiants `price_…`, cochez « Offre ouverte ».
+8. **Recette** (mode test) depuis un second compte : Mon abonnement → S'abonner → carte `4242 4242 4242 4242` (date future, CVC quelconque) ; l'abonnement doit apparaître « Actif ». Testez l'espace client (résiliation programmée), puis la carte `4000 0000 0000 0341` (échec de paiement). Administration → Journal : les événements Stripe doivent être « traité ».
+9. **Passage en production** : activez le compte Stripe (identité, IBAN), créez produit, prix et webhook en mode **live**, remplacez `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` et les `price_…`, relancez le workflow.
+10. Seulement ensuite, si vous le souhaitez : Administration → **Contrôle d'accès** (abonnement exigé après l'essai gratuit).
+
+## Récapitulatif des réglages GitHub (Settings → Secrets and variables → Actions)
+
+| Nom | Type | Valeur |
+|---|---|---|
+| `SUPABASE_ACCESS_TOKEN` | secret | jeton Supabase (étape 2) |
+| `CRON_SECRET` | secret | jeton aléatoire, identique à celui de `scheduling.example.sql` |
+| `RESEND_API_KEY` | secret | `re_…` |
+| `STRIPE_SECRET_KEY` | secret | `sk_test_…` puis `sk_live_…` |
+| `STRIPE_WEBHOOK_SECRET` | secret | `whsec_…` |
+| `APP_URL` | variable | `https://immo-zen.fr/` |
+| `EMAIL_FROM` | variable | `Immo-Zen <quittances@mail.immo-zen.fr>` |
+| `EMAIL_REPLY_TO` | variable | votre adresse |
+| `EMAIL_ENABLED` | variable | `false`, puis `true` après vérification |

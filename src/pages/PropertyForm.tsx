@@ -104,7 +104,7 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
           <Select label="Statut d’acquisition" value={draft.status ?? 'repere'} onChange={(v) => set('status', (v ?? 'repere') as PropertyStatus)} options={statusOptions}
             hint={!owned && existing ? '« Acquis » transfère le bien dans Mes biens.' : undefined} />
           <AddressFields value={draft} onChange={(a) => setDraft((d) => ({ ...d, ...a }))} />
-          <NumberInput label="Surface" suffix="m²" value={draft.surface} onChange={(v) => set('surface', v)} error={errors.surface} />
+          {owned && <NumberInput label="Surface" suffix="m²" value={draft.surface} onChange={(v) => set('surface', v)} error={errors.surface} />}
           <NumberInput label="Pièces" value={draft.rooms} onChange={(v) => set('rooms', v === null ? null : Math.round(v))} error={errors.rooms} />
           <Select label="DPE renseigné" value={draft.dpe ?? null} onChange={(v) => set('dpe', v)} allowEmpty="Non renseigné" options={DPE_VALUES.map((d) => [d, d] as const)} />
           {!owned && <TextInput label="Lien de l’annonce" type="url" wide value={draft.listing_url} onChange={(v) => set('listing_url', v || null)} error={errors.listing_url} placeholder="https://" />}
@@ -141,14 +141,10 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
           <p className="muted small">Ces montants pré-remplissent les simulations du bien. Les dépenses réellement payées se saisissent dans Dépenses.</p>
         </Section>
       ) : (
-        <Section title="Prix et loyer">
-          <div className="grid">
-            <NumberInput label="Prix affiché" suffix="€" value={draft.asking_price} onChange={(v) => set('asking_price', v)} error={errors.asking_price} />
-            <NumberInput label="Prix proposé" suffix="€" value={draft.offer_price} onChange={(v) => set('offer_price', v)} error={errors.offer_price} />
-            <NumberInput label="Budget travaux" suffix="€" value={draft.works_budget} onChange={(v) => set('works_budget', v)} error={errors.works_budget} />
-            <NumberInput label="Loyer estimé hors charges" suffix="€/mois" value={draft.estimated_rent} onChange={(v) => set('estimated_rent', v)} error={errors.estimated_rent} />
-          </div>
-          <p className="muted small">Ces valeurs pré-remplissent les nouvelles simulations. Rendement et cash-flow sont calculés dans le simulateur.</p>
+        <Section title="Prix, surface et loyer">
+          <p>{[draft.surface ? `${String(draft.surface).replace('.', ',')} m²` : null, draft.asking_price ? `présentation ${money2(draft.asking_price)}` : null, draft.offer_price ? `proposé ${money2(draft.offer_price)}` : null, draft.estimated_rent ? `loyer ${money2(draft.estimated_rent)} / mois` : null].filter(Boolean).join(' · ') || 'Pas encore simulé.'}</p>
+          <p className="muted small">Ces valeurs se saisissent une seule fois, dans le simulateur, qui met à jour la fiche du bien.</p>
+          {existing && <Button onClick={() => navigate(existing.primary_scenario_id ? `/simulateur/${existing.primary_scenario_id}` : `/simulateur?bien=${existing.id}`)}>Ouvrir le simulateur</Button>}
         </Section>
       )}
 

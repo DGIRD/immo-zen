@@ -38,6 +38,7 @@ npm run build && npm run test:e2e   # parcours navigateur bureau et mobile, capt
 | [SERVICES-A-CONNECTER](docs/SERVICES-A-CONNECTER.md) | Supabase, Stripe, e-mails… |
 | [TACHES-SERVEUR](docs/TACHES-SERVEUR.md) | Tâches planifiées, e-mails, garde-fous, mise en route |
 | [DECLARATION-FISCALE](docs/DECLARATION-FISCALE.md) | Calcul des cases de la déclaration, sources |
+| [MISE-EN-SERVICE](docs/MISE-EN-SERVICE.md) | OVH, Resend, Stripe : actions à faire |
 | [ABONNEMENTS](docs/ABONNEMENTS.md) | Stripe, accès, administration, mise en service |
 | [TESTS](docs/TESTS.md) | Ce qui est testé et derniers résultats |
 

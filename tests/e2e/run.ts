@@ -89,19 +89,37 @@ async function main() {
     assert.ok(!/etat-des-lieux|etats-des-lieux|edl/i.test(await page.content()), 'aucune route états des lieux');
   });
 
-  await step('ajout d’un bien en prospection avec nouvelle agence', async () => {
+  await step('prospection et simulation en une seule saisie, puis agence et relance', async () => {
     await page.goto(url + '#/prospection');
     await page.getByRole('button', { name: 'Ajouter un premier bien' }).click();
-    await page.getByLabel('Titre *').fill('T3 test balcon');
+    await page.getByRole('heading', { name: 'Le bien' }).waitFor();
+    await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+    await page.getByText('Donnez un titre au bien.').waitFor();
+    await page.getByLabel('Titre du bien *').fill('T3 test balcon');
     await page.getByRole('combobox', { name: 'Adresse' }).fill('12 rue de Par');
     await page.getByRole('option', { name: '12 Rue de Paris 93100 Montreuil' }).click();
     assert.equal(await page.getByLabel('Code postal').inputValue(), '93100', 'code postal rempli par la saisie automatique');
     assert.equal(await page.getByLabel('Ville').inputValue(), 'Montreuil');
     assert.equal(await page.getByRole('combobox', { name: 'Adresse' }).inputValue(), '12 Rue de Paris');
-    await page.getByLabel('Surface').fill('62,5');
-    await page.getByLabel('Prix affiché').fill('320 000');
-    await page.getByLabel('Prix proposé').fill('300000');
-    await page.getByLabel('Loyer estimé hors charges').fill('1350');
+    await page.getByLabel('Lien de l’annonce').fill('ftp://x');
+    await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+    await page.getByText(/Le lien de l’annonce doit commencer/).waitFor();
+    await page.getByLabel('Lien de l’annonce').fill('');
+    await page.getByLabel('Prix de présentation FAI').fill('320 000');
+    await page.getByLabel('Surface du logement').fill('62,5');
+    await page.getByLabel('Prix proposé', { exact: true }).fill('300000');
+    await page.getByRole('radio', { name: 'Saisie libre' }).click();
+    await page.getByLabel('Loyer hors charges', { exact: true }).fill('1350');
+    await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+    await page.getByText('Bien « T3 test balcon » ajouté à la prospection avec sa simulation.').waitFor();
+    // une seule saisie : la fiche du bien porte les valeurs simulées
+    await page.goto(url + '#/prospection');
+    await page.getByRole('button', { name: 'T3 test balcon' }).first().click();
+    await page.getByRole('heading', { name: 'T3 test balcon' }).waitFor();
+    assert.match((await page.locator('.figures').first().innerText()).replace(/[\u202f\u00a0]/g, ' '), /320 000 €[\s\S]*300 000 €/);
+    await page.getByRole('button', { name: 'Modifier' }).first().click();
+    assert.equal(await page.getByLabel('Prix affiché').count(), 0, 'plus de double saisie des prix dans la fiche');
+    await page.getByText('Ces valeurs se saisissent une seule fois, dans le simulateur').waitFor();
     await page.getByLabel('Agence', { exact: true }).selectOption({ label: '+ Nouvelle agence…' });
     await page.getByLabel('Nom de la nouvelle agence').fill('Agence Test');
     await page.getByLabel('Date de relance').fill('2020-01-01');
@@ -109,14 +127,6 @@ async function main() {
     await page.getByRole('heading', { name: 'T3 test balcon' }).waitFor();
     await page.getByRole('tab', { name: /Historique/ }).click();
     await page.getByText('Bien ajouté à la prospection').first().waitFor();
-  });
-
-  await step('validation : titre obligatoire, URL invalide', async () => {
-    await page.goto(url + '#/bien/nouveau?mode=prospect');
-    await page.getByLabel('Lien de l’annonce').fill('ftp://x');
-    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
-    await page.getByText('Le titre est obligatoire.').waitFor();
-    await page.getByText('Adresse web commençant par').waitFor();
   });
 
   await step('simulation liée au bien, enregistrée comme scénario principal', async () => {
@@ -129,7 +139,7 @@ async function main() {
     assert.match(cash, /€/);
     await page.screenshot({ path: join(out, '02-simulateur.png'), fullPage: true });
     await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
-    await page.getByText('Simulation enregistrée.').waitFor();
+    await page.getByText('Bien et simulation enregistrés.').waitFor();
     await page.getByRole('button', { name: 'Par année' }).click();
     assert.ok(await page.locator('table.compact tbody tr').count() === 20, '20 lignes annuelles');
   });
@@ -172,8 +182,8 @@ async function main() {
     await page.screenshot({ path: join(out, '19-simulateur-loyer-m2.png'), fullPage: true });
     // le simulateur alimente la prospection
     await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
-    await page.getByText('Donnez un titre au bien').waitFor();
-    await page.getByLabel('Titre du nouveau bien').fill('Studio simulé');
+    await page.getByText('Donnez un titre au bien').last().waitFor();
+    await page.getByLabel('Titre du bien *').fill('Studio simulé');
     await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
     await page.getByText('ajouté à la prospection').first().waitFor();
     await page.goto(url + '#/prospection');
@@ -649,6 +659,26 @@ async function main() {
     await page.getByRole('button', { name: 'Autoriser pendant 7 jours' }).click();
     await page.getByText('Accès support autorisé pour 7 jours.').waitFor();
     await page.getByRole('button', { name: 'Retirer l’autorisation' }).waitFor();
+  });
+
+  await step('amortissement : durée personnalisée sur une dépense, reprise dans la déclaration', async () => {
+    await page.goto(url + '#/depenses');
+    await page.getByRole('button', { name: 'Ajouter une dépense' }).first().click();
+    const dlg = page.locator('dialog[open]');
+    await dlg.getByLabel('Bien').selectOption({ label: 'Parking détenu' });
+    await dlg.getByLabel('Catégorie').selectOption('mobilier');
+    await dlg.getByLabel('Libellé').fill('Lit et literie');
+    await dlg.getByLabel('Montant TTC').fill('1000');
+    await dlg.getByLabel('Durée d’amortissement').fill('5');
+    await dlg.getByRole('button', { name: 'Enregistrer' }).click();
+    await page.getByText('Dépense enregistrée.').waitFor();
+    const year = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()).slice(0, 4));
+    await page.goto(url + '#/declaration');
+    await page.getByLabel('Année des revenus').selectOption(year);
+    const sec = page.locator('section', { has: page.getByRole('heading', { name: `Amortissements ${year}` }) });
+    await sec.getByText('Meuble : Lit et literie').waitFor();
+    assert.match(await sec.innerText(), /5 ans/);
+    await page.screenshot({ path: join(out, '27-amortissements.png'), fullPage: true });
   });
 
   await step('rendu mobile (390 px) sans défilement horizontal', async () => {

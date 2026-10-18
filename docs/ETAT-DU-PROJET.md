@@ -85,6 +85,14 @@ Légende : **Implémenté et testé** = code livré et couvert par un test autom
 
 Limites : les valeurs IRL sont intégrées jusqu'au 3e trimestre 2026 (à compléter chaque trimestre ou saisir à la main) ; la révision ne modifie pas les échéances déjà partiellement réglées ; le service d'adresses n'a pas été appelé réellement pendant les tests (réponses simulées).
 
+## Évolutions du 18 octobre 2026
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Prospection et simulation fusionnées : fiche du bien et simulation dans un seul écran, plus de double saisie des prix | Implémenté et testé | e2e |
+| Durée d'amortissement personnalisée par dépense (saisie, import), section Amortissements de la déclaration (dotation, cumul, reste), sans double déduction | Implémenté et testé | unitaires + SQL + e2e |
+| Déploiement des fonctions serveur et de leurs secrets par GitHub Actions ; guide de mise en service OVH, Resend, Stripe ([MISE-EN-SERVICE](MISE-EN-SERVICE.md)) | Implémenté, **non exécuté** (jeton Supabase à fournir) | — |
+
 ## Restant
 
 Tout le périmètre du cahier des charges est livré. Reste **à configurer** : compte Stripe et fonctions `platform` / `stripe-webhook` ([ABONNEMENTS](ABONNEMENTS.md)), premier administrateur, envoi réel des e-mails (Resend). Pistes ultérieures : vérification de l'abonnement dans les fonctions serveur (quittances, relances), réimport de la gestion locative depuis une sauvegarde, liasse 2031/2033 complète, travaux de rénovation énergétique et déficits antérieurs dans la déclaration.
