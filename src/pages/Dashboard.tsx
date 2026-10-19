@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useStore } from '../data/store.tsx';
+import { usePlan, useStore } from '../data/store.tsx';
 import type { PropertyStatus } from '../data/types.ts';
 import { date, dateTime, money, todayParis } from '../domain/format.ts';
 import { STATUS_LABELS, statusTone } from '../domain/labels.ts';
@@ -13,6 +13,7 @@ const PIPELINE: PropertyStatus[] = ['repere', 'a_contacter', 'informations_deman
 
 export function DashboardPage() {
   const { data, simulatorDefaults } = useStore();
+  const consolidated = usePlan().features.consolidated;
   const today = todayParis();
   const in7 = todayParis(new Date(Date.now() + 7 * 86400000));
 
@@ -70,9 +71,15 @@ export function DashboardPage() {
             <a className="figure link-figure" href={href('/prospection')}><span className="figure-label">En prospection</span><span className="figure-value">{v.prospects.length}</span><span className="figure-hint">dont {v.offers} offre{v.offers > 1 ? 's' : ''} en cours</span></a>
             <a className="figure link-figure" href={href('/prospection')}><span className="figure-label">Relances à faire</span><span className={`figure-value ${v.followUps.length ? 'neg' : ''}`}>{v.followUps.length + v.contactFollow.length}</span><span className="figure-hint">biens et contacts</span></a>
             <a className="figure link-figure" href={href('/biens')}><span className="figure-label">Biens détenus</span><span className="figure-value">{v.owned.length}</span><span className="figure-hint">loyers estimés {money(v.ownedRent)} / mois</span></a>
+            {consolidated ? (
             <a className="figure link-figure" href={href('/biens')}><span className="figure-label">Cash-flow prévisionnel</span>
               <span className={`figure-value ${v.owned.length === v.cashUnknown ? '' : v.ownedCash >= 0 ? 'pos' : 'neg'}`}>{v.owned.length === v.cashUnknown ? '—' : money(v.ownedCash)}</span>
               <span className="figure-hint">{v.owned.length === 0 ? 'aucun bien détenu' : v.cashUnknown ? `par mois ; ${v.cashUnknown} bien(s) sans loyer, charges ni crédit renseignés` : 'par mois : loyers − charges − crédits, avant impôts'}</span></a>
+            ) : (
+            <a className="figure link-figure" href={href('/abonnement')}><span className="figure-label">Cash-flow consolidé</span>
+              <span className="figure-value">—</span>
+              <span className="figure-hint">à partir de la formule Patrimoine ; le cash-flow de chaque bien reste visible dans Mes biens</span></a>
+            )}
           </div>
 
           {data.leases.length > 0 && (

@@ -175,17 +175,78 @@
           <li>L'équipe Immo-Zen n'y accède pas, sauf si vous l'autorisez vous-même pour un dépannage, pour 7 jours au plus, et chaque consultation est tracée.</li>
           <li>Vos documents sont privés et ne s'ouvrent que par des liens temporaires.</li>
           <li>Tout s'exporte à tout moment : Excel, CSV ou sauvegarde complète de votre compte.</li>
-          <li>Le paiement, quand il sera ouvert, passera par Stripe : Immo-Zen ne voit jamais votre carte bancaire.</li>
+          <li>Le paiement passe par Stripe : Immo-Zen ne voit jamais votre carte bancaire ni votre IBAN.</li>
         </ul>
       </div>
     </section>
 
     <section class="price" id="tarifs" aria-labelledby="price-title">
-      <div class="wrap narrow">
+      <div class="wrap">
         <h2 id="price-title">Tarifs</h2>
-        <p class="big">Gratuit pendant la phase de lancement.</p>
-        <p>Des abonnements mensuel et annuel seront proposés ensuite. Leurs prix seront affichés ici et dans votre espace avant toute facturation, et rien ne sera prélevé sans votre accord. Vos données restent consultables et exportables en toutes circonstances.</p>
-        <a class="btn btn-main" href="app/">Créer mon espace</a>
+        <p class="intro">Une formule gratuite pour commencer, puis trois formules selon le nombre de biens que vous détenez. Les biens en prospection ne sont jamais comptés. Prix TTC, sans engagement : l'abonnement annuel coûte dix mois.</p>
+        <p class="launch" role="note"><strong>Phase de lancement :</strong> toutes les fonctions sont ouvertes gratuitement. Vous serez prévenu avant l'ouverture des abonnements, et rien ne sera prélevé sans votre accord.</p>
+
+        <ul class="tiers" role="list">
+          <li class="tier">
+            <h3>Découverte</h3>
+            <p class="tier-price">Gratuit</p>
+            <p class="tier-alt">sans limite de durée</p>
+            <p class="tier-for">Pour découvrir Immo-Zen avec un premier bien.</p>
+            <ul class="ticks">
+              <li>1 bien détenu, 5 biens en prospection</li>
+              <li>Simulateur : 2 scénarios par bien</li>
+              <li>Loyers, dépenses et quittances PDF</li>
+              <li>100 Mo de documents</li>
+            </ul>
+            <a class="btn btn-ghost" href="app/">Créer mon espace</a>
+          </li>
+          <li class="tier">
+            <h3>Essentiel</h3>
+            <p class="tier-price">99&nbsp;€<span> / an</span></p>
+            <p class="tier-alt">ou 9,90&nbsp;€ par mois</p>
+            <p class="tier-for">Pour l'investisseur qui prospecte et gère jusqu'à 3 biens.</p>
+            <ul class="ticks">
+              <li>Jusqu'à 3 biens détenus</li>
+              <li>Prospection et scénarios illimités</li>
+              <li>Contacts, relances, comparaison de biens</li>
+              <li>Quittances envoyées automatiquement, relances d'impayés</li>
+              <li>1 Go de documents</li>
+            </ul>
+            <a class="btn btn-ghost" href="app/">Commencer</a>
+          </li>
+          <li class="tier tier-main">
+            <p class="tier-flag">Essai gratuit de 30 jours</p>
+            <h3>Patrimoine</h3>
+            <p class="tier-price">199&nbsp;€<span> / an</span></p>
+            <p class="tier-alt">ou 19,90&nbsp;€ par mois</p>
+            <p class="tier-for">Pour piloter un patrimoine jusqu'à 10 biens.</p>
+            <ul class="ticks">
+              <li>Tout Essentiel, jusqu'à 10 biens détenus</li>
+              <li>Cash-flow consolidé de tous vos biens</li>
+              <li>5 Go de documents</li>
+            </ul>
+            <a class="btn btn-main" href="app/">Essayer 30 jours</a>
+          </li>
+          <li class="tier">
+            <h3>Pro</h3>
+            <p class="tier-price">399&nbsp;€<span> / an</span></p>
+            <p class="tier-alt">ou 39,90&nbsp;€ par mois</p>
+            <p class="tier-for">Pour les grands patrimoines, avec la déclaration incluse.</p>
+            <ul class="ticks">
+              <li>Biens détenus illimités</li>
+              <li>Déclaration fiscale incluse : 2044, micro-BIC, LMNP au réel</li>
+              <li>Plusieurs SCI et accès partagé (bientôt)</li>
+              <li>20 Go de documents, rendez-vous de démarrage</li>
+            </ul>
+            <a class="btn btn-ghost" href="app/">Commencer</a>
+          </li>
+        </ul>
+
+        <div class="price-notes">
+          <p><strong>Pack fiscal, 49&nbsp;€ pour 12&nbsp;mois :</strong> la préparation de la déclaration (revenus fonciers, location meublée, amortissements) en complément des formules Essentiel et Patrimoine. Inclus dans Pro.</p>
+          <p><strong>Offre fondateurs :</strong> −30 % à vie sur l'abonnement annuel pour les 300 premiers abonnés, soit 69&nbsp;€, 139&nbsp;€ ou 279&nbsp;€ par an.</p>
+          <p class="small">Paiement par carte bancaire, Apple Pay, Google Pay ou prélèvement SEPA, sécurisé par Stripe. L'essai de 30 jours ne demande pas de carte bancaire ; à sa fin, sans abonnement, votre compte passe en formule Découverte et rien n'est supprimé. Vos données restent consultables et exportables quelle que soit votre formule.</p>
+        </div>
       </div>
     </section>
 
@@ -197,6 +258,8 @@
         <details><summary>Immo-Zen calcule-t-il mes impôts ?</summary><p>Il prépare les montants à reporter sur votre déclaration à partir des loyers et dépenses enregistrés, selon le régime de chaque bien. C'est une aide au remplissage, à vérifier avec les notices ou un professionnel, pas un conseil fiscal.</p></details>
         <details><summary>Puis-je reprendre mes tableaux Excel ?</summary><p>Oui : dépenses, relevés bancaires et loyers s'importent depuis un fichier Excel ou CSV, ou par simple copier-coller. Un fichier importé deux fois ne crée pas de doublon.</p></details>
         <details><summary>Les quittances et relances partent-elles toutes seules ?</summary><p>Une quittance ne part automatiquement que si vous l'avez activé et qu'un paiement que vous avez enregistré règle exactement la période. Une relance est toujours préparée en brouillon : rien n'est envoyé au locataire sans votre validation.</p></details>
+        <details><summary>Puis-je changer de formule ou résilier ?</summary><p>Oui, à tout moment depuis « Mon abonnement ». Un passage à une formule supérieure s'applique tout de suite, au prorata. Une résiliation prend effet à la fin de la période payée ; votre compte passe alors en formule Découverte.</p></details>
+        <details><summary>Que deviennent mes données si je dépasse les limites de ma formule ?</summary><p>Rien n'est supprimé ni bloqué en lecture. Vous pouvez toujours consulter, modifier et exporter vos biens, loyers et documents ; seuls les ajouts au-delà des limites demandent une formule supérieure.</p></details>
         <details><summary>Comment me connecter ?</summary><p>Par le bouton « Espace client » en haut de chaque page, avec votre e-mail et votre mot de passe. « Mot de passe oublié » vous envoie un lien de réinitialisation.</p></details>
       </div>
     </section>

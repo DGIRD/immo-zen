@@ -5,21 +5,32 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { RepoError } from './repo.ts';
 import type { DvfEstimate, DvfType } from '../../supabase/functions/_shared/dvf.ts';
+import { demoPlan, type PlanInfo, type TierCode } from '../domain/plans.ts';
 
 export type SubscriptionStatus = 'none' | 'trialing' | 'active' | 'past_due' | 'unpaid' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'paused';
 
 export interface AccessState { has_access: boolean; reason: string; until: string | null; is_admin: boolean; enforce: boolean }
-export interface AppConfig { enforce_subscription: boolean; trial_days: number; support_email: string | null; updated_at: string }
-export interface Plan { code: 'mensuel' | 'annuel'; label: string; amount_cents: number; currency: string; billing_interval: 'month' | 'year'; stripe_price_id: string | null; active: boolean }
+export interface AppConfig { enforce_subscription: boolean; trial_days: number; support_email: string | null; updated_at: string; trial_tier?: TierCode; /** mode démonstration */ demo_tier?: TierCode }
+export interface Plan {
+  code: string; label: string; amount_cents: number; currency: string; billing_interval: 'month' | 'year'; stripe_price_id: string | null; active: boolean;
+  /** formule de l'offre (null : option, ex. pack fiscal) ; absent avant la migration des formules */
+  tier?: TierCode | null; kind?: 'formule' | 'option'; sort?: number;
+}
 export interface Subscription {
   user_id: string; source: 'stripe' | 'manuel'; status: SubscriptionStatus; plan_code: string | null; stripe_customer_id: string | null;
   current_period_end: string | null; cancel_at_period_end: boolean; canceled_at: string | null; note: string | null; updated_at: string;
+  manual_tier?: TierCode | null; fiscal_pack_until?: string | null;
 }
-export interface PlatformState { access: AccessState; config: AppConfig | null; plans: Plan[]; subscription: Subscription | null; supportUntil: string | null }
+export interface PlatformState {
+  access: AccessState; config: AppConfig | null; plans: Plan[]; subscription: Subscription | null; supportUntil: string | null;
+  /** null : migration des formules absente (aucune limite) */
+  plan: PlanInfo | null;
+}
 
 export interface AdminUser {
   user_id: string; email: string; created_at: string; last_sign_in_at: string | null; is_admin: boolean; status: SubscriptionStatus; source: string | null;
   plan_code: string | null; current_period_end: string | null; cancel_at_period_end: boolean; has_access: boolean; access_reason: string; support_until: string | null;
+  tier?: TierCode; fiscal_pack_until?: string | null;
 }
 export interface Incident { kind: 'email' | 'tache' | 'stripe'; at: string; status: string; detail: string; user_id: string | null }
 export interface AuditEntry { id: number; admin_id: string | null; action: string; target_user: string | null; details: Record<string, unknown>; at: string }
@@ -44,12 +55,14 @@ export interface PlatformApi {
   /** null : tables du lot 3 absentes (migration non exécutée). */
   state(): Promise<PlatformState | null>;
   checkout(plan: Plan['code']): Promise<string>;
+  /** Paiement ponctuel du pack fiscal (12 mois). */
+  buyFiscalPack(): Promise<string>;
   portal(): Promise<string>;
   setSupportAccess(until: string | null): Promise<void>;
   admin: {
     users(): Promise<AdminUser[]>;
-    setManualAccess(userId: string, until: string | null, note: string): Promise<void>;
-    setConfig(enforce: boolean, trialDays: number, supportEmail: string): Promise<void>;
+    setManualAccess(userId: string, until: string | null, note: string, tier?: TierCode): Promise<void>;
+    setConfig(enforce: boolean, trialDays: number, supportEmail: string, trialTier?: TierCode, demoTier?: TierCode): Promise<void>;
     updatePlan(code: Plan['code'], patch: Partial<Pick<Plan, 'label' | 'amount_cents' | 'stripe_price_id' | 'active'>>): Promise<void>;
     incidents(): Promise<Incident[]>;
     audit(): Promise<AuditEntry[]>;
@@ -71,7 +84,7 @@ export const ACCESS_REASONS: Record<string, string> = {
   resilie_fin_de_periode: 'Résilié, accès jusqu’à la fin de la période payée', sans_abonnement: 'Sans abonnement',
   abonnement_active: 'Abonnement actif', abonnement_trialing: 'Essai Stripe', abonnement_past_due: 'Paiement en retard (accès maintenu pendant les relances)',
   abonnement_canceled: 'Abonnement terminé', abonnement_unpaid: 'Impayé', abonnement_incomplete: 'Paiement à finaliser', abonnement_paused: 'Suspendu',
-  abonnement_incomplete_expired: 'Paiement abandonné',
+  abonnement_incomplete_expired: 'Paiement abandonné', decouverte: 'Formule Découverte (gratuite)',
 };
 
 const missing = (e: { code?: string; message?: string } | null) => !!e && (e.code === '42P01' || e.code === 'PGRST205' || e.code === 'PGRST202' || /schema cache|does not exist/i.test(e.message ?? ''));
@@ -119,18 +132,22 @@ export function createSupabasePlatform(sb: SupabaseClient): PlatformApi {
       const acc = await sb.rpc('iz_my_access').maybeSingle();
       if (missing(acc.error)) return null;
       const access = check(acc) as AccessState;
-      const [config, plans, sub, support] = await Promise.all([
+      const [config, plans, sub, support, plan] = await Promise.all([
         sb.from('app_config').select('*').maybeSingle(),
         sb.from('plans').select('*').order('billing_interval'),
         sb.from('subscriptions').select('*').maybeSingle(),
         sb.from('support_access').select('granted_until').maybeSingle(),
+        sb.rpc('iz_my_plan'),
       ]);
+      const list = (check(plans) as Plan[]).sort((a, b) => (a.sort ?? 100) - (b.sort ?? 100));
       return {
-        access, config: check(config) as AppConfig | null, plans: check(plans) as Plan[], subscription: check(sub) as Subscription | null,
+        access, config: check(config) as AppConfig | null, plans: list, subscription: check(sub) as Subscription | null,
         supportUntil: (check(support) as { granted_until: string } | null)?.granted_until ?? null,
+        plan: missing(plan.error) ? null : (check(plan) as PlanInfo),
       };
     },
     async checkout(plan) { return String((await invoke({ action: 'checkout', plan })).url); },
+    async buyFiscalPack() { return String((await invoke({ action: 'pack' })).url); },
     async portal() { return String((await invoke({ action: 'portal' })).url); },
     async setSupportAccess(until) {
       const { data: s } = await sb.auth.getSession();
@@ -141,8 +158,8 @@ export function createSupabasePlatform(sb: SupabaseClient): PlatformApi {
     },
     admin: {
       async users() { return check(await sb.rpc('iz_admin_users')) as AdminUser[]; },
-      async setManualAccess(userId, until, note) { check(await sb.rpc('iz_admin_set_manual_access', { p_user: userId, p_until: until, p_note: note })); },
-      async setConfig(enforce, trialDays, email) { check(await sb.rpc('iz_admin_set_config', { p_enforce: enforce, p_trial_days: trialDays, p_support_email: email })); },
+      async setManualAccess(userId, until, note, tier = 'pro') { check(await sb.rpc('iz_admin_set_manual_access', { p_user: userId, p_until: until, p_note: note, p_tier: tier })); },
+      async setConfig(enforce, trialDays, email, trialTier = 'patrimoine') { check(await sb.rpc('iz_admin_set_config', { p_enforce: enforce, p_trial_days: trialDays, p_support_email: email, p_trial_tier: trialTier })); },
       async updatePlan(code, patch) { check(await sb.from('plans').update({ ...patch, updated_at: new Date().toISOString() }).eq('code', code)); },
       async incidents() { return check(await sb.rpc('iz_admin_incidents')) as Incident[]; },
       async audit() { return check(await sb.from('admin_audit').select('*').order('at', { ascending: false }).limit(300)) as AuditEntry[]; },
@@ -162,18 +179,31 @@ export function createSupabasePlatform(sb: SupabaseClient): PlatformApi {
 // ---------------------------------------------------------------- mode démonstration
 
 const DEMO_KEY = 'immozen:demo:platform';
+const demoOffer = (code: string, label: string, euros: number, interval: Plan['billing_interval'], tier: TierCode | null, sort: number): Plan =>
+  ({ code, label, amount_cents: Math.round(euros * 100), currency: 'eur', billing_interval: interval, stripe_price_id: null, active: false, tier, kind: tier ? 'formule' : 'option', sort });
+const DEMO_PLANS: Plan[] = [
+  demoOffer('essentiel_mensuel', 'Essentiel, mensuel', 9.9, 'month', 'essentiel', 10), demoOffer('essentiel_annuel', 'Essentiel, annuel', 99, 'year', 'essentiel', 11),
+  demoOffer('patrimoine_mensuel', 'Patrimoine, mensuel', 19.9, 'month', 'patrimoine', 20), demoOffer('patrimoine_annuel', 'Patrimoine, annuel', 199, 'year', 'patrimoine', 21),
+  demoOffer('pro_mensuel', 'Pro, mensuel', 39.9, 'month', 'pro', 30), demoOffer('pro_annuel', 'Pro, annuel', 399, 'year', 'pro', 31),
+  demoOffer('pack_fiscal', 'Pack fiscal (12 mois)', 49, 'year', null, 90),
+];
 interface DemoPlatform { config: AppConfig; plans: Plan[]; leads: Lead[]; audit: AuditEntry[]; supportUntil: string | null }
 
 /** Mode démonstration : l'utilisateur local est administrateur ; aucun paiement possible. */
 export function createDemoPlatform(storage: Storage, userId: () => string | null, email: () => string): PlatformApi {
   const read = (): DemoPlatform => {
-    try { const v = storage.getItem(DEMO_KEY); if (v) return JSON.parse(v) as DemoPlatform; } catch { /* stockage indisponible */ }
+    try {
+      const v = storage.getItem(DEMO_KEY);
+      if (v) {
+        const d = JSON.parse(v) as DemoPlatform;
+        // données enregistrées avant les formules : offres remplacées par la nouvelle grille
+        if (!d.plans.some((p) => p.tier)) d.plans = DEMO_PLANS.map((p) => ({ ...p }));
+        return d;
+      }
+    } catch { /* stockage indisponible */ }
     return {
-      config: { enforce_subscription: false, trial_days: 30, support_email: null, updated_at: new Date().toISOString() },
-      plans: [
-        { code: 'mensuel', label: 'Abonnement mensuel', amount_cents: 0, currency: 'eur', billing_interval: 'month', stripe_price_id: null, active: false },
-        { code: 'annuel', label: 'Abonnement annuel', amount_cents: 0, currency: 'eur', billing_interval: 'year', stripe_price_id: null, active: false },
-      ],
+      config: { enforce_subscription: false, trial_days: 30, support_email: null, updated_at: new Date().toISOString(), trial_tier: 'patrimoine', demo_tier: 'pro' },
+      plans: DEMO_PLANS.map((p) => ({ ...p })),
       leads: [], audit: [], supportUntil: null,
     };
   };
@@ -186,9 +216,11 @@ export function createDemoPlatform(storage: Storage, userId: () => string | null
     async dvf() { throw new FunctionUnavailable('Mode démonstration.'); },
     async state() {
       const d = read();
-      return { access: { has_access: true, reason: 'administrateur', until: null, is_admin: true, enforce: d.config.enforce_subscription }, config: d.config, plans: d.plans, subscription: null, supportUntil: d.supportUntil };
+      return { access: { has_access: true, reason: 'administrateur', until: null, is_admin: true, enforce: d.config.enforce_subscription }, config: d.config, plans: d.plans, subscription: null, supportUntil: d.supportUntil,
+        plan: demoPlan(d.config.demo_tier ?? 'pro', d.config.enforce_subscription) };
     },
     checkout: async () => noPay(),
+    buyFiscalPack: async () => noPay(),
     portal: async () => noPay(),
     async setSupportAccess(until) { const d = read(); d.supportUntil = until; write(d); },
     admin: {
@@ -198,9 +230,10 @@ export function createDemoPlatform(storage: Storage, userId: () => string | null
           plan_code: null, current_period_end: null, cancel_at_period_end: false, has_access: true, access_reason: 'administrateur', support_until: read().supportUntil }];
       },
       async setManualAccess() { throw new RepoError('Mode démonstration : un seul compte local.'); },
-      async setConfig(enforce, trialDays, supportEmail) {
+      async setConfig(enforce, trialDays, supportEmail, trialTier = 'patrimoine', demoTier) {
         const d = read();
-        d.config = { enforce_subscription: enforce, trial_days: trialDays, support_email: supportEmail.trim() || null, updated_at: new Date().toISOString() };
+        d.config = { enforce_subscription: enforce, trial_days: trialDays, support_email: supportEmail.trim() || null, updated_at: new Date().toISOString(),
+          trial_tier: trialTier, demo_tier: demoTier ?? d.config.demo_tier ?? 'pro' };
         log(d, 'configuration', { ...d.config });
         write(d);
       },

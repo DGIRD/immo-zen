@@ -56,7 +56,8 @@ const KNOWN = ['trialing', 'active', 'past_due', 'unpaid', 'canceled', 'incomple
 
 /** Champs de la table `subscriptions` pour un abonnement Stripe. */
 export function subscriptionFields(sub: StripeSubscription, planByPrice: Record<string, string>, eventCreated: number) {
-  const item = sub.items?.data?.[0];
+  // ligne de la formule (une option éventuelle ne détermine pas l'offre)
+  const item = sub.items?.data?.find((i) => planByPrice[i.price.id]) ?? sub.items?.data?.[0];
   const end = sub.current_period_end ?? item?.current_period_end ?? null;
   return {
     source: 'stripe' as const,
@@ -76,7 +77,7 @@ export function subscriptionFields(sub: StripeSubscription, planByPrice: Record<
 export function subscriptionIdOf(ev: StripeEvent): string | null {
   const o = ev.data.object as Record<string, unknown>;
   if (ev.type.startsWith('customer.subscription.')) return String(o.id);
-  if (ev.type === 'checkout.session.completed') return (o.subscription as string) ?? null;
+  if (ev.type === 'checkout.session.completed' || ev.type === 'checkout.session.async_payment_succeeded') return (o.subscription as string) ?? null;
   if (ev.type.startsWith('invoice.')) {
     const parent = (o.parent as { subscription_details?: { subscription?: string } } | undefined)?.subscription_details?.subscription;
     return (o.subscription as string) ?? parent ?? null;
@@ -84,8 +85,20 @@ export function subscriptionIdOf(ev: StripeEvent): string | null {
   return null;
 }
 
+/**
+ * Pack fiscal (paiement ponctuel) : compte à créditer, uniquement une fois le paiement encaissé.
+ * Un prélèvement SEPA est confirmé plus tard (« checkout.session.async_payment_succeeded »).
+ */
+export function fiscalPackFromSession(ev: StripeEvent): { userId: string } | null {
+  if (ev.type !== 'checkout.session.completed' && ev.type !== 'checkout.session.async_payment_succeeded') return null;
+  const o = ev.data.object as { mode?: string; payment_status?: string; client_reference_id?: string | null; metadata?: Record<string, string> };
+  if (o.mode !== 'payment' || o.metadata?.addon !== 'pack_fiscal' || o.payment_status !== 'paid') return null;
+  const userId = o.client_reference_id ?? o.metadata?.user_id ?? null;
+  return userId ? { userId } : null;
+}
+
 export const HANDLED_EVENTS = [
-  'checkout.session.completed',
+  'checkout.session.completed', 'checkout.session.async_payment_succeeded',
   'customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted',
   'customer.subscription.paused', 'customer.subscription.resumed',
   'invoice.paid', 'invoice.payment_failed', 'invoice.payment_succeeded',

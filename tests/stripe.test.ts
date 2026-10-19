@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { signStripePayload, subscriptionFields, subscriptionIdOf, verifyStripeSignature } from '../supabase/functions/_shared/stripe.ts';
+import { fiscalPackFromSession, signStripePayload, subscriptionFields, subscriptionIdOf, verifyStripeSignature } from '../supabase/functions/_shared/stripe.ts';
 
 const SECRET = 'whsec_test';
 const body = JSON.stringify({ id: 'evt_1', type: 'customer.subscription.updated', created: 1760000000, data: { object: { id: 'sub_1' } } });
@@ -36,4 +36,26 @@ test('événements : abonnement concerné', () => {
   assert.equal(subscriptionIdOf(ev('invoice.payment_failed', { subscription: 'sub_3' })), 'sub_3');
   assert.equal(subscriptionIdOf(ev('invoice.paid', { parent: { subscription_details: { subscription: 'sub_4' } } })), 'sub_4', 'format récent des factures');
   assert.equal(subscriptionIdOf(ev('charge.refunded', { id: 'ch_1' })), null);
+});
+
+test('formules : l’offre vient de la ligne de formule, pas d’une ligne annexe', () => {
+  const f = subscriptionFields({
+    id: 'sub_2', customer: 'cus_2', status: 'active', cancel_at_period_end: false, canceled_at: null,
+    items: { data: [{ price: { id: 'price_autre' } }, { price: { id: 'price_pat_a' }, current_period_end: 1767225600 }] },
+  }, { price_pat_a: 'patrimoine_annuel' }, 1);
+  assert.equal(f.plan_code, 'patrimoine_annuel');
+  assert.equal(f.current_period_end, '2026-01-01T00:00:00.000Z');
+  assert.equal(subscriptionIdOf({ id: 'e', type: 'checkout.session.async_payment_succeeded', created: 1, data: { object: { subscription: 'sub_5' } } }), 'sub_5', 'abonnement réglé par prélèvement SEPA');
+});
+
+test('pack fiscal : crédité seulement une fois le paiement encaissé', () => {
+  const ev = (type: string, object: Record<string, unknown>) => ({ id: 'e', type, created: 1, data: { object } });
+  const paid = { mode: 'payment', payment_status: 'paid', client_reference_id: 'u1', metadata: { addon: 'pack_fiscal', user_id: 'u1' } };
+  assert.deepEqual(fiscalPackFromSession(ev('checkout.session.completed', paid)), { userId: 'u1' });
+  assert.equal(fiscalPackFromSession(ev('checkout.session.completed', { ...paid, payment_status: 'unpaid' })), null, 'prélèvement SEPA pas encore confirmé');
+  assert.deepEqual(fiscalPackFromSession(ev('checkout.session.async_payment_succeeded', paid)), { userId: 'u1' }, 'prélèvement SEPA confirmé');
+  assert.equal(fiscalPackFromSession(ev('checkout.session.completed', { ...paid, mode: 'subscription' })), null, 'abonnement, pas un pack');
+  assert.equal(fiscalPackFromSession(ev('checkout.session.completed', { ...paid, metadata: {} })), null, 'autre paiement ponctuel');
+  assert.deepEqual(fiscalPackFromSession(ev('checkout.session.completed', { ...paid, client_reference_id: null })), { userId: 'u1' }, 'compte retrouvé par les métadonnées');
+  assert.equal(fiscalPackFromSession(ev('invoice.paid', paid)), null);
 });

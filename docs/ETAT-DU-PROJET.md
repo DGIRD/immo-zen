@@ -118,6 +118,18 @@ Limites : les valeurs IRL sont intégrées jusqu'au 3e trimestre 2026 (à compl�
 | Mes biens : fourchette « Estimation du prix actuel » à la place des prix affiché et proposé, plus-value latente | Implémenté et testé | e2e |
 | Lecture réelle des fichiers data.gouv.fr depuis le navigateur | **Non testé en ligne** (réseau fermé pendant les tests) ; repli serveur prévu | — |
 
+## Formules et tarifs (18 octobre 2026)
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Grille Découverte / Essentiel / Patrimoine / Pro, pack fiscal ; limites (biens détenus, prospection, scénarios, documents) et fonctions (contacts, automatisations, cash-flow consolidé, déclaration) vérifiées par la base | Implémenté et testé | SQL (44 vérifications) + unitaires |
+| Mon abonnement : formule, jauges d'usage, choix de formule mensuel/annuel, pack fiscal ; verrous dans Contacts, Comparer, Déclaration fiscale, baux, tableau de bord | Implémenté et testé (démonstration) | e2e |
+| Administration : formule par compte, accès manuel par formule, formule d'essai, application des formules | Implémenté et testé | SQL + e2e |
+| Stripe : checkout par formule, pack fiscal en paiement ponctuel, confirmation différée du prélèvement SEPA | Implémenté et testé (logique) / **à configurer** (produits, prix, webhook) | unitaires |
+| Site vitrine : section Tarifs avec la grille | Implémenté et testé | e2e + captures |
+
+Migration à exécuter : `20261018000500_formules.sql`. Le contrôle reste désactivé tant qu'un administrateur ne l'active pas (Administration → Application des formules).
+
 ## Restant
 
 Tout le périmètre du cahier des charges est livré. Reste **à configurer** : compte Stripe et fonctions `platform` / `stripe-webhook` ([ABONNEMENTS](ABONNEMENTS.md)), premier administrateur, envoi réel des e-mails (Resend). Pistes ultérieures : vérification de l'abonnement dans les fonctions serveur (quittances, relances), réimport de la gestion locative depuis une sauvegarde, liasse 2031/2033 complète, travaux de rénovation énergétique et déficits antérieurs dans la déclaration.

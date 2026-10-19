@@ -1,4 +1,6 @@
-import { useStore } from './data/store.tsx';
+import { usePlan, useStore } from './data/store.tsx';
+import { PlanLock } from './ui/PlanLock.tsx';
+import { FISCAL_PACK_PRICE } from './domain/plans.ts';
 import { AuthPage, NewPasswordPage } from './pages/Auth.tsx';
 import { ComingSoonPage } from './pages/ComingSoon.tsx';
 import { ContactDetailPage, ContactsPage } from './pages/Contacts.tsx';
@@ -18,11 +20,12 @@ import { LeaseDetailPage } from './pages/rental/LeaseDetail.tsx';
 import { LeaseFormPage, LeasesPage } from './pages/rental/Leases.tsx';
 import { RentsPage } from './pages/rental/Rents.tsx';
 import { Layout, NAV } from './ui/Layout.tsx';
-import { EmptyState, Button } from './ui/components.tsx';
+import { EmptyState, Button, PageHeader } from './ui/components.tsx';
 import { navigate, useRoute } from './ui/router.ts';
 
 export function App() {
   const { session, authReady, data, sync } = useStore();
+  const plan = usePlan();
   const route = useRoute();
   const [a, b, c] = route.path;
 
@@ -66,7 +69,13 @@ export function App() {
   else if (a === 'loyers') { active = 'loyers'; page = <RentsPage />; }
   else if (a === 'depenses') { active = 'depenses'; page = <ExpensesPage key={key} propertyId={route.query.get('bien') ?? undefined} />; }
   else if (a === 'documents') { active = 'documents'; page = <DocumentsPage />; }
-  else if (a === 'declaration' || a === 'synthese') { active = 'fiscal'; page = <FiscalPage />; }
+  else if (a === 'declaration' || a === 'synthese') {
+    active = 'fiscal';
+    page = plan.features.fiscal ? <FiscalPage /> : (
+      <><PageHeader title="Déclaration fiscale" />
+        <PlanLock title="Déclaration fiscale non incluse dans votre formule">Montants à reporter sur la 2044, la 2042 et la 2042-C-PRO (micro-foncier, réel, micro-BIC, LMNP au réel avec amortissements) et export Excel. Inclus dans la formule Pro, ou avec le pack fiscal ({FISCAL_PACK_PRICE} € pour 12 mois) en formule Essentiel ou Patrimoine. Vos loyers et dépenses restent consultables et exportables dans leurs rubriques.</PlanLock></>
+    );
+  }
   else if (a === 'abonnement') { active = 'abonnement'; page = <SubscriptionPage key={key} />; }
   else if (a === 'admin') { active = 'admin'; page = <AdminPage />; }
   else {

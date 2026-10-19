@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { useStore } from '../data/store.tsx';
+import { usePlan, useStore } from '../data/store.tsx';
+import { PlanLock } from '../ui/PlanLock.tsx';
 import type { Channel, Contact, ContactKind, Insert } from '../data/types.ts';
 import { downloadBlob, stamp, toCsv, toXlsx, type ExportColumn } from '../domain/exporting.ts';
 import { date, dateTime, todayParis } from '../domain/format.ts';
@@ -15,6 +16,7 @@ interface Row { c: Contact; org: Contact | null; linked: number }
 
 export function ContactsPage() {
   const { data, remove, notify } = useStore();
+  const contactsIncluded = usePlan().features.contacts;
   const { ask, dialog } = useConfirm();
   const [kind, setKind] = useState<ContactKind | ''>('');
   const [archived, setArchived] = useState(false);
@@ -51,7 +53,8 @@ export function ContactsPage() {
   return (
     <>
       <PageHeader title="Contacts" subtitle="Agences, agents, artisans, notaires et autres professionnels avec qui vous échangez."
-        actions={<Button variant="primary" onClick={() => navigate('/contacts/nouveau')}>Ajouter un contact</Button>} />
+        actions={contactsIncluded && <Button variant="primary" onClick={() => navigate('/contacts/nouveau')}>Ajouter un contact</Button>} />
+      {!contactsIncluded && <PlanLock title="Contacts non inclus dans la formule Découverte" compact>Carnet d’agences et d’agents, relances, rattachement aux biens et comparaison de biens : à partir de la formule Essentiel. Les contacts déjà enregistrés restent consultables.</PlanLock>}
       <DataTable id="contacts" rows={rows} columns={columns} rowKey={(r) => r.c.id} initialSort={{ id: 'name', dir: 'asc' }}
         onOpen={(r) => navigate(`/contacts/${r.c.id}`)}
         toolbar={<>
