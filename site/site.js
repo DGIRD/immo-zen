@@ -55,23 +55,26 @@
     const say = (text, ok) => { msg.textContent = text; msg.className = `form-msg ${ok ? 'ok' : 'err'}`; };
     if (String(f.get('name') || '').trim().length < 2) return say('Indiquez votre nom.', false);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(f.get('email') || '').trim())) return say('Indiquez une adresse e-mail valide.', false);
-    if (!url || url.startsWith('%') || !key || key.startsWith('%')) return say('Formulaire indisponible pour le moment : écrivez-nous depuis votre espace client.', false);
+    if (!url || url.startsWith('%') || !key || key.startsWith('%')) return say('Formulaire indisponible pour le moment : écrivez-nous à contact@immo-zen.fr.', false);
     const button = form.querySelector('button');
     button.disabled = true;
     try {
       const res = await fetch(`${url}/rest/v1/rpc/iz_submit_lead`, {
         method: 'POST',
-        headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        // clé publique « sb_publishable_… » : en-tête apikey seul (ce n'est pas un jeton JWT) ; ancienne clé anon (JWT) : aussi en Authorization
+        headers: { apikey: key, ...(key.startsWith('eyJ') ? { Authorization: `Bearer ${key}` } : {}), 'Content-Type': 'application/json' },
         body: JSON.stringify({ p_name: f.get('name'), p_email: f.get('email'), p_phone: f.get('phone') || null, p_message: f.get('message') || null, p_topic: f.get('topic'), p_website: f.get('website') || null }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        return say(j.message && !/function|schema/i.test(j.message) ? j.message : 'Envoi impossible pour le moment. Réessayez plus tard.', false);
+        console.error('Formulaire de contact :', res.status, j);
+        return say(j.message && !/function|schema|jwt|permission|key/i.test(j.message) ? j.message
+          : `Envoi impossible pour le moment (erreur ${res.status}). Écrivez-nous directement à contact@immo-zen.fr.`, false);
       }
       form.reset();
       say('Merci, votre demande est bien envoyée. Nous vous recontactons rapidement.', true);
     } catch {
-      say('Connexion impossible. Vérifiez votre réseau et réessayez.', false);
+      say('Connexion impossible. Vérifiez votre réseau et réessayez, ou écrivez-nous à contact@immo-zen.fr.', false);
     } finally {
       button.disabled = false;
     }
