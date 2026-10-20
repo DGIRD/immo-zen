@@ -45,6 +45,9 @@ export interface OutboxDeps {
 }
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+export const CONTACT_EMAIL = 'contact@immo-zen.fr';
+/** Pied de tous les e-mails envoyés par Immo-Zen. */
+export const MAIL_FOOTER = `--\nMessage envoyé avec Immo-Zen. L’équipe Immo-Zen se tient à votre disposition pour toute question sur le service : ${CONTACT_EMAIL}`;
 
 export async function buildMessage(row: OutboxRow, deps: Pick<OutboxDeps, 'receipt' | 'pdfLib' | 'appUrl'>): Promise<MailMessage> {
   const to = row.to_emails.filter((e) => EMAIL.test(e));
@@ -55,6 +58,7 @@ export async function buildMessage(row: OutboxRow, deps: Pick<OutboxDeps, 'recei
     if (!url || !/^https:\/\//.test(url)) throw new Error('Adresse de l’application (APP_URL) non configurée : lien d’invitation impossible.');
     text = text.split('{{APP_URL}}').join(url.endsWith('/') ? url : url + '/');
   }
+  if (!text.includes(CONTACT_EMAIL)) text = `${text.trimEnd()}\n\n${MAIL_FOOTER}`;
   const m: MailMessage = { to, subject: row.subject, text, attachments: [] };
   if (row.kind === 'quittance') {
     if (!row.receipt_id) throw new Error('Quittance absente.');

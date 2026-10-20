@@ -90,7 +90,8 @@ test('file d’e-mails : invitation à l’espace locataire avec le lien de l’
   const body = 'Ouvrez ce lien : {{APP_URL}}#/espace-locataire?code=ABC123DEF456';
   const ok = deps([row({ kind: 'invitation_locataire', body_text: body })], { appUrl: 'https://immo-zen.fr/app' });
   assert.equal((await processOutbox(ok.d)).sent, 1);
-  assert.equal(ok.sent[0]!.text, 'Ouvrez ce lien : https://immo-zen.fr/app/#/espace-locataire?code=ABC123DEF456');
+  assert.match(ok.sent[0]!.text, /^Ouvrez ce lien : https:\/\/immo-zen\.fr\/app\/#\/espace-locataire\?code=ABC123DEF456\n\n--\n/);
+  assert.match(ok.sent[0]!.text, /L’équipe Immo-Zen se tient à votre disposition .* contact@immo-zen\.fr$/);
   assert.equal(ok.sent[0]!.attachments.length, 0);
   // adresse de l'application absente : échec explicite, rien n'est envoyé
   const ko = deps([row({ kind: 'invitation_locataire', body_text: body })]);

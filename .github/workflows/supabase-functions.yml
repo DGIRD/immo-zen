@@ -52,6 +52,29 @@ jobs:
             if [ -n "$v" ]; then args+=("$k=$v"); echo "→ $k transmis"; fi
           done
           supabase secrets set --project-ref "$PROJECT_REF" "${args[@]}"
+      - name: E-mails du compte en français (confirmation, mot de passe, invitation…)
+        run: |
+          # Modèles de supabase/templates appliqués au projet par l'API de gestion Supabase
+          body=$(jq -n \
+            --slurpfile s supabase/templates/subjects.json \
+            --rawfile confirmation supabase/templates/confirmation.html \
+            --rawfile recovery supabase/templates/recovery.html \
+            --rawfile invite supabase/templates/invite.html \
+            --rawfile magic_link supabase/templates/magic_link.html \
+            --rawfile email_change supabase/templates/email_change.html \
+            --rawfile reauthentication supabase/templates/reauthentication.html \
+            '{
+              mailer_subjects_confirmation: $s[0].confirmation, mailer_templates_confirmation_content: $confirmation,
+              mailer_subjects_recovery: $s[0].recovery, mailer_templates_recovery_content: $recovery,
+              mailer_subjects_invite: $s[0].invite, mailer_templates_invite_content: $invite,
+              mailer_subjects_magic_link: $s[0].magic_link, mailer_templates_magic_link_content: $magic_link,
+              mailer_subjects_email_change: $s[0].email_change, mailer_templates_email_change_content: $email_change,
+              mailer_subjects_reauthentication: $s[0].reauthentication, mailer_templates_reauthentication_content: $reauthentication
+            }')
+          code=$(curl -sS -o /tmp/auth.json -w '%{http_code}' -X PATCH "https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H 'Content-Type: application/json' --data "$body")
+          if [ "$code" != "200" ]; then echo "::error::Modèles d'e-mails non appliqués (HTTP $code) : $(head -c 300 /tmp/auth.json)"; exit 1; fi
+          echo "Modèles d'e-mails en français appliqués."
       - name: Fonction daily (tâches quotidiennes, e-mails)
         run: supabase functions deploy daily --project-ref "$PROJECT_REF" --no-verify-jwt
       - name: Fonction stripe-webhook

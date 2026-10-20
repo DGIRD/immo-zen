@@ -73,6 +73,8 @@ L'adresse `contact@immo-zen.fr` sert à la fois à **recevoir** (boîte ou redir
 7. Supabase → **Database → Extensions** : activez `pg_cron` et `pg_net`. Puis SQL Editor : exécutez `supabase/scheduling.example.sql` en remplaçant `VOTRE-PROJET` par `sbxnjvjsapnsdeenmvtm` et le jeton par la valeur de `CRON_SECRET`.
 8. Le lendemain, vérifiez `job_runs` (requêtes en fin de fichier) : les tâches tournent sans rien envoyer. Puis variable `EMAIL_ENABLED` = `true`, relancez le workflow, et envoyez-vous une quittance de test (locataire avec votre propre adresse).
 
+**E-mails du compte en français** : les messages de confirmation d'inscription, de mot de passe oublié, d'invitation, de lien de connexion, de changement d'adresse et de code de vérification utilisent les modèles de `supabase/templates/` (français, mention « L'équipe Immo-Zen se tient à votre disposition : contact@immo-zen.fr »). Le workflow « Fonctions serveur Supabase » les applique au projet ; à défaut, copiez-les dans Supabase → Authentication → Emails → Templates. Les e-mails de l'application (quittances, relances, invitations des locataires) portent la même mention en pied de message.
+
 ## 4. Stripe : formules, moyens de paiement et abonnements
 
 Grille appliquée (migration `20261018000500_formules.sql`) : **Découverte** gratuite · **Essentiel** 9,90 €/mois ou 99 €/an · **Patrimoine** 19,90 €/mois ou 199 €/an · **Pro** 39,90 €/mois ou 399 €/an · **Pack fiscal** 49 € pour 12 mois (paiement ponctuel, en complément d'Essentiel ou Patrimoine). Prix TTC.
