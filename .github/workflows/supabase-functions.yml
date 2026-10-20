@@ -4,7 +4,7 @@
 #   Secret obligatoire : SUPABASE_ACCESS_TOKEN (supabase.com → Account → Access Tokens)
 #   Secrets facultatifs (transmis tels quels aux fonctions s'ils existent) :
 #     CRON_SECRET, RESEND_API_KEY, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, ANTHROPIC_API_KEY (assistant)
-#   Variables facultatives : SUPABASE_PROJECT_REF, APP_URL, EMAIL_FROM, EMAIL_REPLY_TO, EMAIL_ENABLED, ASSISTANT_MODEL, ASSISTANT_DAILY_LIMIT
+#   Variables facultatives (onglet Variables, ou Secrets : les deux sont lus) : SUPABASE_PROJECT_REF, APP_URL, EMAIL_FROM, EMAIL_REPLY_TO, EMAIL_ENABLED, ASSISTANT_MODEL, ASSISTANT_DAILY_LIMIT
 name: Fonctions serveur Supabase
 
 on:
@@ -18,18 +18,18 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF || 'sbxnjvjsapnsdeenmvtm' }}
+      PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF || secrets.SUPABASE_PROJECT_REF || 'sbxnjvjsapnsdeenmvtm' }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      ASSISTANT_MODEL: ${{ vars.ASSISTANT_MODEL }}
-      ASSISTANT_DAILY_LIMIT: ${{ vars.ASSISTANT_DAILY_LIMIT }}
-      APP_URL: ${{ vars.APP_URL || 'https://dgird.github.io/immo-zen/app/' }}
-      EMAIL_FROM: ${{ vars.EMAIL_FROM }}
-      EMAIL_REPLY_TO: ${{ vars.EMAIL_REPLY_TO }}
-      EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || 'false' }}
+      ASSISTANT_MODEL: ${{ vars.ASSISTANT_MODEL || secrets.ASSISTANT_MODEL }}
+      ASSISTANT_DAILY_LIMIT: ${{ vars.ASSISTANT_DAILY_LIMIT || secrets.ASSISTANT_DAILY_LIMIT }}
+      APP_URL: ${{ vars.APP_URL || secrets.APP_URL || 'https://immo-zen.fr/app/' }}
+      EMAIL_FROM: ${{ vars.EMAIL_FROM || secrets.EMAIL_FROM }}
+      EMAIL_REPLY_TO: ${{ vars.EMAIL_REPLY_TO || secrets.EMAIL_REPLY_TO }}
+      EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || secrets.EMAIL_ENABLED || 'false' }}
     steps:
       - uses: actions/checkout@v4
       # Installation directe de la CLI Supabase (dernière version publiée) : le lien de téléchargement
@@ -53,6 +53,7 @@ jobs:
           done
           supabase secrets set --project-ref "$PROJECT_REF" "${args[@]}"
       - name: E-mails du compte en français (confirmation, mot de passe, invitation…)
+        continue-on-error: true
         run: |
           # Modèles de supabase/templates appliqués au projet par l'API de gestion Supabase
           body=$(jq -n \
