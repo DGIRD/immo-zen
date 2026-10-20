@@ -32,9 +32,15 @@ jobs:
       EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || 'false' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
+      # Installation directe de la CLI Supabase (dernière version publiée) : le lien de téléchargement
+      # n'utilise pas l'API GitHub, donc pas d'erreur « rate limit exceeded ».
+      - name: Installer la CLI Supabase
+        run: |
+          curl -fsSL --retry 3 -o /tmp/supabase.tar.gz https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf /tmp/supabase.tar.gz -C "$HOME/.local/bin" supabase
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/supabase" --version
       - name: Vérifier le jeton
         run: |
           if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then echo "::error::Secret SUPABASE_ACCESS_TOKEN manquant (Settings → Secrets and variables → Actions)."; exit 1; fi
