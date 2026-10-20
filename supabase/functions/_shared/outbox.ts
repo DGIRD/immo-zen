@@ -13,18 +13,21 @@ import { buildReceiptPdf, type ReceiptData } from './receiptPdf.ts';
 
 export interface OutboxRow {
   id: string;
-  kind: 'confirmation_paiement' | 'quittance' | 'relance' | 'relance_a_valider' | 'invitation_locataire';
+  kind: 'confirmation_paiement' | 'quittance' | 'relance' | 'relance_a_valider' | 'invitation_locataire' | 'contact_site';
   to_emails: string[];
   subject: string;
   body_text: string;
   receipt_id: string | null;
   reminder_id: string | null;
+  /** Adresse de réponse propre au message (demande du site : adresse du visiteur). */
+  reply_to?: string | null;
 }
 
 export interface MailMessage {
   to: string[];
   subject: string;
   text: string;
+  replyTo?: string;
   attachments: { filename: string; content: Uint8Array; contentType: string }[];
 }
 
@@ -58,8 +61,8 @@ export async function buildMessage(row: OutboxRow, deps: Pick<OutboxDeps, 'recei
     if (!url || !/^https:\/\//.test(url)) throw new Error('Adresse de l’application (APP_URL) non configurée : lien d’invitation impossible.');
     text = text.split('{{APP_URL}}').join(url.endsWith('/') ? url : url + '/');
   }
-  if (!text.includes(CONTACT_EMAIL)) text = `${text.trimEnd()}\n\n${MAIL_FOOTER}`;
-  const m: MailMessage = { to, subject: row.subject, text, attachments: [] };
+  if (row.kind !== 'contact_site' && !text.includes(CONTACT_EMAIL)) text = `${text.trimEnd()}\n\n${MAIL_FOOTER}`;
+  const m: MailMessage = { to, subject: row.subject, text, attachments: [], ...(row.reply_to && EMAIL.test(row.reply_to) ? { replyTo: row.reply_to } : {}) };
   if (row.kind === 'quittance') {
     if (!row.receipt_id) throw new Error('Quittance absente.');
     const r = await deps.receipt(row.receipt_id);
@@ -118,7 +121,7 @@ export function resendSender(apiKey: string, from: string, replyTo?: string, fet
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from, to: m.to, subject: m.subject, text: m.text, ...(replyTo ? { reply_to: replyTo } : {}),
+        from, to: m.to, subject: m.subject, text: m.text, ...(m.replyTo || replyTo ? { reply_to: m.replyTo ?? replyTo } : {}),
         attachments: m.attachments.map((a) => ({ filename: a.filename, content: b64(a.content) })),
       }),
     });

@@ -99,3 +99,16 @@ test('file d’e-mails : invitation à l’espace locataire avec le lien de l’
   assert.equal(r.sent, 0);
   assert.match(ko.results[0]!.error ?? '', /APP_URL/);
 });
+
+test('file d’e-mails : demande du site envoyée à contact@ avec l’adresse du visiteur en réponse', async () => {
+  const { d, sent } = deps([row({ kind: 'contact_site', to_emails: ['contact@immo-zen.fr'], body_text: 'Nom : Marie', reply_to: 'marie@example.test' })]);
+  assert.equal((await processOutbox(d)).sent, 1);
+  assert.equal(sent[0]!.replyTo, 'marie@example.test');
+  assert.equal(sent[0]!.text, 'Nom : Marie', 'pas de pied de message pour un e-mail interne');
+  let body: Record<string, unknown> = {};
+  const send = resendSender('re_test', 'Immo-Zen <contact@mail.immo-zen.fr>', 'contact@immo-zen.fr', (async (_u: string, init: RequestInit) => { body = JSON.parse(String(init.body)); return new Response('{}'); }) as typeof fetch);
+  await send(sent[0]!);
+  assert.equal(body.reply_to, 'marie@example.test');
+  await send({ ...sent[0]!, replyTo: undefined });
+  assert.equal(body.reply_to, 'contact@immo-zen.fr', 'adresse de réponse par défaut');
+});

@@ -96,6 +96,10 @@ select tests.fails($q$ select count(*) from public.platform_leads $q$, 'site : p
 commit;
 select tests.ok((select count(*) from public.platform_leads where email = 'marie@example.test' and source = 'Site – Accompagnement') = 1
   and not exists (select 1 from public.platform_leads where email = 'robot@spam.test'), 'site : prospect visible en administration, robot écarté');
+select tests.ok((select count(*) from public.email_outbox where kind = 'contact_site' and to_emails = array['contact@immo-zen.fr']
+  and reply_to = 'marie@example.test' and user_id is null and body_text like '%Je souhaite être accompagnée.%') = 1, 'site : demande envoyée par e-mail à contact@immo-zen.fr, réponse au visiteur');
+select tests.ok(not exists (select 1 from public.email_outbox where kind = 'contact_site' and reply_to = 'robot@spam.test'), 'site : aucun e-mail pour un robot');
+select tests.fails($q$ insert into public.email_outbox (user_id, kind, to_emails, subject, body_text, dedupe_key) values (null, 'quittance', array['a@b.fr'], 's', 'b', 'x') $q$, 'file : message sans compte réservé aux demandes du site');
 
 -- Estimation du prix (DVF ou saisie manuelle)
 begin;

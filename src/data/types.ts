@@ -449,7 +449,7 @@ export interface Expense extends Versioned {
 export interface OutboxMessage {
   id: string;
   user_id: string;
-  kind: 'confirmation_paiement' | 'quittance' | 'relance' | 'relance_a_valider' | 'invitation_locataire';
+  kind: 'confirmation_paiement' | 'quittance' | 'relance' | 'relance_a_valider' | 'invitation_locataire' | 'contact_site';
   to_emails: string[];
   subject: string;
   status: 'a_envoyer' | 'en_cours' | 'envoye' | 'echec' | 'annule';

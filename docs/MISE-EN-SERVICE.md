@@ -8,7 +8,7 @@ Dans les exemples, remplacez `immo-zen.fr` par votre domaine.
 
 - `https://immo-zen.fr/` : **site vitrine** (dossier `site/` du dépôt) — raison d'être, solution, accompagnement, guides, tarifs, questions, formulaire « Être recontacté ».
 - `https://immo-zen.fr/app/` : **application** (Espace client). Tant que le domaine n'est pas branché : https://dgird.github.io/immo-zen/ et https://dgird.github.io/immo-zen/app/.
-- Les demandes du formulaire arrivent dans **Administration → Prospects commerciaux** (migration `20261018000300_site_contact.sql` à exécuter).
+- Les demandes du formulaire arrivent dans **Administration → Prospects commerciaux** (migration `20261018000300_site_contact.sql`) et sont envoyées par e-mail à **contact@immo-zen.fr** (ou à l'« E-mail du support » réglé dans Administration), avec l'adresse du visiteur en « répondre à » (migration `20261020000200_contact_email.sql`, envoi des e-mails activé).
 - **Mentions légales** (`site/mentions-legales.html`) : éditeur, SIREN, adresse et e-mail de contact **à compléter** avant d'annoncer le site.
 
 ## 0. Avant de commencer (une fois)
