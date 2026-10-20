@@ -54,6 +54,23 @@ Colocation : plusieurs titulaires sur un même bail, ou un bail par chambre. Au 
 
 La fiche du bail regroupe échéances, paiements, quittances et reçus, relances, dépôt de garantie, titulaires et documents.
 
+### Contrat de bail
+
+Sur la fiche du bail, **Contrat de bail** rédige le contrat à signer, avec un aperçu en direct :
+- **location vide** ou **meublée** (résidence principale du locataire) : structure et mentions des contrats types officiels (décret n° 2015-587 du 29 mai 2015, annexes 1 et 2), mis à jour : décence énergétique, dépenses annuelles d'énergie, clause résolutoire après six semaines, solidarité en colocation, mobilier minimal (décret n° 2015-981), liste des annexes à joindre ;
+- **bail civil** pour une résidence secondaire ou un logement loué à une société (occupant désigné), et **location d'un parking** seul : rédigés d'après les articles 1714 et suivants du Code civil, faute de modèle officiel.
+
+Loyer, charges, dépôt, dates et révision IRL viennent du bail ; nom et adresse du bailleur, adresse du logement, surface, période de construction, durée, encadrement des loyers, travaux, honoraires et conditions particulières se complètent à l'écran. Les points bloquants empêchent l'édition : dépôt de garantie au-delà d'un mois (vide) ou deux mois (meublé), durée inférieure au minimum légal, forfait de charges en location vide hors colocation, logement classé G, loyer au-dessus du loyer de référence majoré sans complément justifié. **Télécharger le PDF** ou **Enregistrer dans les documents** du bail (et le partager avec le locataire). Le contrat doit être relu par les parties ; il ne remplace pas un conseil juridique.
+
+### Espace locataire
+
+Chaque locataire peut consulter en ligne, en lecture seule, son logement, ses quittances et reçus (PDF) et les documents que vous partagez.
+1. Renseignez son adresse e-mail (fiche locataire).
+2. **Inviter à l'espace locataire** (liste des locataires, menu « ⋯ », ou onglet Titulaires du bail) : un e-mail lui envoie un lien valable 30 jours, utilisable uniquement avec son adresse e-mail. Le lien et le code s'affichent aussi pour lui être transmis autrement.
+3. Il crée son compte (ou se connecte) avec cette adresse : son espace s'ouvre.
+
+Partage d'un document : case « Visible dans l'espace locataire » à l'ajout, ou menu « ⋯ » → Partager avec le locataire (document rattaché à son bail). **Aperçu de l'espace locataire** montre exactement ce qu'il voit. **Révoquer l'accès** le ferme immédiatement ; une nouvelle invitation le rouvre. Le locataire ne voit ni vos autres biens, ni vos dépenses, ni les documents non partagés.
+
 ## Loyers et paiements
 
 - **Enregistrer un paiement** : montant, date, moyen, référence. Il est réparti automatiquement de la plus ancienne échéance à la plus récente (modifiable avec « Répartir à la main »). Un excédent est conservé en avance (trop-perçu) et peut être affecté plus tard.
@@ -88,13 +105,13 @@ Par bien : date, fournisseur, montant, catégorie, **nature** (charge, immobilis
 
 ## Déclaration fiscale
 
-Choisissez l'année des revenus : l'onglet indique, selon le régime de chaque bien (à choisir dans le tableau ou la fiche du bien), les cases à remplir — 4BE (micro-foncier), formulaire 2044 ligne par ligne puis 4BA / 4BB / 4BC (réel), 5ND (micro-BIC), 5NA / 5NY avec amortissements (LMNP au réel). Quelques montants se saisissent (régularisation des provisions de l'année précédente, recettes diverses, paramètres d'amortissement). Export Excel. Détail des règles : [DECLARATION-FISCALE](DECLARATION-FISCALE.md). C'est une aide au remplissage, pas un conseil fiscal.
+Choisissez l'année des revenus : l'onglet indique, selon le régime de chaque bien (à choisir dans le tableau ou la fiche du bien), les cases à remplir — 4BE (micro-foncier), formulaire 2044 ligne par ligne puis 4BA / 4BB / 4BC et 4BD (réel), 5NI, 5NG ou 5NH selon la nature du meublé (micro-BIC ; 5ND pour les revenus 2024), liasse 2031 et compte de résultat 2033-B puis 5NA / 5NY avec amortissements (LMNP au réel). La section **Où déclarer sur impots.gouv.fr** donne, pour chaque régime, le parcours pas à pas : espace particulier (déclaration de revenus en ligne, rubriques à cocher, cases) ou espace professionnel (liasse des meublés au réel, 2072 d'une SCI à l'IR, 2065 d'une société à l'IS), avec les dates limites. **Dossier PDF** regroupe parcours et montants. Quelques montants se saisissent (régularisation des provisions de l'année précédente, recettes diverses, paramètres d'amortissement). Export Excel. Détail des règles : [DECLARATION-FISCALE](DECLARATION-FISCALE.md). C'est une aide au remplissage, pas un conseil fiscal.
 
 Ajout et suppression rapides : la ligne au-dessus du tableau ajoute une dépense en une fois (date, bien, catégorie, libellé, montant) ; chaque ligne a un bouton Supprimer, et la sélection multiple permet de supprimer plusieurs lignes ; « Dupliquer » recopie une ligne.
 
 ## Documents
 
-PDF, images, Word, Excel ou texte, 10 Mo maximum, rattachés à un bien, un bail ou une dépense. Ils sont privés : chaque ouverture passe par un lien valable 60 secondes. Supprimer un document supprime aussi le fichier.
+PDF, images, Word, Excel ou texte, 10 Mo maximum, rattachés à un bien, un bail ou une dépense. Ils sont privés : chaque ouverture passe par un lien valable 60 secondes. Un document rattaché à un bail peut être partagé avec le locataire (colonne « Espace locataire »). Supprimer un document supprime aussi le fichier.
 
 ## Mes biens
 
@@ -102,7 +119,7 @@ Pour chaque bien détenu : locataire actif, « Loué » dès qu'un bail est en c
 
 ## Mon abonnement
 
-État de votre accès (essai, abonnement, résiliation programmée, fin d'accès), offres et paiement sécurisé par Stripe, puis espace client Stripe pour les factures, le moyen de paiement et la résiliation. Si l'accès prend fin, vos données restent consultables et exportables. **Paramètres → Accès support** : autorisez, pour 7 jours, le support à consulter un résumé chiffré de votre compte.
+**Offre Découverte** : 30 jours gratuits à la création du compte, sans carte bancaire (1 bien détenu, 5 biens en prospection, 2 scénarios par bien, 100 Mo de documents). À son terme, sans abonnement, vos données restent consultables et exportables mais ne sont plus modifiables (rien n'est supprimé). État de votre accès (offre Découverte, abonnement, résiliation programmée, fin d'accès), offres et paiement sécurisé par Stripe, puis espace client Stripe pour les factures, le moyen de paiement et la résiliation. Si l'accès prend fin, vos données restent consultables et exportables. **Paramètres → Accès support** : autorisez, pour 7 jours, le support à consulter un résumé chiffré de votre compte.
 
 ## Contacts
 

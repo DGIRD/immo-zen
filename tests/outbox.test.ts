@@ -85,3 +85,16 @@ test('Resend : requête conforme, pièce jointe en base64', async () => {
   const failing = (async () => new Response('quota', { status: 429 })) as unknown as typeof fetch;
   await assert.rejects(resendSender('k', 'a@b.fr', undefined, failing)({ to: ['x@y.fr'], subject: 's', text: 't', attachments: [] }), /429/);
 });
+
+test('file d’e-mails : invitation à l’espace locataire avec le lien de l’application', async () => {
+  const body = 'Ouvrez ce lien : {{APP_URL}}#/espace-locataire?code=ABC123DEF456';
+  const ok = deps([row({ kind: 'invitation_locataire', body_text: body })], { appUrl: 'https://immo-zen.fr/app' });
+  assert.equal((await processOutbox(ok.d)).sent, 1);
+  assert.equal(ok.sent[0]!.text, 'Ouvrez ce lien : https://immo-zen.fr/app/#/espace-locataire?code=ABC123DEF456');
+  assert.equal(ok.sent[0]!.attachments.length, 0);
+  // adresse de l'application absente : échec explicite, rien n'est envoyé
+  const ko = deps([row({ kind: 'invitation_locataire', body_text: body })]);
+  const r = await processOutbox(ko.d);
+  assert.equal(r.sent, 0);
+  assert.match(ko.results[0]!.error ?? '', /APP_URL/);
+});

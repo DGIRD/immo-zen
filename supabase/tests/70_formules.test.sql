@@ -4,8 +4,10 @@
 \pset tuples_only on
 
 insert into auth.users (id, email, created_at) values
-  ('c0000000-0000-0000-0000-000000000001', 'carole@example.test', now() - interval '90 days'),
-  ('c0000000-0000-0000-0000-000000000002', 'denis@example.test', now());
+  ('c0000000-0000-0000-0000-000000000001', 'carole@example.test', now() - interval '10 days'),
+  ('c0000000-0000-0000-0000-000000000002', 'denis@example.test', now()),
+  ('c0000000-0000-0000-0000-000000000003', 'emile@example.test', now() - interval '40 days');
+insert into public.properties (id, user_id, title, status) values ('c0000000-0000-0000-0000-0000000000e1', 'c0000000-0000-0000-0000-000000000003', 'Bien d''Émile', 'acquis');
 
 -- ---------- Contrôle désactivé (phase de lancement) : aucune limite
 begin;
@@ -19,14 +21,25 @@ commit;
 
 select set_config('request.jwt.claims', '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', false);
 select public.iz_admin_set_config(true, 30, null);
-select tests.ok((select enforce_subscription and trial_tier = 'patrimoine' from public.app_config), 'contrôle activé, essai en formule Patrimoine');
+select tests.ok((select enforce_subscription and trial_tier = 'decouverte' and trial_days = 30 from public.app_config), 'contrôle activé, offre Découverte de 30 jours');
 select set_config('request.jwt.claims', '', false);
 
--- ---------- Carole : compte de plus de 30 jours, sans abonnement → Découverte
+-- ---------- Émile : offre Découverte terminée (compte de 40 jours), sans abonnement → consultation seule
+begin;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"c0000000-0000-0000-0000-000000000003","role":"authenticated"}', true);
+select tests.ok((select not has_access and reason = 'decouverte_terminee' from public.iz_my_access()), 'Découverte terminée : accès en consultation seule');
+select tests.ok((select count(*) from public.properties) = 1, 'Découverte terminée : données consultables');
+update public.properties set title = 'Modifié';
+select tests.ok((select title from public.properties) = 'Bien d''Émile', 'Découverte terminée : modification sans effet');
+select tests.fails($q$ insert into public.properties (title, status) values ('Nouveau', 'repere') $q$, 'Découverte terminée : création refusée');
+commit;
+
+-- ---------- Carole : compte de 10 jours, sans abonnement → offre Découverte (30 jours) et ses limites
 begin;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"c0000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
-select tests.ok((select public.iz_my_plan() ->> 'tier') = 'decouverte', 'Découverte : formule d''un compte sans abonnement après l''essai');
+select tests.ok((select public.iz_my_plan() ->> 'tier') = 'decouverte', 'Découverte : formule d''un compte sans abonnement pendant 30 jours');
 select tests.ok((select (public.iz_my_plan() -> 'limits' ->> 'owned')::int = 1 and (public.iz_my_plan() -> 'limits' ->> 'prospects')::int = 5), 'Découverte : limites transmises à l''interface');
 insert into public.properties (title, status) select 'Prospect ' || g, 'repere' from generate_series(1, 5) g;
 select tests.ok((select count(*) from public.properties) = 5, 'Découverte : 5 biens en prospection');
@@ -110,7 +123,7 @@ commit;
 select set_config('request.jwt.claims', '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', false);
 select public.iz_admin_set_manual_access('c0000000-0000-0000-0000-000000000001', now() + interval '1 month', 'Partenaire', 'essentiel');
 select tests.ok((select tier = 'essentiel' from public.iz_admin_users() where user_id = 'c0000000-0000-0000-0000-000000000001'), 'accès manuel : formule choisie par l''administrateur');
-select tests.ok((select tier = 'patrimoine' from public.iz_admin_users() where user_id = 'c0000000-0000-0000-0000-000000000002'), 'essai : nouveau compte en formule Patrimoine');
+select tests.ok((select tier = 'decouverte' and has_access from public.iz_admin_users() where user_id = 'c0000000-0000-0000-0000-000000000002'), 'nouveau compte : offre Découverte');
 select tests.fails($q$ select public.iz_admin_set_manual_access('c0000000-0000-0000-0000-000000000001', now() + interval '1 month', null, 'premium') $q$, 'accès manuel : formule inconnue refusée');
 select tests.ok((select tier = 'pro' from public.iz_admin_users() where user_id = '22222222-2222-2222-2222-222222222222'), 'administrateur : formule Pro');
 select public.iz_admin_set_config(false, 30, null);

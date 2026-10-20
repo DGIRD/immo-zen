@@ -1,4 +1,5 @@
 import type { PlatformApi } from './platform.ts';
+import type { TenantAccount } from './types.ts';
 import type {
   Allocation, Contact, DepositMovement, DocumentRow, Expense, Insert, Lease, LeaseTenant, OutboxMessage, Patch, Payment, Property, PropertyTask,
   Receipt, Reminder, RentCharge, Scenario, Tables, TableName, Tenant, TimelineEvent, UserSettings, VersionedTable, LeaseRevision } from './types.ts';
@@ -27,6 +28,8 @@ export interface Snapshot {
   expenses: Expense[];
   outbox: OutboxMessage[];
   revisions: LeaseRevision[];
+  /** Accès des locataires à leur espace. */
+  tenantAccounts: TenantAccount[];
   settings: UserSettings | null;
   /** Tables absentes côté serveur (migration non appliquée). */
   missingTables: string[];
@@ -35,7 +38,7 @@ export interface Snapshot {
 
 export const EMPTY_SNAPSHOT: Snapshot = {
   properties: [], scenarios: [], contacts: [], tasks: [], events: [], tenants: [], leases: [], leaseTenants: [], charges: [], payments: [],
-  allocations: [], deposits: [], receipts: [], reminders: [], documents: [], expenses: [], outbox: [], revisions: [], settings: null, missingTables: [], loadedAt: '',
+  allocations: [], deposits: [], receipts: [], reminders: [], documents: [], expenses: [], outbox: [], revisions: [], tenantAccounts: [], settings: null, missingTables: [], loadedAt: '',
 };
 
 /** Correspondance table serveur → liste du Snapshot. */
@@ -55,6 +58,18 @@ export class RepoError extends Error {
     super(message);
   }
 }
+
+/** Espace locataire, tel que renvoyé par iz_tenant_portal(). */
+export interface PortalLease {
+  id: string; label: string | null; furnished: boolean; start_date: string; end_date: string | null; rent_hc: number; charges_amount: number;
+  charges_mode: 'provision' | 'forfait'; payment_day: number; landlord_name: string | null; landlord_address: string | null;
+  property_title: string; property_address: string;
+}
+export type PortalReceipt = Pick<Receipt, 'id' | 'lease_id' | 'kind' | 'number' | 'issued_on' | 'period_start' | 'period_end' | 'rent_amount' | 'charges_amount'
+  | 'paid_amount' | 'payments' | 'tenant_names' | 'landlord_name' | 'landlord_address' | 'property_address' | 'extra_lines'> & { charges_mode: 'provision' | 'forfait' };
+export interface PortalDocument { id: string; title: string; category: string; mime_type: string; size_bytes: number; storage_path: string; created_at: string; lease_id: string | null }
+export interface PortalAccount { id: string; tenant_id: string; accepted_at: string; tenant_name: string; leases: PortalLease[]; receipts: PortalReceipt[]; documents: PortalDocument[] }
+export interface TenantPortal { accounts: PortalAccount[] }
 
 export interface ReviseRentArgs { leaseId: string; effective: string; oldLabel: string; oldIndex: number; newLabel: string; newIndex: number }
 
@@ -89,6 +104,15 @@ export interface Repo {
   issueReceiptWithExtras(chargeId: string, extraChargeIds: string[]): Promise<Receipt>;
   /** Révision annuelle du loyer (IRL). */
   reviseRent(a: ReviseRentArgs): Promise<LeaseRevision>;
+
+  // Espace locataire
+  /** Invite (ou réinvite) un locataire : code à usage unique, e-mail placé en file. */
+  inviteTenant(tenantId: string): Promise<{ code: string; email: string }>;
+  revokeTenant(tenantId: string): Promise<void>;
+  /** Le compte connecté accepte une invitation reçue à son adresse e-mail. */
+  acceptTenantInvite(code: string): Promise<void>;
+  /** Baux, quittances et documents partagés du locataire connecté (null : fonction absente côté serveur). */
+  tenantPortal(): Promise<TenantPortal | null>;
 
   // Fichiers privés
   uploadFile(path: string, file: Blob, contentType: string): Promise<void>;

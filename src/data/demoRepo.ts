@@ -11,7 +11,7 @@ import { allocatedByCharge, chargeTotal, leaseTenants, planCharges, tenantName }
 import { round2 } from '../domain/simulator.ts';
 import { todayParis } from '../domain/format.ts';
 import { EMPTY_SNAPSHOT, RepoError, type Repo, type SessionInfo, type Snapshot, type UpdateResult } from './repo.ts';
-import type { LeaseRevision } from './types.ts';
+import type { LeaseRevision, TenantAccount } from './types.ts';
 import type {
   Allocation, Insert, Lease, OutboxMessage, Patch, Payment, Property, Receipt, Reminder, RentCharge, Scenario, Tables, TableName,
   TimelineEvent, UserSettings, VersionedTable,
@@ -23,13 +23,13 @@ const USER = '00000000-0000-4000-8000-000000000001';
 const SESSION: SessionInfo = { userId: USER, email: 'demo@immo-zen.local' };
 const DEMO_FILE_LIMIT = 2 * 1024 * 1024;
 
-type Db = { [K in TableName]: Tables[K][] } & { user_settings: UserSettings; receipts: Receipt[]; email_outbox: OutboxMessage[]; lease_revisions: LeaseRevision[] };
+type Db = { [K in TableName]: Tables[K][] } & { user_settings: UserSettings; receipts: Receipt[]; email_outbox: OutboxMessage[]; lease_revisions: LeaseRevision[]; tenant_accounts: TenantAccount[] };
 
 function emptyDb(): Db {
   return {
     properties: [], scenarios: [], pro_contacts: [], property_tasks: [], timeline_events: [], tenants: [], leases: [], lease_tenants: [],
     rent_charges: [], payments: [], payment_allocations: [], deposit_movements: [], reminders: [], documents: [], expenses: [],
-    receipts: [], email_outbox: [], lease_revisions: [],
+    receipts: [], email_outbox: [], lease_revisions: [], tenant_accounts: [],
     user_settings: { user_id: USER, simulator_defaults: {}, ui_prefs: {}, rental_settings: {}, version: 1, updated_at: new Date().toISOString() },
   };
 }
@@ -56,7 +56,7 @@ const DEFAULTS: Partial<Record<TableName, Record<string, unknown>>> = {
   payments: { date_defaulted: false, method: 'virement', reference: null, comment: null, source: 'saisie' },
   deposit_movements: { comment: null },
   reminders: { level: 1, charge_ids: [], debt_amount: 0, recipients: [], status: 'brouillon', created_by: 'proprietaire', sent_at: null, error: null },
-  documents: { property_id: null, lease_id: null, tenant_id: null, category: 'autre', notes: null },
+  documents: { property_id: null, lease_id: null, tenant_id: null, category: 'autre', notes: null, shared_with_tenant: false },
   expenses: { supplier: null, label: null, nature: 'charge', recoverable_amount: 0, payment_status: 'paye', paid_on: null, document_id: null, notes: null, account: null, import_ref: null },
 };
 const UNVERSIONED: TableName[] = ['timeline_events', 'lease_tenants', 'payment_allocations', 'deposit_movements'];
@@ -253,7 +253,7 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
         properties: db.properties, scenarios: db.scenarios, contacts: db.pro_contacts, tasks: db.property_tasks, events: db.timeline_events,
         tenants: db.tenants, leases: db.leases, leaseTenants: db.lease_tenants, charges: db.rent_charges, payments: db.payments,
         allocations: db.payment_allocations, deposits: db.deposit_movements, receipts: db.receipts, reminders: db.reminders,
-        documents: db.documents, expenses: db.expenses, outbox: db.email_outbox, revisions: db.lease_revisions ?? [], settings: db.user_settings, loadedAt: now(),
+        documents: db.documents, expenses: db.expenses, outbox: db.email_outbox, revisions: db.lease_revisions ?? [], tenantAccounts: db.tenant_accounts ?? [], settings: db.user_settings, loadedAt: now(),
       };
     },
     async insert(table, row) {
@@ -358,6 +358,34 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
       write(db);
       return { status: 'ok', row: db.user_settings };
     },
+
+    async inviteTenant(tenantId) {
+      const db = read();
+      const t = db.tenants.find((x) => x.id === tenantId) ?? fail('Locataire introuvable.');
+      if (!t.email) fail('Renseignez l’adresse e-mail du locataire pour l’inviter.');
+      if (t.archived_at) fail('Ce locataire est archivé.');
+      const code = crypto.randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase();
+      const email = t.email!.toLowerCase();
+      db.tenant_accounts ??= [];
+      let a = db.tenant_accounts.find((x) => x.tenant_id === t.id);
+      if (!a) { a = { id: crypto.randomUUID(), user_id: USER, tenant_id: t.id, email, invited_at: now(), account_user_id: null, accepted_at: null, revoked_at: null, created_at: now(), updated_at: now() }; db.tenant_accounts.push(a); }
+      else Object.assign(a, { email, invited_at: now(), revoked_at: null, updated_at: now(), ...(a.email !== email ? { account_user_id: null, accepted_at: null } : {}) });
+      queueEmail(db, { kind: 'invitation_locataire', to_emails: [email], subject: 'Votre espace locataire Immo-Zen',
+        body_text: `Invitation à l’espace locataire (code ${code}). Mode démonstration : aucun e-mail n’est envoyé.`, receipt_id: null, reminder_id: null, lease_id: null, charge_id: null,
+        dedupe: `invitation:${a.id}:${code}` } as never);
+      write(db);
+      return { code, email };
+    },
+    async revokeTenant(tenantId) {
+      const db = read();
+      const a = (db.tenant_accounts ?? []).find((x) => x.tenant_id === tenantId) ?? fail('Aucun accès à révoquer pour ce locataire.');
+      Object.assign(a, { revoked_at: now(), updated_at: now() });
+      write(db);
+    },
+    async acceptTenantInvite() {
+      fail('Mode démonstration : l’espace locataire s’ouvre avec le compte du locataire. Utilisez « Aperçu de l’espace locataire » depuis la fiche du locataire.');
+    },
+    async tenantPortal() { return { accounts: [] }; },
 
     async generateCharges(leaseId, until) {
       const db = read();

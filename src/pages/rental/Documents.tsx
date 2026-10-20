@@ -3,7 +3,7 @@ import { useStore } from '../../data/store.tsx';
 import type { DocumentCategory, DocumentRow } from '../../data/types.ts';
 import { dateTime } from '../../domain/format.ts';
 import { DataTable, type Column } from '../../ui/DataTable.tsx';
-import { Button, EmptyState, Modal, PageHeader, Section, Select, TextInput, useConfirm } from '../../ui/components.tsx';
+import { Button, Checkbox, EmptyState, Modal, PageHeader, Section, Select, TextInput, useConfirm } from '../../ui/components.tsx';
 import { useRental } from './common.tsx';
 
 export const DOC_CATEGORY_LABELS: Record<DocumentCategory, string> = {
@@ -95,7 +95,12 @@ export function DocumentList({ filter }: { filter?: { property_id?: string; leas
     { id: 'type', label: 'Format', value: (d) => ALLOWED_TYPES[d.mime_type] ?? d.mime_type },
     { id: 'size', label: 'Taille', value: (d) => d.size_bytes, kind: 'number', align: 'right', render: (d) => size(d.size_bytes) },
     { id: 'created', label: 'Ajouté le', value: (d) => d.created_at, render: (d) => dateTime(d.created_at), mobile: true },
+    { id: 'shared', label: 'Espace locataire', value: (d) => (d.shared_with_tenant ? 'Partagé' : null), render: (d) => (d.shared_with_tenant ? <span className="pill pill-ok">Partagé</span> : <span className="muted">—</span>) },
   ];
+  const toggleShare = async (d: DocumentRow) => {
+    if (!d.lease_id && !d.tenant_id) { notify('Rattachez d’abord le document à un bail pour le partager avec le locataire.', 'error'); return; }
+    if (await store.update('documents', d, { shared_with_tenant: !d.shared_with_tenant }, `Le document « ${d.title} »`)) notify(d.shared_with_tenant ? 'Document retiré de l’espace locataire.' : 'Document partagé avec le locataire.');
+  };
   const remove = async (d: DocumentRow) => {
     const linked = data.expenses.filter((e) => e.document_id === d.id).length;
     if (!(await ask('Supprimer le document', <>« {d.title} » sera supprimé définitivement{linked ? `, et retiré de ${linked} dépense(s)` : ''}.</>, 'Supprimer'))) return;
@@ -117,6 +122,7 @@ export function DocumentList({ filter }: { filter?: { property_id?: string; leas
         </>}
         rowActions={(d) => [
           { label: 'Ouvrir', onSelect: () => void open(d) },
+          { label: d.shared_with_tenant ? 'Ne plus partager avec le locataire' : 'Partager avec le locataire', onSelect: () => void toggleShare(d) },
           { label: 'Supprimer', danger: true, onSelect: () => void remove(d) },
         ]}
         empty={<EmptyState title="Aucun document" action={<Button variant="primary" onClick={() => setUpload(true)}>Ajouter un document</Button>}>PDF, images, Word, Excel ou texte, 10 Mo maximum par fichier.</EmptyState>} />
@@ -137,6 +143,7 @@ function UploadDialog({ open, onClose, defaults }: { open: boolean; onClose: () 
   const [category, setCategory] = useState<DocumentCategory>('autre');
   const [property, setProperty] = useState<string>(defaults?.property_id ?? '');
   const [lease, setLease] = useState<string>(defaults?.lease_id ?? '');
+  const [shared, setShared] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const reset = () => { setFile(null); setTitle(''); setAutoTitle(''); setError(null); setCategory('autre'); if (input.current) input.current.value = ''; };
@@ -145,7 +152,7 @@ function UploadDialog({ open, onClose, defaults }: { open: boolean; onClose: () 
       footer={<><Button onClick={() => { reset(); onClose(); }}>Annuler</Button><Button variant="primary" disabled={!file || !title.trim() || busy} onClick={async () => {
         if (!file) return;
         setBusy(true);
-        const row = await upload(file, { title: title.trim(), category, property_id: property || null, lease_id: lease || null });
+        const row = await upload(file, { title: title.trim(), category, property_id: property || null, lease_id: lease || null, shared_with_tenant: !!lease && shared });
         setBusy(false);
         if (row) { store.notify('Document ajouté.'); reset(); onClose(); }
       }}>{busy ? 'Envoi…' : 'Ajouter'}</Button></>}>
@@ -168,6 +175,7 @@ function UploadDialog({ open, onClose, defaults }: { open: boolean; onClose: () 
           options={store.data.properties.filter((p) => p.status === 'acquis' || p.id === defaults?.property_id).map((p) => [p.id, p.title] as const)} />
         <Select label="Bail" value={lease || null} onChange={(v) => setLease(v ?? '')} allowEmpty="Aucun"
           options={store.data.leases.filter((l) => !property || l.property_id === property).map((l) => [l.id, leaseLabel(l)] as const)} />
+        {lease && <Checkbox label="Visible dans l’espace locataire" checked={shared} onChange={setShared} />}
       </div>
     </Modal>
   );

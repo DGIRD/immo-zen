@@ -1,6 +1,6 @@
 import { createSupabasePlatform } from './platform.ts';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { EMPTY_SNAPSHOT, RepoError, type Repo, type SessionInfo, type Snapshot, type UpdateResult } from './repo.ts';
+import { EMPTY_SNAPSHOT, RepoError, type Repo, type SessionInfo, type Snapshot, type TenantPortal, type UpdateResult } from './repo.ts';
 import type { Insert, Patch, Receipt, Reminder, Tables, TableName, UserSettings, VersionedTable } from './types.ts';
 
 const PAGE = 1000;
@@ -70,7 +70,7 @@ export function createSupabaseRepo(url: string, anonKey: string): Repo {
     async loadAll(): Promise<Snapshot> {
       const missing: string[] = [];
       const [properties, scenarios, contacts, tasks, events, settings, tenants, leases, leaseTenants, charges, payments, allocations, deposits,
-        receipts, reminders, documents, expenses, outbox, revisions] = await Promise.all([
+        receipts, reminders, documents, expenses, outbox, revisions, tenantAccounts] = await Promise.all([
         selectAll<Tables['properties']>('properties'),
         selectAll<Tables['scenarios']>('scenarios'),
         selectAll<Tables['pro_contacts']>('pro_contacts'),
@@ -90,10 +90,11 @@ export function createSupabaseRepo(url: string, anonKey: string): Repo {
         optional<Snapshot['expenses'][number]>('expenses', missing, 'expense_date'),
         optional<Snapshot['outbox'][number]>('email_outbox', missing),
         optional<Snapshot['revisions'][number]>('lease_revisions', [], 'effective_on'),
+        optional<Snapshot['tenantAccounts'][number]>('tenant_accounts', []),
       ]);
       return {
         ...EMPTY_SNAPSHOT, properties, scenarios, contacts, tasks, events, settings, tenants, leases, leaseTenants, charges, payments, allocations,
-        deposits, receipts, reminders, documents, expenses, outbox, revisions, missingTables: [...new Set(missing)], loadedAt: new Date().toISOString(),
+        deposits, receipts, reminders, documents, expenses, outbox, revisions, tenantAccounts, missingTables: [...new Set(missing)], loadedAt: new Date().toISOString(),
       };
     },
 
@@ -141,6 +142,21 @@ export function createSupabaseRepo(url: string, anonKey: string): Repo {
     },
     async reviseRent(a) {
       return check(await sb.rpc('iz_revise_rent', { p_lease: a.leaseId, p_effective: a.effective, p_old_label: a.oldLabel, p_old_index: a.oldIndex, p_new_label: a.newLabel, p_new_index: a.newIndex }).single()) as never;
+    },
+    async inviteTenant(tenantId) {
+      const r = check(await sb.rpc('iz_invite_tenant', { p_tenant: tenantId })) as { code: string; email: string };
+      return { code: r.code, email: r.email };
+    },
+    async revokeTenant(tenantId) {
+      check(await sb.rpc('iz_revoke_tenant_access', { p_tenant: tenantId }));
+    },
+    async acceptTenantInvite(code) {
+      check(await sb.rpc('iz_accept_tenant_invite', { p_code: code }));
+    },
+    async tenantPortal() {
+      const res = await sb.rpc('iz_tenant_portal');
+      if (res.error && (res.error.code === 'PGRST202' || /schema cache|does not exist/i.test(res.error.message))) return null;
+      return check(res) as TenantPortal;
     },
     async issueReceipt(chargeId, kind) {
       return check(await sb.rpc('iz_issue_receipt', { p_charge: chargeId, p_kind: kind }).single()) as Receipt;

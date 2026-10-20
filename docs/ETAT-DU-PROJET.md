@@ -71,7 +71,7 @@ Légende : **Implémenté et testé** = code livré et couvert par un test autom
 | Mon abonnement : statut, période, échéance ou fin d'accès, factures et résiliation via Stripe | Implémenté et testé (démonstration) | e2e |
 | Administration : comptes, invitation sans mot de passe en clair, accès manuel, offres, contrôle d'accès, incidents, journal, prospects commerciaux séparés | Implémenté et testé (SQL, démonstration) / **à configurer** (premier administrateur, invitation) | SQL + e2e |
 | Accès support autorisé par l'abonné, limité et journalisé | Implémenté et testé | SQL + e2e |
-| Déclaration fiscale : micro-foncier (4BE), 2044 ligne par ligne et 4BA/4BB/4BC, micro-BIC (5ND), LMNP réel avec amortissements et report (5NA/5NY), saisies complémentaires, export Excel | Implémenté et testé (calculs) / **non validé par un professionnel** | unitaires + e2e |
+| Déclaration fiscale : micro-foncier (4BE), 2044 ligne par ligne et 4BA/4BB/4BC, micro-BIC (5ND, puis 5NI/5NG/5NH), LMNP réel avec amortissements et report (5NA/5NY), saisies complémentaires, export Excel | Implémenté et testé (calculs) / **non validé par un professionnel** | unitaires + e2e |
 
 ## Évolutions du 17 octobre 2026
 
@@ -129,6 +129,15 @@ Limites : les valeurs IRL sont intégrées jusqu'au 3e trimestre 2026 (à compl�
 | Site vitrine : section Tarifs avec la grille | Implémenté et testé | e2e + captures |
 
 Migration à exécuter : `20261018000500_formules.sql`. Le contrôle reste désactivé tant qu'un administrateur ne l'active pas (Administration → Application des formules).
+
+## Baux, déclaration par régime, espace locataire (20 octobre 2026)
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Contrat de bail vide et meublé d'après les contrats types (décret n° 2015-587), bail civil (résidence secondaire, société) et parking d'après le Code civil : saisie, contrôles bloquants, aperçu, PDF, enregistrement dans les documents | Implémenté et testé / **non validé par un juriste** | unitaires + SQL + e2e |
+| Déclaration par régime : micro-BIC 5NI / 5NG / 5NH (revenus 2025) ou 5ND / 5NG (2024), liasse 2033-B et 2031 des LMNP au réel, case 4BD, parcours espace particulier / professionnel, SCI à l'IR (2072) et à l'IS (2065, consignes), dossier PDF | Implémenté et testé (calculs) / **non validé par un professionnel** | unitaires + e2e |
+| Espace locataire : invitation par e-mail (code à usage unique lié à l'adresse, 30 jours), acceptation, quittances et documents partagés en lecture seule, aperçu du bailleur, révocation | Implémenté et testé (SQL, démonstration) / **à configurer** (migration `20261020000100`, fonction `daily` redéployée) ; parcours réel du locataire non testé contre Supabase Auth | SQL + e2e |
+| Offre Découverte limitée à 30 jours, puis consultation seule sans abonnement (si les formules sont appliquées) ; site vitrine mis à jour | Implémenté et testé | SQL + e2e |
 
 ## Restant
 

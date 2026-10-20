@@ -10,6 +10,7 @@ import { round2 } from '../../domain/simulator.ts';
 import { Button, EmptyState, KeyValue, Modal, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
 import { href, navigate } from '../../ui/router.ts';
 import { DocumentList } from './Documents.tsx';
+import { AccessPill, useTenantAccess } from './TenantAccess.tsx';
 import { IRL_VALUES, irlLabel, revisionPlan } from '../../domain/irl.ts';
 import { ChargeActions, ChargeBadge, LeaseBadge, PaymentDialog, paymentAllocated, periodLabel, ReceiptDialog, sendLabel, useRental } from './common.tsx';
 
@@ -48,6 +49,7 @@ export function LeaseDetailPage({ id }: { id: string }) {
         subtitle={<>{names || 'Aucun titulaire'}, location {lease.furnished ? 'meublée' : 'vide'} du {date(lease.start_date)}{lease.end_date ? ` au ${date(lease.end_date)}` : ', sans date de fin'}</>}
         actions={<>
           <Button onClick={() => navigate(`/baux/${lease.id}/modifier`)}>Modifier</Button>
+          <Button onClick={() => navigate(`/baux/${lease.id}/contrat`)}>Contrat de bail</Button>
           <Button onClick={async () => { const n = await store.call((r) => r.generateCharges(lease.id)); if (n !== null) store.notify(n ? `${n} échéance(s) générée(s).` : 'Échéances déjà à jour.'); }}>Générer les échéances</Button>
           <Button variant="primary" onClick={() => setPay({ mode: 'saisie' })}>Enregistrer un paiement</Button>
         </>} />
@@ -381,9 +383,10 @@ function Holders({ leaseId }: { leaseId: string }) {
   const { data } = store;
   const links = data.leaseTenants.filter((x) => x.lease_id === leaseId);
   const [leftOn, setLeftOn] = useState<Record<string, string>>({});
+  const access = useTenantAccess();
   return (
     <Section title="Titulaires du bail" actions={<Button size="sm" onClick={() => navigate(`/baux/${leaseId}/modifier`)}>Ajouter ou retirer</Button>}>
-      <p className="muted small">Départ d’un colocataire : indiquez sa date de départ ; il reste dans l’historique et n’apparaît plus sur les quittances suivantes.</p>
+      <p className="muted small">Départ d’un colocataire : indiquez sa date de départ ; il reste dans l’historique et n’apparaît plus sur les quittances suivantes. Espace locataire : chaque titulaire invité consulte en ligne ses quittances et les documents partagés.</p>
       <ul className="tasks">
         {links.map((l) => {
           const t = data.tenants.find((x) => x.id === l.tenant_id);
@@ -391,6 +394,9 @@ function Holders({ leaseId }: { leaseId: string }) {
           return (
             <li key={l.tenant_id}>
               <span className="checkbox">{tenantName(t)}{t.email ? <span className="muted small">, {t.email}</span> : <span className="muted small">, pas d’e-mail</span>}</span>
+              <span className="row"><AccessPill tenant={t} />
+                {access.actions(t).map((a) => <Button key={a.label} size="sm" variant={a.danger ? 'ghost' : 'secondary'} onClick={a.onSelect}>{a.label}</Button>)}
+              </span>
               {l.left_on ? <span className="muted small">parti le {date(l.left_on)} <button type="button" className="link" onClick={() => void store.updateWhere('lease_tenants', { lease_id: leaseId, tenant_id: l.tenant_id }, { left_on: null })}>annuler</button></span> : (
                 <span className="row">
                   <input type="date" aria-label={`Date de départ de ${tenantName(t)}`} value={leftOn[l.tenant_id] ?? ''} onChange={(e) => setLeftOn({ ...leftOn, [l.tenant_id]: e.target.value })} />
@@ -401,6 +407,7 @@ function Holders({ leaseId }: { leaseId: string }) {
           );
         })}
       </ul>
+      {access.ui}
     </Section>
   );
 }

@@ -139,23 +139,23 @@ function AccessConfig({ run, onSaved, api }: { run: Run; onSaved: () => Promise<
   const [enforce, setEnforce] = useState(c?.enforce_subscription ?? false);
   const [trial, setTrial] = useState<number | null>(c?.trial_days ?? 30);
   const [email, setEmail] = useState(c?.support_email ?? '');
-  const [trialTier, setTrialTier] = useState<TierCode>(c?.trial_tier ?? 'patrimoine');
+  const [trialTier, setTrialTier] = useState<TierCode>(c?.trial_tier ?? 'decouverte');
   const [demoTier, setDemoTier] = useState<TierCode>(c?.demo_tier ?? 'pro');
   const demo = useStore().repo.mode === 'demo';
   return (
     <Section title="Application des formules">
       <Checkbox label="Appliquer les limites des formules" checked={enforce} onChange={setEnforce} />
-      <p className="muted small">Désactivé (phase de lancement) : tout le monde dispose de toutes les fonctions. Activé : chaque compte a les limites de sa formule ; sans abonnement ni accès manuel, après l’essai, il passe en formule Découverte (gratuite : 1 bien détenu, 5 en prospection). Ses données restent consultables, modifiables et exportables ; seuls les ajouts au-delà des limites sont refusés. Les administrateurs ont toujours la formule Pro.</p>
+      <p className="muted small">Désactivé (phase de lancement) : tout le monde dispose de toutes les fonctions. Activé : chaque compte a les limites de sa formule. Un nouveau compte dispose de l’offre Découverte (1 bien détenu, 5 en prospection) pendant la durée ci-dessous ; ensuite, sans abonnement ni accès manuel, il passe en consultation seule (données consultables et exportables, plus de modification). Les administrateurs ont toujours la formule Pro.</p>
       <div className="grid">
-        <NumberInput label="Durée de l’essai gratuit" suffix="jours" value={trial} onChange={setTrial} hint="Comptée depuis la création du compte" />
-        <Select label="Formule pendant l’essai" value={trialTier} onChange={(v) => setTrialTier(v ?? 'patrimoine')} options={TIER_OPTIONS} />
+        <NumberInput label="Durée de l’offre Découverte" suffix="jours" value={trial} onChange={setTrial} hint="Comptée depuis la création du compte (30 jours annoncés sur le site)" />
+        <Select label="Formule pendant cette période" value={trialTier} onChange={(v) => setTrialTier(v ?? 'decouverte')} options={TIER_OPTIONS} />
         <TextInput label="E-mail du support" type="email" value={email} onChange={setEmail} />
         {demo && <Select label="Formule simulée (démonstration)" value={demoTier} onChange={(v) => setDemoTier(v ?? 'pro')} options={TIER_OPTIONS} hint="Mode démonstration : formule appliquée au compte local quand les limites sont activées." />}
       </div>
       <Button variant="primary" onClick={async () => {
         const days = Math.round(trial ?? 0);
         if (days < 0 || days > 365) { await run(async () => { throw new Error('Essai entre 0 et 365 jours.'); }); return; }
-        if (enforce && !c?.enforce_subscription && !(await ask('Appliquer les formules', 'Les comptes sans abonnement ni essai en cours passeront immédiatement en formule Découverte : plus d’ajout au-delà d’un bien détenu et de 5 biens en prospection. Vérifiez d’abord que les offres sont ouvertes et que le webhook Stripe fonctionne.', 'Appliquer'))) return;
+        if (enforce && !c?.enforce_subscription && !(await ask('Appliquer les formules', 'Les comptes de moins de 30 jours auront les limites de l’offre Découverte ; les comptes plus anciens sans abonnement passeront immédiatement en consultation seule. Vérifiez d’abord que les offres sont ouvertes et que le webhook Stripe fonctionne.', 'Appliquer'))) return;
         if (await run(() => api.setConfig(enforce, days, email, trialTier, demoTier), 'Configuration enregistrée.') !== null) await onSaved();
       }}>Enregistrer</Button>
       {dialog}
