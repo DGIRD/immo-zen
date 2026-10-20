@@ -1,5 +1,5 @@
 -- =====================================================================
--- Planification des tâches serveur Immo-Zen (exemple, à adapter)
+-- Planification des tâches serveur Immo-Zen (exemple générique ; utilisez plutôt supabase/scheduling.sql, prêt à l’emploi)
 -- À exécuter dans Supabase > SQL Editor APRÈS :
 --   1. la migration 20261014000200_lot2_gestion_locative.sql ;
 --   2. le déploiement de la fonction « daily » (voir docs/TACHES-SERVEUR.md) ;
