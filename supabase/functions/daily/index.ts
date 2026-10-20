@@ -47,11 +47,19 @@ Deno.serve(async (req) => {
     }
 
     if (tasks.includes('outbox')) {
-      const enabled = env('EMAIL_ENABLED') === 'true' && !!env('RESEND_API_KEY') && !!env('EMAIL_FROM');
+      // réglages manquants (noms seulement, jamais les valeurs) : affichés dans la réponse pour le diagnostic
+      const missing = [
+        ...(env('EMAIL_ENABLED').trim().toLowerCase() === 'true' ? [] : [`EMAIL_ENABLED (≠ « true »${env('EMAIL_ENABLED') ? '' : ', absente'})`]),
+        ...(env('RESEND_API_KEY').trim() ? [] : ['RESEND_API_KEY']),
+        ...(env('EMAIL_FROM').trim() ? [] : ['EMAIL_FROM']),
+        ...(/^https:\/\//.test(env('APP_URL').trim()) ? [] : ['APP_URL']),
+      ];
+      const enabled = env('EMAIL_ENABLED').trim().toLowerCase() === 'true' && !!env('RESEND_API_KEY').trim() && !!env('EMAIL_FROM').trim();
+      if (missing.length) out.emailSettingsMissing = missing;
       out.outbox = await processOutbox({
         enabled,
         pdfLib,
-        appUrl: env('APP_URL'),
+        appUrl: env('APP_URL').trim(),
         log,
         claim: async (limit) => {
           const { data, error } = await sb.rpc('iz_claim_outbox', { p_limit: limit });
@@ -76,7 +84,7 @@ Deno.serve(async (req) => {
           await sb.from('reminders').update({ status: 'annule', error: reason }).eq('id', id);
           await sb.from('email_outbox').update({ status: 'annule' }).eq('reminder_id', id).in('status', ['a_envoyer', 'en_cours']);
         },
-        send: resendSender(env('RESEND_API_KEY'), env('EMAIL_FROM'), env('EMAIL_REPLY_TO') || undefined),
+        send: resendSender(env('RESEND_API_KEY').trim(), env('EMAIL_FROM').trim(), env('EMAIL_REPLY_TO').trim() || undefined),
       });
     }
 
