@@ -292,7 +292,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .agenda li > span:first-child { font-size: .88rem; color: var(--ink-soft); }
 .agenda li > span.neg:first-child { color: var(--brique); font-weight: 600; }
 .pipeline { list-style: none; margin: 0; padding: 0; }
-.pipeline li { display: grid; grid-template-columns: 11rem 1fr 2rem; gap: .75rem; align-items: center; padding: .25rem 0; font-size: .9rem; }
+.pipeline li a { display: grid; grid-template-columns: 11rem 1fr 2rem; gap: .75rem; align-items: center; padding: .25rem .35rem; margin: 0 -.35rem; font-size: .9rem; color: inherit; text-decoration: none; border-radius: var(--radius); }
+.pipeline li a:hover { background: var(--vert-tint); }
+.pipeline li a:hover span:first-child { text-decoration: underline; }
 .pipeline .bar { height: 10px; border-radius: 5px; min-width: 6px; }
 .pipeline strong { text-align: right; }
 .tone-early { background: var(--ardoise); } .tone-active { background: var(--sapin); } .tone-hot { background: var(--ocre); }
@@ -361,7 +363,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .exchange-form { grid-template-columns: 1fr; }
   .timeline li { grid-template-columns: 1fr; gap: .1rem; }
   .agenda li { grid-template-columns: 1fr; }
-  .pipeline li { grid-template-columns: 8rem 1fr 1.5rem; }
+  .pipeline li a { grid-template-columns: 8rem 1fr 1.5rem; }
   .sync-label { display: none; }
   .page-header { align-items: flex-start; }
   .cashflow strong { font-size: 2.1rem; }
@@ -520,3 +522,5 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 .tenant-top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .8rem 1.2rem; background: var(--surface); border-bottom: 1px solid var(--line); }
 .tenant-main { max-width: 960px; margin: 0 auto; padding: 1.2rem 1rem 3rem; }
 .tenant-lease { margin-bottom: .8rem; }
+.block { display: block; }
+.vigilance li.auto { color: var(--brique); }

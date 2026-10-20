@@ -52,12 +52,12 @@ export function frMoney(v: number): string {
 /** Remplace les caractères absents de l'encodage WinAnsi des polices standard. */
 export function pdfSafe(s: string): string {
   return s
-    .replace(/[   ]/g, ' ')
+    .replace(/[\u202f\u00a0\u2009]/g, ' ')
     .replace(/[‘’ʼ]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/[–—]/g, '-')
     .replace(/…/g, '...')
-    .replace(/[^\x20-\x7e -ÿ€ŒœŠšŸŽž]/g, '?');
+    .replace(/[^\x20-\x7e\u00a0-\u00ff\u20ac\u0152\u0153\u0160\u0161\u0178\u017d\u017e]/g, '?');
 }
 
 /** Lignes de texte du document (testables indépendamment du rendu). */

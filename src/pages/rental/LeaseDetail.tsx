@@ -25,6 +25,7 @@ export function LeaseDetailPage({ id }: { id: string }) {
   const [pay, setPay] = useState<{ chargeId?: string; mode: 'saisie' | 'confirmation' } | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [chargeForm, setChargeForm] = useState(false);
+  const [cancelling, setCancelling] = useState<{ v: ChargeView; reason: string } | null>(null);
   const { ask, dialog } = useConfirm();
   const lease = data.leases.find((l) => l.id === id);
   if (!lease) return <EmptyState title="Bail introuvable" action={<Button onClick={() => navigate('/baux')}>Retour aux baux</Button>} />;
@@ -75,7 +76,7 @@ export function LeaseDetailPage({ id }: { id: string }) {
               <tbody>
                 {[...charges].reverse().map((v) => (
                   <tr key={v.charge.id} className={v.charge.cancelled_at ? 'muted' : ''}>
-                    <td>{periodLabel(v.charge)}</td><td>{date(v.charge.due_date)}</td>
+                    <td>{periodLabel(v.charge)}{v.charge.cancelled_at && v.charge.cancel_reason ? <small className="muted block">Annulée : {v.charge.cancel_reason}</small> : null}</td><td>{date(v.charge.due_date)}</td>
                     <td className="num">{money2(v.charge.rent_amount)}</td><td className="num">{money2(v.charge.charges_amount)}</td>
                     <td className="num">{money2(v.total)}</td><td className="num">{money2(v.paid)}</td>
                     <td className={`num ${v.overdue ? 'neg' : ''}`}>{money2(v.remaining)}</td>
@@ -83,11 +84,7 @@ export function LeaseDetailPage({ id }: { id: string }) {
                     <td><div className="row">
                       <ChargeActions v={v} onPay={(x) => setPay({ chargeId: x.charge.id, mode: 'saisie' })} onConfirm={(x) => setPay({ chargeId: x.charge.id, mode: 'confirmation' })} onReceipt={setReceipt} />
                       {!v.charge.cancelled_at && v.paid === 0 && (
-                        <Button size="sm" variant="ghost" onClick={async () => {
-                          if (await ask('Annuler l’échéance', `L’échéance de ${periodLabel(v.charge)} (${money2(v.total)}) sera annulée et ne sera plus due.`, 'Annuler l’échéance')) {
-                            await store.update('rent_charges', v.charge, { cancelled_at: new Date().toISOString() }, 'L’échéance');
-                          }
-                        }}>Annuler</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setCancelling({ v, reason: '' })}>Annuler</Button>
                       )}
                     </div></td>
                   </tr>
@@ -125,6 +122,18 @@ export function LeaseDetailPage({ id }: { id: string }) {
       <PaymentDialog open={!!pay} onClose={() => setPay(null)} leaseId={lease.id} chargeId={pay?.chargeId} mode={pay?.mode} />
       <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} />
       <ChargeDialog open={chargeForm} leaseId={lease.id} onClose={() => setChargeForm(false)} />
+      <Modal open={!!cancelling} title="Annuler l’échéance" onClose={() => setCancelling(null)}
+        footer={<><Button onClick={() => setCancelling(null)}>Retour</Button>
+          <Button variant="danger" disabled={!cancelling?.reason.trim()} onClick={async () => {
+            if (!cancelling) return;
+            const ok = await store.update('rent_charges', cancelling.v.charge, { cancelled_at: new Date().toISOString(), cancel_reason: cancelling.reason.trim().slice(0, 500) }, 'L’échéance');
+            if (ok) setCancelling(null);
+          }}>Annuler l’échéance</Button></>}>
+        {cancelling && <>
+          <p>L’échéance de {periodLabel(cancelling.v.charge)} ({money2(cancelling.v.total)}) sera annulée et ne sera plus due. Le motif est conservé dans l’historique du bail.</p>
+          <TextInput label="Motif d’annulation" value={cancelling.reason} onChange={(r) => setCancelling({ ...cancelling, reason: r })} maxLength={500} placeholder="Ex. mois offert pendant les travaux" />
+        </>}
+      </Modal>
       {dialog}
     </>
   );

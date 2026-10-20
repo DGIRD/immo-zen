@@ -5,7 +5,7 @@
 //   - toutes les 15 minutes avec {"tasks": ["outbox"]} pour vider la file d'e-mails
 //
 // Secrets (supabase secrets set …) :
-//   CRON_SECRET     jeton partagé avec la planification (en-tête Authorization: Bearer …)
+//   CRON_SECRET     (facultatif) jeton accepté en plus de celui du coffre « immozen_cron_secret », qui fait foi
 //   EMAIL_ENABLED   « true » pour envoyer réellement ; toute autre valeur = aucun envoi
 //   RESEND_API_KEY  clé du fournisseur d'e-mail (Resend)
 //   EMAIL_FROM      expéditeur vérifié, ex. « Immo-Zen <loyers@votre-domaine.fr> »
@@ -23,10 +23,18 @@ const log = (msg: string, data: Record<string, unknown> = {}) => console.log(JSO
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('Méthode non autorisée', { status: 405 });
-  const secret = env('CRON_SECRET');
-  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) return new Response('Non autorisé', { status: 401 });
-
   const sb = createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY'), { auth: { persistSession: false } });
+  // Jeton de la planification : celui du coffre de la base (« immozen_cron_secret ») fait foi ;
+  // CRON_SECRET reste accepté s'il est défini (appels manuels, anciennes configurations).
+  const token = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
+  const secret = env('CRON_SECRET');
+  let allowed = !!token && !!secret && token === secret;
+  if (!allowed && token) {
+    const { data, error } = await sb.rpc('iz_cron_token_ok', { p_token: token });
+    if (error) log('vérification du jeton impossible', { error: error.message });
+    allowed = data === true;
+  }
+  if (!allowed) return new Response('Non autorisé', { status: 401 });
   const body = await req.json().catch(() => ({})) as { tasks?: string[]; today?: string };
   const tasks = body.tasks?.length ? body.tasks : ['daily', 'outbox', 'storage'];
   const out: Record<string, unknown> = {};

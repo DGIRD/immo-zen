@@ -42,7 +42,7 @@ insert into public.admins (user_id) select id from auth.users where email = 'vot
 
 1. supabase.com → avatar → **Account → Access Tokens → Generate new token** (nom : « GitHub Immo-Zen »).
 2. GitHub → Settings → Secrets and variables → Actions → **New repository secret** : `SUPABASE_ACCESS_TOKEN` = le jeton.
-3. Générez un **jeton de planification** long et aléatoire (ex. un gestionnaire de mots de passe, 40 caractères) et enregistrez-le en secret GitHub `CRON_SECRET`.
+3. Générez un **jeton de planification** long et aléatoire (ex. un gestionnaire de mots de passe, 40 caractères) (il sera rangé dans le coffre de la base à l’étape 7 ; le secret GitHub `CRON_SECRET` est facultatif).
 
 Le workflow **Actions → « Fonctions serveur Supabase » → Run workflow** transmet ensuite les secrets aux fonctions et déploie `daily`, `platform` et `stripe-webhook`. Relancez-le après chaque changement de secret.
 
@@ -70,7 +70,7 @@ L'adresse `contact@immo-zen.fr` sert à la fois à **recevoir** (boîte ou redir
 5. GitHub → Secrets : `RESEND_API_KEY` = la clé. Variables : `EMAIL_FROM` = `Immo-Zen <contact@immo-zen.fr>`, `EMAIL_REPLY_TO` = `contact@immo-zen.fr`, `EMAIL_ENABLED` = `false` pour commencer.
 6. Lancez le workflow « Fonctions serveur Supabase ».
 6 bis. E-mails de connexion (confirmation de compte, mot de passe oublié) : Supabase → **Authentication → Emails → SMTP Settings** → Enable custom SMTP : hôte `smtp.resend.com`, port `465`, utilisateur `resend`, mot de passe = la clé Resend, expéditeur `contact@immo-zen.fr`, nom `Immo-Zen`. Sans cela, Supabase n'envoie que quelques e-mails par heure avec son expéditeur par défaut.
-7. Planification des envois : choisissez un jeton aléatoire (32 caractères, par exemple généré par un gestionnaire de mots de passe), enregistrez-le dans GitHub comme secret `CRON_SECRET` et relancez le workflow « Fonctions serveur Supabase ». Puis Supabase → SQL Editor : collez `supabase/scheduling.sql`, remplacez la seule valeur `COLLEZ-ICI-LA-VALEUR-DU-SECRET-CRON_SECRET` par ce même jeton, « Run ». Le script active les extensions, range le jeton dans le coffre et crée les deux tâches (quotidienne, et envoi des e-mails toutes les 5 minutes) ; il peut être relancé.
+7. Planification des envois : choisissez un jeton aléatoire (32 caractères au moins, par exemple généré par un gestionnaire de mots de passe). Supabase → SQL Editor : collez `supabase/scheduling.sql`, remplacez la seule valeur `COLLEZ-ICI-LA-VALEUR-DU-SECRET-CRON_SECRET` par ce jeton, « Run ». Le script active les extensions, range le jeton dans le coffre et crée les deux tâches (quotidienne, et envoi des e-mails toutes les 5 minutes) ; il peut être relancé. La fonction `daily` vérifie le jeton directement dans le coffre (migration `20261020000300`) : il n'est plus nécessaire de le recopier dans le secret GitHub `CRON_SECRET`, qui reste accepté s'il existe. Contrôle : `select status_code from net._http_response order by created desc limit 3;` doit renvoyer 200.
 8. Le lendemain, vérifiez `job_runs` (requêtes en fin de fichier) : les tâches tournent sans rien envoyer. Puis variable `EMAIL_ENABLED` = `true`, relancez le workflow, et envoyez-vous une quittance de test (locataire avec votre propre adresse).
 
 **E-mails du compte en français** : les messages de confirmation d'inscription, de mot de passe oublié, d'invitation, de lien de connexion, de changement d'adresse et de code de vérification utilisent les modèles de `supabase/templates/` (français, mention « L'équipe Immo-Zen se tient à votre disposition : contact@immo-zen.fr »). Le workflow « Fonctions serveur Supabase » les applique au projet ; à défaut, copiez-les dans Supabase → Authentication → Emails → Templates. Les e-mails de l'application (quittances, relances, invitations des locataires) portent la même mention en pied de message.
@@ -174,7 +174,7 @@ Seules les questions et le nom de la rubrique affichée sont transmis au modèle
 | Nom | Type | Valeur |
 |---|---|---|
 | `SUPABASE_ACCESS_TOKEN` | secret | jeton Supabase (étape 2) |
-| `CRON_SECRET` | secret | jeton aléatoire, identique à celui collé dans `supabase/scheduling.sql` |
+| `CRON_SECRET` | secret (facultatif) | ancien jeton de planification ; le jeton du coffre (`supabase/scheduling.sql`) fait foi |
 | `RESEND_API_KEY` | secret | `re_…` |
 | `STRIPE_SECRET_KEY` | secret | `sk_test_…` puis `sk_live_…` |
 | `STRIPE_WEBHOOK_SECRET` | secret | `whsec_…` |

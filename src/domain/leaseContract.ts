@@ -119,6 +119,28 @@ export function maxDeposit(c: LeaseContract, rentHc: number): number | null {
   return null;
 }
 
+/**
+ * Contrôles légaux faits dès la saisie du bail (avant même l'édition du contrat) :
+ * plafond du dépôt de garantie et forfait de charges interdit en location vide hors colocation.
+ * Les baux civils et de parking (contrat déjà qualifié comme tel) n'y sont pas soumis.
+ */
+export function leaseFormIssues(
+  l: { furnished?: boolean | null; rent_hc?: number | null; deposit_amount?: number | null; charges_mode?: string | null; contract?: { kind?: string } | null },
+  tenantCount: number,
+): { deposit_amount?: string; charges_mode?: string } {
+  const out: { deposit_amount?: string; charges_mode?: string } = {};
+  const kind = l.contract?.kind && !['vide', 'meuble'].includes(l.contract.kind) ? l.contract.kind : l.furnished ? 'meuble' : 'vide';
+  if (kind !== 'vide' && kind !== 'meuble') return out;
+  const max = maxDeposit({ kind } as LeaseContract, Number(l.rent_hc ?? 0));
+  if (max !== null && Number(l.deposit_amount ?? 0) > max + 0.005) {
+    out.deposit_amount = `Dépôt de garantie trop élevé : ${eur(max)} maximum (${kind === 'vide' ? 'un mois' : 'deux mois'} de loyer hors charges en location ${kind === 'vide' ? 'vide' : 'meublée'}).`;
+  }
+  if (kind === 'vide' && l.charges_mode === 'forfait' && tenantCount < 2) {
+    out.charges_mode = 'En location vide, les charges sont payées par provisions avec régularisation annuelle : le forfait est réservé à la colocation.';
+  }
+  return out;
+}
+
 export function checkContract(c: LeaseContract, ctx: ContractContext): { errors: string[]; warnings: string[] } {
   const { lease, property, tenants } = ctx;
   const errors: string[] = [];

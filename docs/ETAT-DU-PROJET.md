@@ -139,6 +139,23 @@ Migration à exécuter : `20261018000500_formules.sql`. Le contrôle reste désa
 | Espace locataire : invitation par e-mail (code à usage unique lié à l'adresse, 30 jours), acceptation, quittances et documents partagés en lecture seule, aperçu du bailleur, révocation | Implémenté et testé (SQL, démonstration) / **à configurer** (migration `20261020000100`, fonction `daily` redéployée) ; parcours réel du locataire non testé contre Supabase Auth | SQL + e2e |
 | Offre Découverte limitée à 30 jours, puis consultation seule sans abonnement (si les formules sont appliquées) ; site vitrine mis à jour | Implémenté et testé | SQL + e2e |
 
+## Corrections de la recette (20 octobre 2026)
+
+Cahier de test de 166 cas exécuté (voir le document de recette du projet). Corrections :
+
+| Anomalie | Correction | Preuve |
+|---|---|---|
+| ANO-001 Tâches planifiées refusées (401), aucun e-mail envoyé | La fonction `daily` vérifie le jeton dans le coffre de la base (`iz_cron_token_ok`) ; `CRON_SECRET` devient facultatif | SQL + contrôle en ligne |
+| ANO-002 Migration de l'assistant absente en ligne | Appliquée | contrôle en ligne |
+| ANO-003 Dépôt de garantie et forfait de charges contrôlés seulement au contrat | Contrôlés dès la saisie du bail (`leaseFormIssues`) | unitaires + recette |
+| ANO-004 Échéance annulée sans motif | Motif obligatoire, conservé (`rent_charges.cancel_reason`) et affiché | SQL + recette |
+| ANO-005 Pas d'alerte DPE sur la fiche | Alertes automatiques F, G, E (`dpeAlerts`) dans la vigilance | unitaires + recette |
+| ANO-006 Parcours du tableau de bord non cliquable | Chaque étape ouvre la prospection filtrée (`?statut=`) | recette |
+| ANO-008 Analyse de sécurité Supabase | Fonctions SECURITY DEFINER retirées au rôle anonyme (sauf le formulaire du site), search_path fixé | SQL + analyse en ligne |
+| ANO-007 Mentions légales | **À compléter** : identité de l'éditeur | — |
+
+Migration à exécuter sur un autre projet : `20261020000300_corrections_recette.sql` (déjà appliquée sur le projet en ligne). Réglage manuel restant : Authentication → Password security → protection contre les mots de passe compromis.
+
 ## Restant
 
 Tout le périmètre du cahier des charges est livré. Reste **à configurer** : compte Stripe et fonctions `platform` / `stripe-webhook` ([ABONNEMENTS](ABONNEMENTS.md)), premier administrateur, envoi réel des e-mails (Resend). Pistes ultérieures : vérification de l'abonnement dans les fonctions serveur (quittances, relances), réimport de la gestion locative depuis une sauvegarde, liasse 2031/2033 complète, travaux de rénovation énergétique et déficits antérieurs dans la déclaration.
