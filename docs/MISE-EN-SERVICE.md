@@ -8,7 +8,7 @@ Dans les exemples, remplacez `immo-zen.fr` par votre domaine.
 
 - `https://immo-zen.fr/` : **site vitrine** (dossier `site/` du dépôt) — raison d'être, solution, accompagnement, guides, tarifs, questions, formulaire « Être recontacté ».
 - `https://immo-zen.fr/app/` : **application** (Espace client). Tant que le domaine n'est pas branché : https://dgird.github.io/immo-zen/ et https://dgird.github.io/immo-zen/app/.
-- Les demandes du formulaire arrivent dans **Administration → Prospects commerciaux** (migration `20261018000300_site_contact.sql` à exécuter).
+- Les demandes du formulaire arrivent dans **Administration → Prospects commerciaux** (migration `20261018000300_site_contact.sql`) et sont envoyées par e-mail à **contact@immo-zen.fr** (ou à l'« E-mail du support » réglé dans Administration), avec l'adresse du visiteur en « répondre à » (migration `20261020000200_contact_email.sql`, envoi des e-mails activé).
 - **Mentions légales** (`site/mentions-legales.html`) : éditeur, SIREN, adresse et e-mail de contact **à compléter** avant d'annoncer le site.
 
 ## 0. Avant de commencer (une fois)
@@ -72,6 +72,8 @@ L'adresse `contact@immo-zen.fr` sert à la fois à **recevoir** (boîte ou redir
 6 bis. E-mails de connexion (confirmation de compte, mot de passe oublié) : Supabase → **Authentication → Emails → SMTP Settings** → Enable custom SMTP : hôte `smtp.resend.com`, port `465`, utilisateur `resend`, mot de passe = la clé Resend, expéditeur `contact@immo-zen.fr`, nom `Immo-Zen`. Sans cela, Supabase n'envoie que quelques e-mails par heure avec son expéditeur par défaut.
 7. Supabase → **Database → Extensions** : activez `pg_cron` et `pg_net`. Puis SQL Editor : exécutez `supabase/scheduling.example.sql` en remplaçant `VOTRE-PROJET` par `sbxnjvjsapnsdeenmvtm` et le jeton par la valeur de `CRON_SECRET`.
 8. Le lendemain, vérifiez `job_runs` (requêtes en fin de fichier) : les tâches tournent sans rien envoyer. Puis variable `EMAIL_ENABLED` = `true`, relancez le workflow, et envoyez-vous une quittance de test (locataire avec votre propre adresse).
+
+**E-mails du compte en français** : les messages de confirmation d'inscription, de mot de passe oublié, d'invitation, de lien de connexion, de changement d'adresse et de code de vérification utilisent les modèles de `supabase/templates/` (français, mention « L'équipe Immo-Zen se tient à votre disposition : contact@immo-zen.fr »). Le workflow « Fonctions serveur Supabase » les applique au projet ; à défaut, copiez-les dans Supabase → Authentication → Emails → Templates. Les e-mails de l'application (quittances, relances, invitations des locataires) portent la même mention en pied de message.
 
 ## 4. Stripe : formules, moyens de paiement et abonnements
 
