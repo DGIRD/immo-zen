@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as pdfLib from 'pdf-lib';
 import type { Lease, LeaseContract, Property, Tenant } from '../src/data/types.ts';
-import { buildContract, contractText, defaultContract, FURNITURE_MINIMUM, type ContractContext } from '../src/domain/leaseContract.ts';
+import { buildContract, contractText, defaultContract, FURNITURE_MINIMUM, leaseFormIssues, type ContractContext } from '../src/domain/leaseContract.ts';
 import { buildDocPdf } from '../src/domain/docPdf.ts';
 
 const property = (o: Partial<Property> = {}): Property => ({
@@ -116,4 +116,14 @@ test('PDF du contrat : document lisible de plusieurs pages', async () => {
   assert.equal(Buffer.from(bytes.slice(0, 5)).toString(), '%PDF-');
   const pdf = await pdfLib.PDFDocument.load(bytes);
   assert.ok(pdf.getPageCount() >= 3, `pages : ${pdf.getPageCount()}`);
+});
+
+test('saisie du bail : plafond du dépôt et forfait de charges contrôlés avant le contrat', () => {
+  assert.match(leaseFormIssues({ furnished: false, rent_hc: 750, deposit_amount: 1500 }, 1).deposit_amount ?? '', /750,00 € maximum \(un mois/);
+  assert.equal(leaseFormIssues({ furnished: false, rent_hc: 750, deposit_amount: 750 }, 1).deposit_amount, undefined);
+  assert.equal(leaseFormIssues({ furnished: true, rent_hc: 750, deposit_amount: 1500 }, 1).deposit_amount, undefined, 'deux mois en meublé');
+  assert.match(leaseFormIssues({ furnished: true, rent_hc: 750, deposit_amount: 1600 }, 1).deposit_amount ?? '', /1 500,00 € maximum \(deux mois/);
+  assert.match(leaseFormIssues({ furnished: false, rent_hc: 750, deposit_amount: 0, charges_mode: 'forfait' }, 1).charges_mode ?? '', /réservé à la colocation/);
+  assert.equal(leaseFormIssues({ furnished: false, rent_hc: 750, deposit_amount: 0, charges_mode: 'forfait' }, 2).charges_mode, undefined, 'colocation');
+  assert.deepEqual(leaseFormIssues({ furnished: false, rent_hc: 750, deposit_amount: 3000, charges_mode: 'forfait', contract: { kind: 'parking' } }, 1), {}, 'parking : Code civil');
 });

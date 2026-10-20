@@ -12,6 +12,7 @@ import { navigate } from '../../ui/router.ts';
 import { LeaseBadge, useRental } from './common.tsx';
 import { AccessPill, useTenantAccess } from './TenantAccess.tsx';
 import { accessStatus } from '../../domain/tenantPortal.ts';
+import { leaseFormIssues } from '../../domain/leaseContract.ts';
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -199,6 +200,10 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
     if (!(Number.isInteger(d.payment_day) && d.payment_day! >= 1 && d.payment_day! <= 28)) e.payment_day = 'Jour entre 1 et 28.';
     if (!(Number.isInteger(d.reminder_delay_days) && d.reminder_delay_days! >= 1 && d.reminder_delay_days! <= 90)) e.reminder_delay_days = 'Entre 1 et 90 jours.';
     if (!tenantIds.length) e.tenants = 'Ajoutez au moins un titulaire.';
+    // plafonds légaux (loi du 6 juillet 1989) contrôlés dès la saisie, pas seulement à l'édition du contrat
+    const legal = leaseFormIssues(d, tenantIds.length);
+    if (legal.deposit_amount && !e.deposit_amount) e.deposit_amount = legal.deposit_amount;
+    if (legal.charges_mode) e.charges_mode = legal.charges_mode;
     setErrors(e);
     return !Object.keys(e).length;
   }
@@ -265,7 +270,7 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
           <TextInput label="Fin du bail (facultatif)" type="date" value={d.end_date} onChange={(v) => set('end_date', v || null)} error={errors.end_date}
             hint="À renseigner au départ du locataire. Les échéances suivantes non réglées sont annulées." />
           <NumberInput label="Loyer hors charges" suffix="€/mois" value={d.rent_hc} onChange={(v) => set('rent_hc', v ?? 0)} error={errors.rent_hc} />
-          <Select label="Charges" value={d.charges_mode ?? 'provision'} onChange={(v) => set('charges_mode', v ?? 'provision')} options={[['provision', 'Provision (régularisation annuelle)'], ['forfait', 'Forfait']] as const} />
+          <Select label="Charges" value={d.charges_mode ?? 'provision'} onChange={(v) => set('charges_mode', v ?? 'provision')} options={[['provision', 'Provision (régularisation annuelle)'], ['forfait', 'Forfait']] as const} error={errors.charges_mode} />
           <NumberInput label={d.charges_mode === 'forfait' ? 'Forfait de charges' : 'Provision sur charges'} suffix="€/mois" value={d.charges_amount} onChange={(v) => set('charges_amount', v ?? 0)} error={errors.charges_amount} />
           <div className="field">
             <span className="label">Loyer charges comprises</span>

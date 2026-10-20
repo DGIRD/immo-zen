@@ -222,3 +222,16 @@ export function statusEventSummary(from: Property['status'] | null, to: Property
 }
 
 export { summarize };
+
+/**
+ * Alertes automatiques liées au DPE (loi Climat et résilience) : calendrier d'interdiction de
+ * mise en location des logements énergivores et gel des loyers des classes F et G.
+ */
+export function dpeAlerts(dpe: string | null | undefined, today: string): string[] {
+  const d = (dpe ?? '').toUpperCase();
+  const gel = 'Loyer gelé : aucune révision, majoration ni réévaluation (logements F et G, depuis le 24 août 2022).';
+  if (d === 'G') return ['DPE G : logement non décent depuis le 1er janvier 2025, il ne peut plus faire l’objet d’un nouveau bail ni d’un renouvellement.', gel, 'Des travaux de rénovation énergétique permettent de lever ces interdictions (déficit foncier majoré à 21 400 € pour un passage à D ou mieux).'];
+  if (d === 'F') return [today < '2028-01-01' ? 'DPE F : logement non décent à partir du 1er janvier 2028 ; plus de nouveau bail ni de renouvellement après cette date.' : 'DPE F : logement non décent depuis le 1er janvier 2028 ; plus de nouveau bail ni de renouvellement.', gel];
+  if (d === 'E') return [today < '2034-01-01' ? 'DPE E : logement non décent à partir du 1er janvier 2034 ; travaux à anticiper.' : 'DPE E : logement non décent depuis le 1er janvier 2034.'];
+  return [];
+}

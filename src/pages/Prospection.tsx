@@ -7,7 +7,7 @@ import { STATUS_LABELS, STATUS_ORDER } from '../domain/labels.ts';
 import { isProspect } from '../domain/property.ts';
 import { DataTable } from '../ui/DataTable.tsx';
 import { Button, Checkbox, EmptyState, PageHeader, useConfirm } from '../ui/components.tsx';
-import { navigate } from '../ui/router.ts';
+import { navigate, useRoute } from '../ui/router.ts';
 import { CompareDialog } from './Compare.tsx';
 import { exportRows, prospectColumns, usePropertyRows, type PropertyRow } from './propertyShared.tsx';
 import { usePropertyActions } from './useActions.tsx';
@@ -20,7 +20,9 @@ export function ProspectionPage() {
   const plan = usePlan();
   const { ask, dialog } = useConfirm();
   const actions = usePropertyActions(ask);
-  const [scope, setScope] = useState<Scope>('en_cours');
+  // filtre initial depuis l'adresse (ex. #/prospection?statut=visite, depuis le parcours du tableau de bord)
+  const initial = useRoute().query.get('statut');
+  const [scope, setScope] = useState<Scope>(() => (initial && (STATUS_ORDER as string[]).includes(initial) && initial !== 'acquis' ? initial as PropertyStatus : 'en_cours'));
   const [dueOnly, setDueOnly] = useState(false);
   const [compare, setCompare] = useState<PropertyRow[] | null>(null);
   const all = usePropertyRows(isProspect);

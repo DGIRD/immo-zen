@@ -48,7 +48,7 @@ export function App() {
   const key = location.hash;
 
   if (!a) page = <DashboardPage />;
-  else if (a === 'prospection') { active = 'prospection'; page = <ProspectionPage />; }
+  else if (a === 'prospection') { active = 'prospection'; page = <ProspectionPage key={key} />; }
   else if (a === 'biens') { active = 'biens'; page = <OwnedPage />; }
   else if (a === 'bien' && b === 'nouveau') {
     const mode = route.query.get('mode') === 'owned' ? 'owned' : 'prospect';

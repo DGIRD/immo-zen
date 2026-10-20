@@ -3,7 +3,7 @@ import { useStore } from '../data/store.tsx';
 import type { Channel, Insert, PropertyStatus, PropertyTask, Scenario, TimelineEvent } from '../data/types.ts';
 import { date, dateTime, money, money2, number, pct, todayParis } from '../domain/format.ts';
 import { CHANNEL_LABELS, EVENT_LABELS, OCCUPATION_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, STATUS_ORDER, TAX_REGIME_LABELS, TYPE_LABELS } from '../domain/labels.ts';
-import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, isOwned, loanInfo, metrics, ownedCashflow, rentWithCharges, scenarioResult } from '../domain/property.ts';
+import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, dpeAlerts, isOwned, loanInfo, metrics, ownedCashflow, rentWithCharges, scenarioResult } from '../domain/property.ts';
 import { cfTitle } from './propertyShared.tsx';
 import { EstimatePanel } from '../ui/EstimatePanel.tsx';
 import { normalizeInputs, simulate } from '../domain/simulator.ts';
@@ -141,9 +141,12 @@ export function PropertyDetailPage({ id }: { id: string }) {
             ]} />
           </Section>
           <div>
-            {p.vigilance.length > 0 && (
+            {(p.vigilance.length > 0 || dpeAlerts(p.dpe, todayParis()).length > 0) && (
               <Section title="Éléments de vigilance" className="vigilance">
-                <ul>{p.vigilance.map((v, i) => <li key={i}>{v}</li>)}</ul>
+                <ul>
+                  {dpeAlerts(p.dpe, todayParis()).map((v, i) => <li key={`dpe${i}`} className="auto">{v}</li>)}
+                  {p.vigilance.map((v, i) => <li key={i}>{v}</li>)}
+                </ul>
               </Section>
             )}
             <Section title={owned ? 'Estimation du prix actuel' : 'Estimation DVF'}>

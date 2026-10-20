@@ -113,9 +113,11 @@ export function DashboardPage() {
                 <ul className="pipeline">
                   {v.counts.map(([s, n]) => (
                     <li key={s}>
-                      <span>{STATUS_LABELS[s]}</span>
-                      <span className={`bar tone-${statusTone(s)}`} style={{ width: `${(n / max) * 100}%` }} aria-hidden="true" />
-                      <strong>{n}</strong>
+                      <a href={href(`/prospection?statut=${s}`)} title={`Voir les biens « ${STATUS_LABELS[s]} »`}>
+                        <span>{STATUS_LABELS[s]}</span>
+                        <span className={`bar tone-${statusTone(s)}`} style={{ width: `${(n / max) * 100}%` }} aria-hidden="true" />
+                        <strong>{n}</strong>
+                      </a>
                     </li>
                   ))}
                 </ul>

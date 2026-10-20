@@ -327,6 +327,8 @@ export interface RentCharge extends Versioned {
   charges_amount: number;
   label: string | null;
   cancelled_at: string | null;
+  /** Motif saisi à l'annulation (migration 20261020000300). */
+  cancel_reason?: string | null;
 }
 
 export type PaymentMethod = 'virement' | 'prelevement' | 'cheque' | 'especes' | 'caf' | 'autre';
