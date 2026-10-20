@@ -151,7 +151,14 @@ Enregistrez. L'application relit l'abonnement à chaque changement : la nouvelle
 1. Supabase SQL Editor : exécutez `supabase/migrations/20261018000400_estimation_dvf.sql` (fourchette d'estimation des biens).
 2. Lancez le workflow « Fonctions serveur Supabase » : il déploie la fonction `dvf`, utilisée seulement si le navigateur ne peut pas lire directement les fichiers publics de data.gouv.fr. Aucune clé n'est nécessaire.
 
-## 6. Assistant conversationnel (facultatif)
+## 6. Contrats de bail, espace locataire et offre Découverte de 30 jours
+
+1. Supabase SQL Editor : exécutez `supabase/migrations/20261020000100_baux_espace_locataire.sql`. Sans elle, le contrat de bail ne peut pas être enregistré avec le bail, ni l'espace locataire ouvert.
+2. Lancez le workflow « Fonctions serveur Supabase » : la fonction `daily` insère le lien de l'application (variable `APP_URL`, par défaut `https://dgird.github.io/immo-zen/app/` ; mettez `https://immo-zen.fr/app/` si le domaine est branché) dans les e-mails d'invitation.
+3. Supabase → Authentication → URL Configuration : l'adresse de l'application doit figurer dans les Redirect URLs (déjà fait si vous avez suivi la partie 1), pour que le locataire revienne sur son espace après avoir confirmé son compte.
+4. Offre Découverte : la migration règle l'essai sur 30 jours en formule Découverte. Elle ne s'applique qu'une fois « Appliquer les limites des formules » activé dans Administration ; ensuite, un compte de plus de 30 jours sans abonnement passe en consultation seule.
+
+## 7. Assistant conversationnel (facultatif)
 
 Sans réglage, l'assistant répond à partir de l'aide intégrée (gratuit). Pour des réponses aux questions libres :
 1. Supabase SQL Editor : exécutez `supabase/migrations/20261018000200_assistant.sql` (quota quotidien).

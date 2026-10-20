@@ -10,6 +10,8 @@ import { DataTable, type Column } from '../../ui/DataTable.tsx';
 import { Button, Checkbox, EmptyState, Modal, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
 import { navigate } from '../../ui/router.ts';
 import { LeaseBadge, useRental } from './common.tsx';
+import { AccessPill, useTenantAccess } from './TenantAccess.tsx';
+import { accessStatus } from '../../domain/tenantPortal.ts';
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -84,6 +86,7 @@ function TenantTable({ onEdit }: { onEdit: (t: Tenant) => void }) {
   const { data, remove, notify } = useStore();
   const { ask, dialog } = useConfirm();
   const { leaseLabel, today } = useRental();
+  const access = useTenantAccess();
   const [archived, setArchived] = useState(false);
   const rows = data.tenants.filter((t) => (archived ? !!t.archived_at : !t.archived_at));
   const leasesOf = (t: Tenant) => data.leaseTenants.filter((x) => x.tenant_id === t.id).map((x) => data.leases.find((l) => l.id === x.lease_id)).filter((l): l is Lease => !!l);
@@ -97,6 +100,7 @@ function TenantTable({ onEdit }: { onEdit: (t: Tenant) => void }) {
         const current = ls.find((l) => leaseState(l, today) === 'actif');
         return current ? <a href={`#/baux/${current.id}`}>Bail en cours</a> : ls.length ? <span className="muted">{ls.length} bail(s) passé(s) ou à venir</span> : <span className="muted">Aucun</span>;
       }, mobile: true },
+    { id: 'portal', label: 'Espace locataire', value: (t) => accessStatus(data.tenantAccounts.find((x) => x.tenant_id === t.id)), render: (t) => <AccessPill tenant={t} />, mobile: true },
   ];
   return (
     <>
@@ -104,6 +108,7 @@ function TenantTable({ onEdit }: { onEdit: (t: Tenant) => void }) {
         toolbar={<Checkbox label="Archivés" checked={archived} onChange={setArchived} />}
         rowActions={(t) => [
           { label: 'Modifier', onSelect: () => onEdit(t) },
+          ...access.actions(t),
           { label: 'Supprimer', danger: true, onSelect: async () => {
             const n = leasesOf(t).length;
             if (n) { await ask('Suppression impossible', `${tenantName(t)} figure sur ${n} bail(s). Archivez la fiche pour conserver l’historique.`, 'Compris', false); return; }
@@ -112,6 +117,7 @@ function TenantTable({ onEdit }: { onEdit: (t: Tenant) => void }) {
         ]}
         empty={<EmptyState title={archived ? 'Aucun locataire archivé' : 'Aucun locataire'}>Les locataires peuvent aussi être créés directement depuis le formulaire de bail.</EmptyState>} />
       {dialog}
+      {access.ui}
     </>
   );
 }

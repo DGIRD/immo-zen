@@ -1,16 +1,20 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../data/store.tsx';
-import type { TaxInputs, TaxPropertyInputs, TaxRegime } from '../data/types.ts';
+import type { MeubleKind, TaxInputs, TaxPropertyInputs, TaxRegime } from '../data/types.ts';
 import { downloadBlob, stamp, toXlsx } from '../domain/exporting.ts';
 import { money2, todayParis } from '../domain/format.ts';
-import { DEFAULT_TAX_INPUTS, depreciationItems, FONCIER_DEFICIT_LIMIT, fiscalSummary, MICRO_BIC_LIMIT, MICRO_FONCIER_LIMIT, type FiscalSummary } from '../domain/fiscal.ts';
+import { DEFAULT_TAX_INPUTS, depreciationItems, FONCIER_DEFICIT_LIMIT, fiscalSummary, MEUBLE_KIND_LABELS, MICRO_BIC_LIMIT, MICRO_FONCIER_LIMIT, type FiscalSummary } from '../domain/fiscal.ts';
+import { declarationGuide, guideSections } from '../domain/taxGuide.ts';
+import { buildDocPdf } from '../domain/docPdf.ts';
 import { TAX_REGIME_LABELS } from '../domain/labels.ts';
-import { Button, EmptyState, NumberInput, PageHeader, Section } from '../ui/components.tsx';
+import { Button, EmptyState, NumberInput, PageHeader, Section, Select } from '../ui/components.tsx';
 import { href } from '../ui/router.ts';
 
 interface Box { form: string; code: string; label: string; amount: number; property?: string }
 
 const PARAMS = 'params';
+const FOYER = 'foyer';
+type NumKey = Exclude<keyof TaxPropertyInputs, 'meuble_kind'>;
 
 export function FiscalPage() {
   const { data, update, saveSettings, notify } = useStore();
@@ -26,11 +30,11 @@ export function FiscalPage() {
   const [draft, setDraft] = useState<TaxInputs | null>(null);
   const inputs = draft ?? saved;
   const get = (pid: string, y: number): TaxPropertyInputs => ({ ...(inputs[PARAMS]?.[pid] ?? {}), ...(inputs[String(y)]?.[pid] ?? {}) });
-  const setInput = (scope: string, pid: string, k: keyof TaxPropertyInputs, v: number | null) => setDraft((d) => {
+  const setInput = (scope: string, pid: string, k: NumKey | 'meuble_kind', v: number | MeubleKind | null) => setDraft((d) => {
     const base = structuredClone(d ?? saved);
-    const cur = { ...(base[scope]?.[pid] ?? {}) };
+    const cur: Record<string, unknown> = { ...(base[scope]?.[pid] ?? {}) };
     if (v === null) delete cur[k]; else cur[k] = v;
-    base[scope] = { ...(base[scope] ?? {}), [pid]: cur };
+    base[scope] = { ...(base[scope] ?? {}), [pid]: cur as TaxPropertyInputs };
     return base;
   });
 
@@ -50,6 +54,18 @@ export function FiscalPage() {
   }).filter((x) => x.items.length > 0);
   for (const a of amort) for (const i of a.items) boxes.push({ form: 'Amortissements', code: `${i.years} ans`, label: i.label, amount: i.amount, property: a.p.title });
   const owned = data.properties.filter((p) => p.status === 'acquis');
+  const priorDeficits = inputs[String(year)]?.[FOYER]?.prior_deficits ?? 0;
+  const guide = declarationGuide(fiscal, data.properties, { priorDeficits });
+  async function exportPdf() {
+    const lib = await import('pdf-lib');
+    const bytes = await buildDocPdf(lib as never, {
+      title: `Dossier de déclaration – revenus ${year}`,
+      subtitle: `Montants à reporter en ${year + 1} sur impots.gouv.fr, calculés par Immo-Zen le ${todayParis().split('-').reverse().join('/')} à partir des loyers encaissés et des dépenses payées. Aide au remplissage : à vérifier avec les notices officielles ; ne vaut ni attestation ni conseil fiscal.`,
+      sections: guideSections(guide),
+      footer: `Immo-Zen – déclaration ${year + 1}`,
+    });
+    downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), `immo-zen-dossier-declaration-${year}.pdf`);
+  }
 
   async function saveInputs() {
     if (!draft) return;
@@ -69,6 +85,7 @@ export function FiscalPage() {
           <label className="inline-select">Revenus de
             <select value={year} onChange={(e) => setYear(Number(e.target.value))} aria-label="Année des revenus">{years.map((y) => <option key={y} value={y}>{y}</option>)}</select>
           </label>
+          <Button onClick={() => void exportPdf()} disabled={!guide.length}>Dossier PDF</Button>
           <Button onClick={() => void exportXlsx()} disabled={!boxes.length}>Excel (.xlsx)</Button>
         </>} />
       <p className="note">Aide au remplissage calculée à partir de vos loyers encaissés et dépenses payées en {year} (Loyers et paiements, Dépenses, relevés importés). Elle ne vaut ni attestation ni conseil fiscal : vérifiez chaque montant avec les notices officielles (2044, 2042, 2042-C-PRO) ou un professionnel.</p>
@@ -97,6 +114,28 @@ export function FiscalPage() {
             </table></div>
             <p className="muted small">Location nue : micro-foncier (recettes ≤ {MICRO_FONCIER_LIMIT.toLocaleString('fr-FR')} €) ou réel (2044). Location meublée : micro-BIC (≤ {MICRO_BIC_LIMIT.toLocaleString('fr-FR')} €) ou réel. Le régime se modifie aussi dans la fiche du bien.</p>
           </Section>
+
+          {guide.length > 0 && (
+            <Section title={`Où déclarer sur impots.gouv.fr (${year + 1})`}>
+              <p className="muted small">Chaque régime a son parcours : votre espace particulier pour la déclaration de revenus (2042, 2044, 2042-C-PRO), votre espace professionnel pour la liasse des locations meublées au réel ou des sociétés. Les libellés des écrans peuvent varier d’une campagne à l’autre.</p>
+              <div className="tax-guide">
+                {guide.map((g) => (
+                  <details key={g.id} className="tax-guide-step" open={guide.length <= 2}>
+                    <summary><span className={`pill ${g.space === 'professionnel' ? 'pill-warn' : 'pill-ok'}`}>Espace {g.space}</span> <strong>{g.title}</strong></summary>
+                    <p className="muted small">{g.deadline}</p>
+                    <ol>{g.steps.map((st) => <li key={st}>{st}</li>)}</ol>
+                    {g.boxes.length > 0 && (
+                      <div className="dt-scroll"><table className="dt-table compact tax-boxes">
+                        <thead><tr><th>Formulaire</th><th>Case ou ligne</th><th>Libellé</th><th className="num">Montant</th></tr></thead>
+                        <tbody>{g.boxes.map((b, i) => <tr key={g.id + i}><td>{b.form}</td><td><strong>{b.code}</strong></td><td>{b.label}</td><td className="num"><strong>{b.amount === null ? '—' : money2(b.amount)}</strong></td></tr>)}</tbody>
+                      </table></div>
+                    )}
+                    {g.notes.map((n) => <p key={n} className="muted small">{n}</p>)}
+                  </details>
+                ))}
+              </div>
+            </Section>
+          )}
 
           {boxes.some((b) => b.form.startsWith('2042') && !b.property) && (
             <Section title={`À reporter en ${year + 1}`}>
@@ -177,7 +216,9 @@ export function FiscalPage() {
                 ['Case 4BB : déficit imputable sur les revenus fonciers', fiscal.reelFoncier.boxes.box4BB],
                 ['Case 4BC : déficit imputable sur le revenu global', fiscal.reelFoncier.boxes.box4BC],
               ]} />
-              <p className="muted small">Déficit imputable sur le revenu global plafonné à {FONCIER_DEFICIT_LIMIT.toLocaleString('fr-FR')} € (hors travaux de rénovation énergétique, non distingués ici) ; la part due aux intérêts d’emprunt ne s’impute que sur les revenus fonciers. Déficits des années antérieures : case 4BD, d’après vos avis d’imposition. Rubrique 410 (intérêts) : reprendre le montant de la ligne 250.</p>
+              <p className="muted small">Déficit imputable sur le revenu global plafonné à {FONCIER_DEFICIT_LIMIT.toLocaleString('fr-FR')} € (hors travaux de rénovation énergétique, non distingués ici) ; la part due aux intérêts d’emprunt ne s’impute que sur les revenus fonciers. Rubrique 410 (intérêts) : reprendre le montant de la ligne 250.</p>
+              <div className="grid tax-inputs"><NumberInput label="Case 4BD : déficits fonciers antérieurs non imputés" suffix="€" value={inputs[String(year)]?.[FOYER]?.prior_deficits ?? null}
+                onChange={(v) => setInput(String(year), FOYER, 'prior_deficits', v)} hint="Montant indiqué sur votre dernier avis d’imposition." /></div>
               {fiscal.reelFoncier.perProperty.some((f) => f.notDeductible.length > 0) && (
                 <details><summary>Dépenses non déductibles écartées</summary>
                   <ul>{fiscal.reelFoncier.perProperty.flatMap((f) => f.notDeductible.map((n) => <li key={f.propertyId + n.label}>{title(f.propertyId)} — {n.label} : {money2(n.amount)}</li>))}</ul>
@@ -188,7 +229,15 @@ export function FiscalPage() {
 
           {fiscal.microBic && (
             <Section title="Location meublée au micro-BIC — déclaration 2042-C-PRO">
-              <p>Case <strong>5ND</strong> (locations meublées non professionnelles) : <strong>{money2(fiscal.microBic.box5ND)}</strong> de recettes charges comprises. Abattement de 50 % appliqué par l’administration (revenu imposable estimé {money2(fiscal.microBic.taxable)}). Meublé de tourisme : cases 5NG (classé) ou 5NW (non classé) à la place.</p>
+              {fiscal.microBic.lines.map((l) => (
+                <p key={l.box}>Case <strong>{l.box}</strong> ({l.label}) : <strong>{money2(l.amount)}</strong> de recettes charges comprises. Abattement de {Math.round(l.rate * 100)} % appliqué par l’administration (revenu imposable estimé {money2(l.taxable)}).</p>
+              ))}
+              <div className="grid tax-inputs">
+                {fiscal.byRegime.micro_bic.map((p) => (
+                  <Select key={p.id} label={`Nature de la location : ${p.title}`} value={get(p.id, year).meuble_kind ?? 'longue_duree'}
+                    onChange={(v) => setInput(PARAMS, p.id, 'meuble_kind', (v ?? 'longue_duree') as MeubleKind)} options={Object.entries(MEUBLE_KIND_LABELS) as [MeubleKind, string][]} />
+                ))}
+              </div>
               {fiscal.microBic.warnings.map((w) => <p key={w} className="form-error">{w}</p>)}
             </Section>
           )}
@@ -196,6 +245,12 @@ export function FiscalPage() {
           {fiscal.reelBic && (
             <Section title="Location meublée au réel (LMNP) — 2031, 2033 et 2042-C-PRO">
               <KeyRows rows={[['Case 5NA : bénéfice', fiscal.reelBic.box5NA], ['Case 5NY : déficit', fiscal.reelBic.box5NY]]} />
+              <h3>Compte de résultat simplifié (2033-B)</h3>
+              <div className="dt-scroll"><table className="dt-table compact tax-2033">
+                <thead><tr><th>Ligne</th><th>Libellé</th><th className="num">Montant</th></tr></thead>
+                <tbody>{fiscal.reelBic.liasse.lines.map((l) => <tr key={l.code + l.label} className={['270', '310', '352', '354'].includes(l.code) ? 'subtotal' : ''}><td><strong>{l.code}</strong></td><td>{l.label}</td><td className="num">{money2(l.amount)}</td></tr>)}
+                  {fiscal.reelBic.liasse.deferredUsed > 0 && <tr><td>—</td><td>Imputation des amortissements différés des exercices précédents</td><td className="num">{money2(fiscal.reelBic.liasse.deferredUsed)}</td></tr>}</tbody>
+              </table></div>
               {fiscal.reelBic.perProperty.map((r) => {
                 const prm = { ...DEFAULT_TAX_INPUTS, ...get(r.propertyId, year) };
                 return (
@@ -268,9 +323,10 @@ function collectBoxes(f: FiscalSummary, title: (id: string) => string): Box[] {
     for (const p of f.reelFoncier.perProperty) for (const l of p.lines) out.push({ form: '2044', code: l.code, label: l.label, amount: l.amount, property: title(p.propertyId) });
     out.push({ form: '2044', code: '420', label: 'Résultat total', amount: b.l420 });
   }
-  if (f.microBic) out.push({ form: '2042-C-PRO', code: '5ND', label: 'Meublé non professionnel, micro-BIC : recettes', amount: f.microBic.box5ND });
+  if (f.microBic) for (const l of f.microBic.lines) out.push({ form: '2042-C-PRO', code: l.box, label: `${l.label}, micro-BIC : recettes`, amount: l.amount });
   if (f.reelBic) {
     out.push({ form: '2042-C-PRO', code: f.reelBic.box5NY ? '5NY' : '5NA', label: f.reelBic.box5NY ? 'Meublé non professionnel au réel : déficit' : 'Meublé non professionnel au réel : bénéfice', amount: f.reelBic.box5NY || f.reelBic.box5NA });
+    for (const l of f.reelBic.liasse.lines) out.push({ form: '2033-B', code: l.code, label: l.label, amount: l.amount });
     for (const r of f.reelBic.perProperty) {
       out.push({ form: 'LMNP', code: 'Recettes', label: 'Recettes', amount: r.receipts, property: title(r.propertyId) });
       out.push({ form: 'LMNP', code: 'Charges', label: 'Charges (hors intérêts)', amount: r.chargesTotal, property: title(r.propertyId) });

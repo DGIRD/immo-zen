@@ -13,7 +13,7 @@ import { buildReceiptPdf, type ReceiptData } from './receiptPdf.ts';
 
 export interface OutboxRow {
   id: string;
-  kind: 'confirmation_paiement' | 'quittance' | 'relance' | 'relance_a_valider';
+  kind: 'confirmation_paiement' | 'quittance' | 'relance' | 'relance_a_valider' | 'invitation_locataire';
   to_emails: string[];
   subject: string;
   body_text: string;
@@ -39,15 +39,23 @@ export interface OutboxDeps {
   send(m: MailMessage): Promise<void>;
   pdfLib: Parameters<typeof buildReceiptPdf>[0];
   enabled: boolean;
+  /** Adresse publique de l'application (lien des invitations à l'espace locataire, « {{APP_URL}} » dans le texte). */
+  appUrl?: string;
   log(msg: string, data?: Record<string, unknown>): void;
 }
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-export async function buildMessage(row: OutboxRow, deps: Pick<OutboxDeps, 'receipt' | 'pdfLib'>): Promise<MailMessage> {
+export async function buildMessage(row: OutboxRow, deps: Pick<OutboxDeps, 'receipt' | 'pdfLib' | 'appUrl'>): Promise<MailMessage> {
   const to = row.to_emails.filter((e) => EMAIL.test(e));
   if (!to.length) throw new Error('Aucune adresse e-mail valide.');
-  const m: MailMessage = { to, subject: row.subject, text: row.body_text, attachments: [] };
+  let text = row.body_text;
+  if (text.includes('{{APP_URL}}')) {
+    const url = deps.appUrl?.trim();
+    if (!url || !/^https:\/\//.test(url)) throw new Error('Adresse de l’application (APP_URL) non configurée : lien d’invitation impossible.');
+    text = text.split('{{APP_URL}}').join(url.endsWith('/') ? url : url + '/');
+  }
+  const m: MailMessage = { to, subject: row.subject, text, attachments: [] };
   if (row.kind === 'quittance') {
     if (!row.receipt_id) throw new Error('Quittance absente.');
     const r = await deps.receipt(row.receipt_id);

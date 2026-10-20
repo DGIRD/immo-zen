@@ -10,6 +10,7 @@
 //   RESEND_API_KEY  clé du fournisseur d'e-mail (Resend)
 //   EMAIL_FROM      expéditeur vérifié, ex. « Immo-Zen <loyers@votre-domaine.fr> »
 //   EMAIL_REPLY_TO  (facultatif) adresse de réponse
+//   APP_URL         adresse de l'application (lien des invitations à l'espace locataire)
 // Fournies automatiquement par Supabase : SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import * as pdfLib from 'npm:pdf-lib@1.17.1';
@@ -42,6 +43,7 @@ Deno.serve(async (req) => {
       out.outbox = await processOutbox({
         enabled,
         pdfLib,
+        appUrl: env('APP_URL'),
         log,
         claim: async (limit) => {
           const { data, error } = await sb.rpc('iz_claim_outbox', { p_limit: limit });

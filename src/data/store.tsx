@@ -2,7 +2,7 @@ import type { PlatformState } from './platform.ts';
 import { planViolation, UNLIMITED_PLAN, type PlanInfo, type PlanOp } from '../domain/plans.ts';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { userDefaults, type SimulationInputs } from '../domain/simulator.ts';
-import { describeError, EMPTY_SNAPSHOT, RepoError, SNAPSHOT_KEY, type Repo, type SessionInfo, type Snapshot } from './repo.ts';
+import { describeError, EMPTY_SNAPSHOT, RepoError, SNAPSHOT_KEY, type Repo, type SessionInfo, type Snapshot, type TenantPortal } from './repo.ts';
 import type { Insert, Patch, Tables, TableName, UserSettings, VersionedTable } from './types.ts';
 
 export type SyncState = 'loading' | 'synced' | 'saving' | 'offline' | 'error';
@@ -31,6 +31,9 @@ interface StoreValue {
   /** Accès et abonnement (undefined : en cours de chargement ; null : migration du lot 3 absente). */
   platform: PlatformState | null | undefined;
   refreshPlatform(): Promise<void>;
+  /** Espace locataire du compte connecté (undefined : en cours de chargement). */
+  portal: TenantPortal | null | undefined;
+  refreshPortal(): Promise<void>;
   notify(message: string, tone?: Toast['tone']): void;
   dismissToast(id: number): void;
   refresh(): Promise<void>;
@@ -97,6 +100,10 @@ export function StoreProvider({ repo, children }: { repo: Repo; children: ReactN
   }, [persist]);
 
   const [platform, setPlatform] = useState<PlatformState | null | undefined>(undefined);
+  const [portal, setPortal] = useState<TenantPortal | null | undefined>(undefined);
+  const refreshPortal = useCallback(async () => {
+    try { setPortal(await repo.tenantPortal()); } catch { setPortal(null); }
+  }, [repo]);
   // Formule en vigueur et données courantes, lues par les vérifications faites avant chaque écriture
   const planRef = useRef<PlanInfo | null>(null);
   planRef.current = platform?.plan ?? null;
@@ -114,13 +121,14 @@ export function StoreProvider({ repo, children }: { repo: Repo; children: ReactN
     try {
       const snap = await repo.loadAll();
       void repo.platform.state().then(setPlatform).catch(() => setPlatform(null));
+      void refreshPortal();
       setData(snap);
       persist(snap);
       setSync({ state: 'synced', lastSync: snap.loadedAt });
     } catch (e) {
       setSync({ state: navigator.onLine ? 'error' : 'offline', message: describeError(e) });
     }
-  }, [repo, persist]);
+  }, [repo, persist, refreshPortal]);
 
   // Session
   useEffect(() => {
@@ -132,7 +140,7 @@ export function StoreProvider({ repo, children }: { repo: Repo; children: ReactN
     }).catch(() => setAuthReady(true));
     const off = repo.onAuthChange((s, event) => {
       setSession((prev) => (prev?.userId === s?.userId ? prev : s));
-      if (event === 'SIGNED_OUT') { setData(EMPTY); setPlatform(undefined); purgePrivateCache(); }
+      if (event === 'SIGNED_OUT') { setData(EMPTY); setPlatform(undefined); setPortal(undefined); purgePrivateCache(); }
     });
     return () => { alive = false; off(); };
   }, [repo]);
@@ -327,7 +335,7 @@ export function StoreProvider({ repo, children }: { repo: Repo; children: ReactN
   const simulatorDefaults = useMemo(() => userDefaults(data.settings?.simulator_defaults as Record<string, unknown> | undefined), [data.settings]);
 
   const value: StoreValue = {
-    repo, session, authReady, data, sync, conflict, toasts, simulatorDefaults, platform, refreshPlatform,
+    repo, session, authReady, data, sync, conflict, toasts, simulatorDefaults, platform, refreshPlatform, portal, refreshPortal,
     notify, dismissToast, refresh, create, createMany, update, remove, removeWhere, updateWhere, call, saveSettings, signOut,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

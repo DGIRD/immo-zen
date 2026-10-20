@@ -164,7 +164,12 @@ export interface TaxPropertyInputs {
   works_years?: number;
   /** Valeur amortissable retenue (sinon coût d'acquisition). */
   depreciable_base?: number;
+  /** Micro-BIC : nature de la location meublée (cases 5NI, 5NG ou 5NH de la 2042-C-PRO). */
+  meuble_kind?: MeubleKind;
+  /** Déficits fonciers antérieurs non encore imputés (case 4BD), saisis depuis l'avis d'imposition. */
+  prior_deficits?: number;
 }
+export type MeubleKind = 'longue_duree' | 'tourisme_classe' | 'chambre_hotes' | 'tourisme_non_classe';
 export type TaxInputs = Record<string, Record<string, TaxPropertyInputs>>;
 
 export interface ReminderTemplate {
@@ -213,6 +218,79 @@ export interface Lease extends Versioned {
   irl_base_label?: string | null;
   irl_base_value?: number | null;
   last_revision_on?: string | null;
+  /** Informations du contrat de bail généré (type de bail, désignation, clauses). */
+  contract?: LeaseContract | null;
+}
+
+/** Type de contrat : loi du 6 juillet 1989 (vide, meublé) ou Code civil (hors résidence principale, parking). */
+export type ContractKind = 'vide' | 'meuble' | 'civil_secondaire' | 'civil_societe' | 'parking';
+export interface LeaseContract {
+  kind: ContractKind;
+  landlord_kind?: 'physique' | 'sci_familiale' | 'morale';
+  landlord_email?: string | null;
+  landlord_representative?: string | null;
+  /** Bail civil à une société : preneur personne morale et occupant désigné. */
+  company_name?: string | null;
+  company_id?: string | null;
+  company_representative?: string | null;
+  occupant_name?: string | null;
+  building_type?: 'collectif' | 'individuel';
+  ownership_regime?: 'copropriete' | 'monopropriete';
+  construction_period?: 'avant_1949' | '1949_1974' | '1975_1989' | '1989_2005' | 'apres_2005';
+  tax_id?: string | null;
+  surface?: number | null;
+  rooms?: number | null;
+  other_parts?: string | null;
+  equipment?: string | null;
+  heating?: 'individuel' | 'collectif';
+  hot_water?: 'individuel' | 'collectif';
+  collective_split?: string | null;
+  usage?: 'habitation' | 'mixte';
+  private_annexes?: string | null;
+  common_areas?: string | null;
+  telecom?: string | null;
+  duration_months?: number | null;
+  reduced_reason?: string | null;
+  student?: boolean;
+  tacit_renewal?: boolean;
+  notice_months?: number | null;
+  zone_tendue?: boolean;
+  reference_rent?: number | null;
+  reference_rent_increased?: number | null;
+  rent_complement?: number | null;
+  rent_complement_reason?: string | null;
+  previous_rent?: number | null;
+  previous_rent_date?: string | null;
+  payment_terms?: 'echoir' | 'echu';
+  payment_place?: string | null;
+  energy_cost_min?: number | null;
+  energy_cost_max?: number | null;
+  energy_ref_year?: number | null;
+  works_done?: string | null;
+  works_landlord?: string | null;
+  works_tenant?: string | null;
+  agency_fees_tenant?: number | null;
+  agency_fees_landlord?: number | null;
+  guarantor?: string | null;
+  furniture?: string[];
+  parking_spot?: string | null;
+  special_conditions?: string | null;
+  signed_place?: string | null;
+  signed_on?: string | null;
+}
+
+/** Accès d'un locataire à son espace (invitation, acceptation, révocation). */
+export interface TenantAccount {
+  id: string;
+  user_id: string;
+  tenant_id: string;
+  email: string;
+  invited_at: string | null;
+  account_user_id: string | null;
+  accepted_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface LeaseRevision {
@@ -340,6 +418,8 @@ export interface DocumentRow extends Versioned {
   mime_type: string;
   size_bytes: number;
   notes: string | null;
+  /** Visible dans l'espace locataire (document d'un bail ou d'un locataire). */
+  shared_with_tenant?: boolean;
 }
 
 export type ExpenseCategory = 'copropriete' | 'taxe_fonciere' | 'assurance' | 'interets' | 'frais_bancaires' | 'travaux' | 'mobilier' | 'entretien' | 'gestion' | 'autre'
@@ -369,7 +449,7 @@ export interface Expense extends Versioned {
 export interface OutboxMessage {
   id: string;
   user_id: string;
-  kind: 'confirmation_paiement' | 'quittance' | 'relance' | 'relance_a_valider';
+  kind: 'confirmation_paiement' | 'quittance' | 'relance' | 'relance_a_valider' | 'invitation_locataire';
   to_emails: string[];
   subject: string;
   status: 'a_envoyer' | 'en_cours' | 'envoye' | 'echec' | 'annule';

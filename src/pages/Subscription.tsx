@@ -96,14 +96,15 @@ export function SubscriptionPage() {
         <KeyValue items={[
           ['Abonnement', s ? `${STATUS_LABELS[s.status]}${s.source === 'manuel' ? ' (accordé par Immo-Zen)' : ''}` : STATUS_LABELS.none],
           ...(subPlan ? [['Offre', subPlan.label] as [string, string]] : []),
-          ...(access.until ? [[access.reason === 'essai' ? 'Fin de l’essai' : 'Accès jusqu’au', date(access.until)] as [string, string]] : []),
+          ...(access.until ? [[access.reason === 'essai' ? 'Fin de l’offre Découverte' : access.reason === 'decouverte_terminee' ? 'Offre Découverte terminée le' : 'Accès jusqu’au', date(access.until)] as [string, string]] : []),
           ...(s?.current_period_end && running ? [[s.cancel_at_period_end ? 'Fin d’accès' : 'Prochaine échéance', date(s.current_period_end)] as [string, string]] : []),
           ...(packValid ? [['Pack fiscal', `valable jusqu’au ${date(packValid)}`] as [string, string]] : []),
         ]} />
-        {access.reason === 'essai' && plan.enforce && <p className="muted">Essai gratuit en formule {tierDef(plan.trial_tier ?? 'patrimoine').label}, sans carte bancaire. À la fin de l’essai, le compte passe en formule Découverte s’il n’est pas abonné : rien n’est supprimé.</p>}
-        {s?.cancel_at_period_end && s.status !== 'canceled' && <p className="muted">Résiliation programmée : l’abonnement reste actif jusqu’au {date(s.current_period_end)}, puis le compte passe en formule Découverte sans nouveau prélèvement.</p>}
+        {access.reason === 'essai' && plan.enforce && <p className="muted">Offre {tierDef(plan.trial_tier ?? 'decouverte').label} : 30 jours gratuits, sans carte bancaire. À son terme, sans abonnement, vos données restent consultables et exportables mais ne sont plus modifiables : rien n’est supprimé.</p>}
+        {access.reason === 'decouverte_terminee' && <p className="form-error">Votre offre Découverte de 30 jours est terminée : vos données restent consultables et exportables. Choisissez une formule pour continuer à les modifier.</p>}
+        {s?.cancel_at_period_end && s.status !== 'canceled' && <p className="muted">Résiliation programmée : l’abonnement reste actif jusqu’au {date(s.current_period_end)}, puis le compte passe en consultation seule, sans nouveau prélèvement.</p>}
         {s?.status === 'past_due' && <p className="form-error">Le dernier prélèvement a échoué. Stripe va le retenter ; mettez à jour votre moyen de paiement pour éviter l’interruption.</p>}
-        {plan.enforce && plan.tier === 'decouverte' && <p>Vos données au-delà des limites restent consultables, modifiables et exportables ; seuls les ajouts sont bloqués.</p>}
+        {plan.enforce && plan.tier === 'decouverte' && access.has_access && <p>Pendant l’offre Découverte, les ajouts au-delà des limites sont bloqués ; vos données restent modifiables et exportables.</p>}
       </Section>
 
       {running ? (
@@ -135,7 +136,7 @@ export function SubscriptionPage() {
           {!plans.some((p) => p.tier && p.active && p.stripe_price_id) && (
             <NotAvailable>Le paiement en ligne n’est pas encore ouvert.{config?.support_email ? <> Contact : <a href={`mailto:${config.support_email}`}>{config.support_email}</a>.</> : null}</NotAvailable>
           )}
-          <p className="muted small">Formule Découverte gratuite et sans limite de durée : 1 bien détenu, 5 biens en prospection, 2 scénarios par bien, 100 Mo de documents. Paiement sécurisé par Stripe (carte bancaire, Apple Pay, Google Pay ou prélèvement SEPA) : Immo-Zen ne voit jamais vos coordonnées bancaires. Sans engagement : résiliation en ligne à tout moment, effective à la fin de la période payée.</p>
+          <p className="muted small">Offre Découverte gratuite pendant 30 jours à la création du compte : 1 bien détenu, 5 biens en prospection, 2 scénarios par bien, 100 Mo de documents ; ensuite, sans abonnement, consultation et export seulement. Paiement sécurisé par Stripe (carte bancaire, Apple Pay, Google Pay ou prélèvement SEPA) : Immo-Zen ne voit jamais vos coordonnées bancaires. Sans engagement : résiliation en ligne à tout moment, effective à la fin de la période payée.</p>
           {s?.stripe_customer_id && <Button size="sm" disabled={!!busy} onClick={() => void go('portal')}>Mes factures</Button>}
         </Section>
       )}

@@ -21,7 +21,7 @@ export interface TierDef {
 }
 
 export const TIERS: TierDef[] = [
-  { code: 'decouverte', label: 'Découverte', monthly: 0, annual: 0, pitch: 'Pour découvrir Immo-Zen avec un premier bien.',
+  { code: 'decouverte', label: 'Découverte', monthly: 0, annual: 0, pitch: 'Pour découvrir Immo-Zen avec un premier bien, gratuitement pendant 30 jours.',
     limits: { owned: 1, prospects: 5, scenarios: 2, storage_mb: 100 },
     features: { contacts: false, automations: false, consolidated: false, fiscal: false, sharing: false } },
   { code: 'essentiel', label: 'Essentiel', monthly: 9.9, annual: 99, pitch: 'Pour l’investisseur qui prospecte et gère jusqu’à 3 biens.',
@@ -62,7 +62,7 @@ export const UNLIMITED_PLAN: PlanInfo = {
 export function demoPlan(tier: TierCode, enforce: boolean): PlanInfo {
   const t = tierDef(enforce ? tier : 'pro');
   return { tier: t.code, label: t.label, enforce, reason: enforce ? (t.code === 'decouverte' ? 'decouverte' : 'abonnement_active') : 'acces_libre',
-    until: null, trial_tier: 'patrimoine', fiscal_pack_until: null, limits: t.limits, features: t.features };
+    until: null, trial_tier: 'decouverte', fiscal_pack_until: null, limits: t.limits, features: t.features };
 }
 
 /** Bien compté dans la limite de prospection : ni détenu, ni archivé, ni refusé, ni abandonné (même règle que la base). */

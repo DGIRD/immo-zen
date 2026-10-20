@@ -50,7 +50,7 @@ function SyncIndicator() {
 }
 
 export function Layout({ active, children }: { active: string; children: ReactNode }) {
-  const { session, signOut, repo, toasts, dismissToast, conflict, sync, data, platform } = useStore();
+  const { session, signOut, repo, toasts, dismissToast, conflict, sync, data, platform, portal } = useStore();
   const [open, setOpen] = useState(false);
   useEffect(() => { setOpen(false); }, [active]);
 
@@ -70,7 +70,10 @@ export function Layout({ active, children }: { active: string; children: ReactNo
 
       {platform && !platform.access.has_access && (
         <div className="offline-banner" role="alert">
-          Votre accès est en consultation seule (abonnement terminé ou absent) : vos données restent consultables et exportables. <a href={href('/abonnement')}>Voir mon abonnement</a>
+          {platform.access.reason === 'decouverte_terminee'
+            ? <>Votre offre Découverte de 30 jours est terminée : vos données restent consultables et exportables. Choisissez une formule pour continuer à les modifier. </>
+            : <>Votre accès est en consultation seule (abonnement terminé ou absent) : vos données restent consultables et exportables. </>}
+          <a href={href('/abonnement')}>Voir mon abonnement</a>
         </div>
       )}
 
@@ -101,6 +104,7 @@ export function Layout({ active, children }: { active: string; children: ReactNo
                 </a>
               </li>
             ))}
+            {!!portal?.accounts.length && <li><a href={href('/espace-locataire')}><span>Mon espace locataire</span></a></li>}
           </ul>
           <p className="tagline">Prospectez, investissez et gérez vos locations sereinement.</p>
         </nav>

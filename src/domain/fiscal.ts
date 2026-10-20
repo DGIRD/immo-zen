@@ -1,16 +1,41 @@
 /**
  * Déclaration fiscale annuelle (revenus de l'année N déclarés en N+1), par régime renseigné sur chaque bien.
  *
- * Sources : formulaire 2044 (édition 2026, revenus 2025), 2042 cases 4BA à 4BE, 2042-C-PRO cases 5ND, 5NA, 5NY.
+ * Sources : formulaire 2044 (édition 2026, revenus 2025), 2042 cases 4BA à 4BE, 2042-C-PRO (édition 2026 : cases 5NI, 5NG, 5NH
+ * au micro-BIC, 5NA et 5NY au réel ; édition 2025 : 5ND et 5NG), liasse 2031 et 2033-B (lignes 218 à 354).
  * Principe de caisse : recettes encaissées et dépenses payées pendant l'année civile.
  * Aide au remplissage : ne vaut ni attestation ni conseil fiscal. Les montants sont à vérifier avec les notices.
  */
-import type { Allocation, Expense, ExpenseCategory, Lease, Payment, Property, RentCharge, TaxPropertyInputs, TaxRegime } from '../data/types.ts';
+import type { Allocation, Expense, ExpenseCategory, Lease, MeubleKind, Payment, Property, RentCharge, TaxPropertyInputs, TaxRegime } from '../data/types.ts';
 import { isIncome } from './rental.ts';
 import { amortize, round2 } from './simulator.ts';
 
 export const MICRO_FONCIER_LIMIT = 15000;
 export const MICRO_BIC_LIMIT = 77700;
+
+export const MEUBLE_KIND_LABELS: Record<MeubleKind, string> = {
+  longue_duree: 'Location meublée classique (longue durée, étudiant, bail mobilité)',
+  tourisme_classe: 'Meublé de tourisme classé',
+  chambre_hotes: 'Chambre d’hôtes',
+  tourisme_non_classe: 'Meublé de tourisme non classé',
+};
+export interface MicroBicRule { box: string; label: string; rate: number; limit: number }
+/**
+ * Case de la 2042-C-PRO, abattement et plafond du micro-BIC selon la nature de la location et l'année des revenus.
+ * Revenus 2025 et suivants (loi n° 2024-1039 du 19 novembre 2024) : 50 % jusqu'à 77 700 € (5NI longue durée, 5NG classé
+ * ou chambre d'hôtes), 30 % jusqu'à 15 000 € (5NH non classé). Revenus 2024 : 5ND (50 %, 77 700 €) et 5NG (71 %, 188 700 €).
+ */
+export function microBicRule(kind: MeubleKind, year: number): MicroBicRule {
+  const classe = kind === 'tourisme_classe' || kind === 'chambre_hotes';
+  if (year >= 2025) {
+    if (classe) return { box: '5NG', label: 'Meublés de tourisme classés et chambres d’hôtes', rate: 0.5, limit: 77700 };
+    if (kind === 'tourisme_non_classe') return { box: '5NH', label: 'Meublés de tourisme non classés', rate: 0.3, limit: 15000 };
+    return { box: '5NI', label: 'Autres locations meublées non professionnelles', rate: 0.5, limit: 77700 };
+  }
+  if (classe) return { box: '5NG', label: 'Meublés de tourisme classés et chambres d’hôtes', rate: 0.71, limit: 188700 };
+  return { box: '5ND', label: 'Locations meublées non professionnelles', rate: 0.5, limit: 77700 };
+}
+export interface MicroBicLine extends MicroBicRule { amount: number; taxable: number; properties: string[] }
 export const FONCIER_DEFICIT_LIMIT = 10700;
 export const FORFAIT_222 = 20;
 export const DEFAULT_TAX_INPUTS: Required<Pick<TaxPropertyInputs, 'land_pct' | 'building_years' | 'furniture_years' | 'works_years'>> = {
@@ -322,6 +347,60 @@ export function reelBic(p: Property, year: number, d: FiscalData, inputsByYear: 
   return out!;
 }
 
+// ---------------------------------------------------------------- liasse LMNP (2031, 2033-B)
+
+export interface Liasse2033B {
+  lines: { code: string; label: string; amount: number }[];
+  /** Imputation des amortissements différés des années précédentes (art. 39 C du CGI). */
+  deferredUsed: number;
+  fiscalResult: number;
+  /** Immobilisations (2033-C) : valeurs brutes et amortissements cumulés en fin d'exercice. */
+  assets: { label: string; gross: number; cumulated: number }[];
+  /** Amortissements différés restant à imputer en fin d'exercice. */
+  deferredAfter: number;
+}
+
+/** Compte de résultat simplifié (2033-B) de l'activité de location meublée au réel : tous les meublés au réel d'un même foyer. */
+export function liasse2033B(list: ReelBic[], year: number, d: FiscalData, inputs: (pid: string, y: number) => TaxPropertyInputs): Liasse2033B {
+  const by = (pred: (l: string) => boolean) => sum(list.flatMap((r) => r.charges.filter((c) => pred(c.label)).map((c) => c.amount)));
+  const l218 = sum(list.map((r) => r.receipts));
+  const l244 = by((l) => l === 'Taxe foncière');
+  const l242 = by((l) => l !== 'Taxe foncière');
+  const l254 = sum(list.map((r) => r.depreciationYear));
+  const l264 = round2(l242 + l244 + l254);
+  const l270 = round2(l218 - l264);
+  const l294 = sum(list.map((r) => r.interest));
+  const l310 = round2(l270 - l294);
+  const deducted = sum(list.map((r) => r.depreciationDeducted));
+  const l318 = round2(Math.max(0, l254 - deducted));
+  const deferredUsed = round2(Math.max(0, deducted - l254));
+  const fiscal = round2(l310 + l318 - deferredUsed);
+  const assets: Liasse2033B['assets'] = [];
+  for (const r of list) {
+    const p = d.properties.find((x) => x.id === r.propertyId);
+    if (!p) continue;
+    const { items } = depreciationItems(p, year, d, inputs(p.id, year));
+    for (const i of items) assets.push({ label: `${p.title} – ${i.label}`, gross: i.base, cumulated: i.cumulated });
+  }
+  return {
+    lines: [
+      { code: '218', label: 'Production vendue (services) : loyers et charges encaissés', amount: l218 },
+      { code: '232', label: 'Total des produits d’exploitation', amount: l218 },
+      { code: '242', label: 'Autres charges externes (copropriété, assurances, entretien, gestion, frais bancaires)', amount: l242 },
+      { code: '244', label: 'Impôts, taxes et versements assimilés (taxe foncière, CFE)', amount: l244 },
+      { code: '254', label: 'Dotations aux amortissements', amount: l254 },
+      { code: '264', label: 'Total des charges d’exploitation', amount: l264 },
+      { code: '270', label: 'Résultat d’exploitation', amount: l270 },
+      { code: '294', label: 'Charges financières (intérêts d’emprunt)', amount: l294 },
+      { code: '310', label: 'Bénéfice ou perte comptable', amount: l310 },
+      { code: '318', label: 'Réintégration : amortissements non déductibles (art. 39 C du CGI)', amount: l318 },
+      { code: fiscal >= 0 ? '352' : '354', label: fiscal >= 0 ? 'Résultat fiscal : bénéfice' : 'Résultat fiscal : déficit', amount: Math.abs(fiscal) },
+    ],
+    deferredUsed, fiscalResult: fiscal, assets,
+    deferredAfter: sum(list.map((r) => r.deferredAfter)),
+  };
+}
+
 // ---------------------------------------------------------------- synthèse
 
 export interface FiscalSummary {
@@ -330,8 +409,8 @@ export interface FiscalSummary {
   amounts: Map<string, YearAmounts>;
   microFoncier: { box4BE: number; taxable: number; warnings: string[] } | null;
   reelFoncier: { perProperty: Foncier2044[]; boxes: ReturnType<typeof foncierBoxes>; warnings: string[] } | null;
-  microBic: { box5ND: number; taxable: number; warnings: string[] } | null;
-  reelBic: { perProperty: ReelBic[]; box5NA: number; box5NY: number } | null;
+  microBic: { lines: MicroBicLine[]; total: number; taxable: number; warnings: string[] } | null;
+  reelBic: { perProperty: ReelBic[]; box5NA: number; box5NY: number; liasse: Liasse2033B } | null;
   other: Property[];
   warnings: string[];
 }
@@ -367,11 +446,24 @@ export function fiscalSummary(year: number, d: FiscalData, inputs: (propertyId: 
 
   let microBic: FiscalSummary['microBic'] = null;
   if (byRegime.micro_bic.length) {
-    const box = sum(byRegime.micro_bic.map((p) => { const a = amounts.get(p.id)!; return a.rentsHC + a.chargesCollected + a.otherIncome; }));
+    const lines = new Map<string, MicroBicLine>();
+    for (const p of byRegime.micro_bic) {
+      const a = amounts.get(p.id)!;
+      const rule = microBicRule(inputs(p.id, year).meuble_kind ?? 'longue_duree', year);
+      const line = lines.get(rule.box) ?? { ...rule, amount: 0, taxable: 0, properties: [] };
+      line.amount = round2(line.amount + a.rentsHC + a.chargesCollected + a.otherIncome);
+      line.properties.push(p.id);
+      lines.set(rule.box, line);
+    }
     const w: string[] = [];
-    if (box > MICRO_BIC_LIMIT) w.push(`Recettes supérieures à ${MICRO_BIC_LIMIT} € : le micro-BIC ne s’applique pas.`);
-    // abattement de 50 %, au moins 305 €
-    microBic = { box5ND: box, taxable: round2(Math.max(0, box - Math.max(box * 0.5, 305))), warnings: w };
+    for (const l of lines.values()) {
+      // abattement forfaitaire, au moins 305 € par catégorie
+      l.taxable = round2(Math.max(0, l.amount - Math.max(l.amount * l.rate, 305)));
+      if (l.amount > l.limit) w.push(`Case ${l.box} : recettes supérieures à ${l.limit.toLocaleString('fr-FR')} € ; le micro-BIC ne s’applique pas à cette activité.`);
+    }
+    const total = sum([...lines.values()].map((l) => l.amount));
+    if (year >= 2025 && total > MICRO_BIC_LIMIT) w.push(`Recettes meublées totales supérieures à ${MICRO_BIC_LIMIT.toLocaleString('fr-FR')} € : régime réel obligatoire.`);
+    microBic = { lines: [...lines.values()], total, taxable: sum([...lines.values()].map((l) => l.taxable)), warnings: w };
   }
 
   let reel: FiscalSummary['reelBic'] = null;
@@ -379,7 +471,7 @@ export function fiscalSummary(year: number, d: FiscalData, inputs: (propertyId: 
     const perProperty = byRegime.reel_bic.map((p) => reelBic(p, year, d, (y) => inputs(p.id, y)));
     // les résultats des différents meublés se compensent dans la même activité LMNP
     const total = sum(perProperty.map((r) => r.box5NA - r.box5NY));
-    reel = { perProperty, box5NA: total > 0 ? total : 0, box5NY: total < 0 ? round2(-total) : 0 };
+    reel = { perProperty, box5NA: total > 0 ? total : 0, box5NY: total < 0 ? round2(-total) : 0, liasse: liasse2033B(perProperty, year, d, inputs) };
   }
 
   return { year, byRegime, amounts, microFoncier, reelFoncier, microBic, reelBic: reel, other: [...byRegime.is, ...byRegime.autre], warnings };

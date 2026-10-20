@@ -3,12 +3,14 @@ import { describeError } from '../data/repo.ts';
 import { useStore } from '../data/store.tsx';
 import { Button, TextInput } from '../ui/components.tsx';
 import { navigate } from '../ui/router.ts';
+import { readInviteCode } from '../domain/tenantPortal.ts';
 
 type Mode = 'login' | 'signup' | 'reset';
 
 export function AuthPage() {
   const { repo } = useStore();
-  const [mode, setMode] = useState<Mode>('login');
+  const invited = !!readInviteCode();
+  const [mode, setMode] = useState<Mode>(invited ? 'signup' : 'login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null);
@@ -46,6 +48,7 @@ export function AuthPage() {
       </div>
       <form className="auth-form" onSubmit={submit} noValidate={false}>
         <h2>{mode === 'login' ? 'Connexion' : mode === 'signup' ? 'Créer un compte' : 'Mot de passe oublié'}</h2>
+        {invited && <p className="note" role="status">Invitation à votre espace locataire : créez votre compte (ou connectez-vous) avec l’adresse e-mail qui a reçu l’invitation. Votre espace s’ouvrira ensuite.</p>}
         <TextInput label="Adresse e-mail" type="email" required autoComplete="email" value={email} onChange={setEmail} />
         {mode !== 'reset' && (
           <TextInput label="Mot de passe" type="password" required value={password} onChange={setPassword}

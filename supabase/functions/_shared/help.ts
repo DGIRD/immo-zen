@@ -87,11 +87,30 @@ Le tableau Mes biens affiche locataire actif, « Loué » dès qu'un bail est en
   },
   {
     id: 'baux', title: 'Locataires et baux', pages: ['locataires'],
-    keywords: ['bail', 'baux', 'locataire', 'colocation', 'titulaire', 'nouveau', 'meuble', 'vide', 'echeances', 'depot', 'garantie', 'fin', 'depart'],
+    keywords: ['bail', 'baux', 'locataire', 'colocation', 'titulaire', 'nouveau', 'creer', 'saisir', 'meuble', 'vide', 'echeances', 'depot', 'garantie', 'fin', 'depart'],
     body: `**Nouveau bail** : bien détenu, titulaire(s) (créez-les au besoin), dates, loyer hors charges, provision ou forfait de charges, jour de paiement, dépôt de garantie. Les échéances jusqu'au mois en cours sont créées tout de suite, puis chaque mois par le serveur.
 Colocation : plusieurs titulaires sur un bail, ou un bail par chambre ; date de départ d'un colocataire dans l'onglet Titulaires. Fin du bail : les échéances suivantes non réglées sont annulées. La fiche du bail regroupe échéances, paiements, quittances, relances, dépôt de garantie (suivi à part du solde), titulaires et documents.`,
     actions: [{ label: 'Nouveau bail', path: '/baux/nouveau' }],
     questions: ['Comment créer un bail ?', 'Comment gérer une colocation ?', 'Comment suivre le dépôt de garantie ?'],
+  },
+  {
+    id: 'contrat-bail', title: 'Générer le contrat de bail', pages: ['locataires'],
+    keywords: ['contrat', 'bail', 'generer', 'rediger', 'modele', 'type', 'nu', 'vide', 'meuble', 'civil', 'secondaire', 'societe', 'parking', 'garage', 'pdf', 'signer', 'decret', 'mobilier'],
+    body: `Sur la fiche d'un bail, **Contrat de bail** prépare le contrat à signer, avec un aperçu en direct :
+- **location vide** ou **meublée** (résidence principale) : structure et mentions des contrats types officiels (décret n° 2015-587 du 29 mai 2015) — désignation des parties et du logement, durée (3 ans, 6 ans pour une société ; 1 an ou 9 mois étudiant en meublé), loyer, révision IRL, charges, encadrement des loyers, dépenses d'énergie, travaux, dépôt de garantie, solidarité, clause résolutoire, honoraires, mobilier minimal, annexes ;
+- **bail civil** (résidence secondaire, logement loué à une société) et **parking** : rédigés d'après le Code civil (pas de modèle officiel).
+Loyer, charges, dépôt, dates et IRL viennent du bail ; le reste se complète à l'écran. Les points bloquants sont signalés (dépôt trop élevé, durée trop courte, DPE G, loyer au-dessus du loyer de référence majoré…). **Télécharger le PDF** ou **Enregistrer dans les documents** (et le partager avec le locataire). Relisez le contrat avant signature.`,
+    questions: ['Comment générer un bail meublé ?', 'Quelles annexes joindre au bail ?'],
+  },
+  {
+    id: 'espace-locataire', title: 'Espace locataire', pages: ['locataires', 'documents'],
+    keywords: ['espace', 'locataire', 'inviter', 'invitation', 'acces', 'portail', 'partager', 'quittances', 'documents', 'revoquer', 'compte'],
+    body: `Chaque locataire peut avoir son **espace en lecture seule** : son logement, ses quittances et reçus (PDF) et les documents que vous partagez.
+1. Renseignez son e-mail (fiche locataire), puis **Inviter à l'espace locataire** (liste des locataires ou onglet Titulaires du bail).
+2. Il reçoit un lien, valable 30 jours et utilisable uniquement avec son adresse e-mail, pour créer son compte.
+3. Partagez un document : case « Visible dans l'espace locataire » à l'ajout, ou menu « ⋯ » → Partager avec le locataire (document rattaché à son bail).
+**Aperçu de l'espace locataire** montre ce qu'il voit. **Révoquer l'accès** le ferme immédiatement. Le locataire ne voit jamais vos autres biens, vos dépenses ni les documents non partagés.`,
+    questions: ['Comment inviter mon locataire ?', 'Que voit mon locataire ?'],
   },
   {
     id: 'loyers', title: 'Loyers et paiements', pages: ['loyers', 'locataires'],
@@ -148,15 +167,16 @@ Ils sont déduits en **LMNP au réel** (avec le bâti : valeur amortissable − 
   },
   {
     id: 'fiscal', title: 'Déclaration fiscale', pages: ['fiscal'],
-    keywords: ['declaration', 'fiscal', 'fiscale', 'impot', 'impots', '2044', '2042', 'case', 'cases', '4ba', '4bb', '4bc', '4be', '5nd', '5na', '5ny', 'micro', 'reel', 'foncier', 'deficit', 'lmnp', 'bic'],
-    body: `Choisissez l'année des revenus : selon le régime de chaque bien, l'onglet donne les cases à remplir — **4BE** (micro-foncier), formulaire **2044** ligne par ligne puis **4BA / 4BB / 4BC** (réel foncier), **5ND** (micro-BIC), **5NA / 5NY** (LMNP réel, avec amortissements). Saisies possibles : régularisation des provisions N−1 (ligne 230), recettes diverses, paramètres d'amortissement. Export Excel.
+    keywords: ['declaration', 'fiscal', 'fiscale', 'impot', 'impots', '2044', '2042', 'case', 'cases', '4ba', '4bb', '4bc', '4bd', '4be', '5nd', '5ni', '5ng', '5nh', '5na', '5ny', 'micro', 'reel', 'foncier', 'deficit', 'lmnp', 'bic', '2031', '2033', 'liasse', 'professionnel', 'particulier', 'gouv', 'espace', 'sci', '2072', '2065'],
+    body: `Choisissez l'année des revenus : selon le régime de chaque bien, l'onglet donne les cases à remplir — **4BE** (micro-foncier), formulaire **2044** ligne par ligne puis **4BA / 4BB / 4BC** et 4BD (réel foncier), **5NI / 5NG / 5NH** au micro-BIC selon la nature du meublé (5ND pour les revenus 2024), **liasse 2031 et 2033-B** puis **5NA / 5NY** (LMNP réel, avec amortissements).
+**Où déclarer sur impots.gouv.fr** détaille le parcours de chaque régime : espace **particulier** (déclaration de revenus, rubriques à cocher, cases) et espace **professionnel** (liasse des meublés au réel, 2072 d'une SCI à l'IR, 2065 d'une société à l'IS), avec les dates limites. **Dossier PDF** regroupe parcours et montants ; export Excel.
 Les montants viennent des loyers encaissés et dépenses payées de l'année ; les intérêts d'emprunt du crédit saisi dans Mes biens. C'est une **aide au remplissage**, pas un conseil fiscal : vérifiez avec les notices ou un professionnel.`,
     questions: ['Quelles cases remplir pour ma déclaration ?', 'Pourquoi ne vois-je pas les amortissements ?', 'D’où viennent les intérêts d’emprunt ?'],
   },
   {
     id: 'documents', title: 'Documents', pages: ['documents'],
     keywords: ['document', 'documents', 'fichier', 'pdf', 'photo', 'justificatif', 'bail', 'stocker', 'telecharger'],
-    body: `PDF, images, Word, Excel ou texte, 10 Mo maximum, rattachés à un bien, un bail ou une dépense. Ils sont privés : chaque ouverture passe par un lien valable 60 secondes. Supprimer un document supprime aussi le fichier.`,
+    body: `PDF, images, Word, Excel ou texte, 10 Mo maximum, rattachés à un bien, un bail ou une dépense. Ils sont privés : chaque ouverture passe par un lien valable 60 secondes. Un document rattaché à un bail peut être **partagé avec le locataire** (espace locataire). Supprimer un document supprime aussi le fichier.`,
   },
   {
     id: 'contacts', title: 'Contacts', pages: ['contacts'],
@@ -176,7 +196,7 @@ Les montants viennent des loyers encaissés et dépenses payées de l'année ; l
   {
     id: 'abonnement', title: 'Mon abonnement et accès support', pages: ['abonnement', 'parametres'],
     keywords: ['abonnement', 'payer', 'prix', 'tarif', 'stripe', 'facture', 'resilier', 'essai', 'support', 'aide'],
-    body: `**Mon abonnement** : état de l'accès (essai, abonnement, résiliation programmée, fin d'accès), offres et paiement sécurisé par Stripe, puis espace client Stripe pour factures, moyen de paiement et résiliation. Si l'accès prend fin, les données restent consultables et exportables. **Paramètres → Accès support** : autorisez pour 7 jours le support à voir un résumé chiffré de votre compte (chaque consultation est journalisée).`,
+    body: `**Offre Découverte** : 30 jours gratuits à la création du compte (1 bien détenu, 5 en prospection, 100 Mo) ; ensuite, sans abonnement, les données restent consultables et exportables mais ne sont plus modifiables. **Mon abonnement** : état de l'accès (offre Découverte, abonnement, résiliation programmée, fin d'accès), offres et paiement sécurisé par Stripe, puis espace client Stripe pour factures, moyen de paiement et résiliation. Si l'accès prend fin, les données restent consultables et exportables. **Paramètres → Accès support** : autorisez pour 7 jours le support à voir un résumé chiffré de votre compte (chaque consultation est journalisée).`,
   },
   {
     id: 'parametres', title: 'Paramètres', pages: ['parametres'],

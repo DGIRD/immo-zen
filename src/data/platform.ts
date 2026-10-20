@@ -85,6 +85,7 @@ export const ACCESS_REASONS: Record<string, string> = {
   abonnement_active: 'Abonnement actif', abonnement_trialing: 'Essai Stripe', abonnement_past_due: 'Paiement en retard (accès maintenu pendant les relances)',
   abonnement_canceled: 'Abonnement terminé', abonnement_unpaid: 'Impayé', abonnement_incomplete: 'Paiement à finaliser', abonnement_paused: 'Suspendu',
   abonnement_incomplete_expired: 'Paiement abandonné', decouverte: 'Formule Découverte (gratuite)',
+  decouverte_terminee: 'Offre Découverte terminée : consultation seule',
 };
 
 const missing = (e: { code?: string; message?: string } | null) => !!e && (e.code === '42P01' || e.code === 'PGRST205' || e.code === 'PGRST202' || /schema cache|does not exist/i.test(e.message ?? ''));
@@ -202,7 +203,7 @@ export function createDemoPlatform(storage: Storage, userId: () => string | null
       }
     } catch { /* stockage indisponible */ }
     return {
-      config: { enforce_subscription: false, trial_days: 30, support_email: null, updated_at: new Date().toISOString(), trial_tier: 'patrimoine', demo_tier: 'pro' },
+      config: { enforce_subscription: false, trial_days: 30, support_email: null, updated_at: new Date().toISOString(), trial_tier: 'decouverte', demo_tier: 'pro' },
       plans: DEMO_PLANS.map((p) => ({ ...p })),
       leads: [], audit: [], supportUntil: null,
     };
@@ -230,7 +231,7 @@ export function createDemoPlatform(storage: Storage, userId: () => string | null
           plan_code: null, current_period_end: null, cancel_at_period_end: false, has_access: true, access_reason: 'administrateur', support_until: read().supportUntil }];
       },
       async setManualAccess() { throw new RepoError('Mode démonstration : un seul compte local.'); },
-      async setConfig(enforce, trialDays, supportEmail, trialTier = 'patrimoine', demoTier) {
+      async setConfig(enforce, trialDays, supportEmail, trialTier = 'decouverte', demoTier) {
         const d = read();
         d.config = { enforce_subscription: enforce, trial_days: trialDays, support_email: supportEmail.trim() || null, updated_at: new Date().toISOString(),
           trial_tier: trialTier, demo_tier: demoTier ?? d.config.demo_tier ?? 'pro' };

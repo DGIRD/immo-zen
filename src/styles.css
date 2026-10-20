@@ -493,3 +493,30 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 .estimate-gap { margin: 0; font-weight: 600; }
 .estimate-edit { display: grid; grid-template-columns: auto minmax(0, 12rem) minmax(0, 12rem); gap: .8rem; align-items: end; }
 @media (max-width: 760px) { .estimate-edit { grid-template-columns: 1fr; } }
+
+/* contrat de bail */
+.contract-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr); gap: 1.25rem; align-items: start; }
+.contract-preview { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 1.25rem 1.4rem; font-size: .88rem; line-height: 1.45; }
+.contract-preview h2 { font-size: 1.15rem; margin: 0 0 .3rem; }
+.contract-preview h3 { font-size: .95rem; margin: 1.1rem 0 .4rem; border-bottom: 1px solid var(--line); padding-bottom: .2rem; }
+.contract-preview p { margin: .35rem 0; }
+.contract-kv { margin: .3rem 0; }
+.contract-kv > div { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: .6rem; padding: .15rem 0; }
+.contract-kv dt { color: var(--ink-soft); }
+.contract-kv dd { margin: 0; font-weight: 600; }
+.contract-sign { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .6rem; }
+.contract-sign > div { border: 1px solid var(--line); min-height: 4.5rem; padding: .4rem; color: var(--ink-soft); }
+@media (max-width: 1100px) { .contract-layout { grid-template-columns: minmax(0, 1fr); } .contract-preview { position: static; max-height: none; } }
+
+/* déclaration : parcours impots.gouv */
+.tax-guide { display: flex; flex-direction: column; gap: .6rem; }
+.tax-guide-step { border: 1px solid var(--line); border-radius: 6px; padding: .6rem .9rem; background: var(--surface); }
+.tax-guide-step summary { cursor: pointer; }
+.tax-guide-step ol { padding-left: 1.3rem; }
+.tax-guide-step li { margin: .25rem 0; }
+
+/* espace locataire */
+.tenant-shell { min-height: 100vh; background: var(--paper); }
+.tenant-top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .8rem 1.2rem; background: var(--surface); border-bottom: 1px solid var(--line); }
+.tenant-main { max-width: 960px; margin: 0 auto; padding: 1.2rem 1rem 3rem; }
+.tenant-lease { margin-bottom: .8rem; }

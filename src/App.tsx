@@ -17,6 +17,9 @@ import { SimulatorPage } from './pages/Simulator.tsx';
 import { DocumentsPage } from './pages/rental/Documents.tsx';
 import { ExpensesPage } from './pages/rental/Expenses.tsx';
 import { LeaseDetailPage } from './pages/rental/LeaseDetail.tsx';
+import { LeaseContractPage } from './pages/rental/LeaseContract.tsx';
+import { TenantPortalPage, TenantPreviewPage } from './pages/TenantPortal.tsx';
+import { readInviteCode, rememberInviteCode } from './domain/tenantPortal.ts';
 import { LeaseFormPage, LeasesPage } from './pages/rental/Leases.tsx';
 import { RentsPage } from './pages/rental/Rents.tsx';
 import { Layout, NAV } from './ui/Layout.tsx';
@@ -24,14 +27,21 @@ import { EmptyState, Button, PageHeader } from './ui/components.tsx';
 import { navigate, useRoute } from './ui/router.ts';
 
 export function App() {
-  const { session, authReady, data, sync } = useStore();
+  const { session, authReady, data, sync, portal } = useStore();
   const plan = usePlan();
   const route = useRoute();
   const [a, b, c] = route.path;
 
   if (!authReady) return <div className="boot">Immo-Zen</div>;
   if (a === 'nouveau-mot-de-passe' && session) return <NewPasswordPage />;
-  if (!session) return <AuthPage />;
+  if (!session) {
+    // invitation à l'espace locataire : le code est conservé pendant la création du compte
+    if (a === 'espace-locataire') rememberInviteCode(readInviteCode());
+    return <AuthPage />;
+  }
+  // espace locataire : invitation à accepter, ou compte sans activité de bailleur
+  const tenantOnly = !!portal?.accounts.length && !data.properties.length && !data.leases.length && !data.tenants.length && sync.state !== 'loading';
+  if ((a === 'espace-locataire' && b !== 'apercu') || (a !== 'espace-locataire' && readInviteCode()) || (!a && tenantOnly)) return <TenantPortalPage />;
 
   let active = 'dashboard';
   let page: React.ReactNode;
@@ -63,7 +73,7 @@ export function App() {
   else if (a === 'baux' && b) {
     active = 'locataires';
     if (!data.leases.some((l) => l.id === b) && sync.state === 'loading') page = <p className="muted">Chargement…</p>;
-    else page = c === 'modifier' ? <LeaseFormPage key={key} id={b} /> : <LeaseDetailPage id={b} />;
+    else page = c === 'modifier' ? <LeaseFormPage key={key} id={b} /> : c === 'contrat' ? <LeaseContractPage key={key} id={b} /> : <LeaseDetailPage id={b} />;
   }
   else if (a === 'baux') { active = 'locataires'; page = <LeasesPage key={key} />; }
   else if (a === 'loyers') { active = 'loyers'; page = <RentsPage />; }
@@ -77,6 +87,7 @@ export function App() {
     );
   }
   else if (a === 'abonnement') { active = 'abonnement'; page = <SubscriptionPage key={key} />; }
+  else if (a === 'espace-locataire' && b === 'apercu' && c) { active = 'locataires'; page = <TenantPreviewPage tenantId={c} />; }
   else if (a === 'admin') { active = 'admin'; page = <AdminPage />; }
   else {
     const item = NAV.find((n) => n.path === `/${a}`);

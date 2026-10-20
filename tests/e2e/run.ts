@@ -89,6 +89,10 @@ async function main() {
     await page.getByLabel('Loyer hors charges').fill('1200');
     assert.notEqual(await fig.innerText(), before, 'le calculateur se met à jour');
     assert.match((await fig.innerText()).replace(/[\u202f\u00a0]/g, ' '), /^[+−]\d[\d ]* €$/);
+    await page.getByText('Offre limitée à 30 jours').waitFor();
+    await page.getByText('pendant 30 jours, sans carte bancaire', { exact: true }).waitFor();
+    await page.getByRole('heading', { name: 'Du bail à la déclaration, sans rien oublier' }).waitFor();
+    await page.getByRole('heading', { name: 'Un espace pour vos locataires' }).waitFor();
     await page.screenshot({ path: join(out, '29-site.png'), fullPage: true });
     await page.getByRole('button', { name: 'Envoyer ma demande' }).click();
     await page.getByText('Indiquez votre nom.').waitFor();
@@ -649,6 +653,81 @@ async function main() {
     await dlg.getByRole('button', { name: 'Fermer' }).first().click();
   });
 
+  await step('contrat de bail : points bloquants, aperçu, PDF et enregistrement partagé', async () => {
+    await page.goto(leaseUrl);
+    await page.getByRole('button', { name: 'Contrat de bail' }).click();
+    await page.getByRole('heading', { name: 'Contrat de bail', exact: true }).waitFor();
+    await page.getByRole('alert').filter({ hasText: 'À corriger avant d’éditer le contrat' }).getByText(/Adresse du logement incomplète/).waitFor();
+    assert.ok(await page.getByRole('button', { name: 'Télécharger le PDF' }).isDisabled(), 'PDF bloqué tant que le contrat est incomplet');
+    await page.getByLabel('Nom du bailleur').fill('Paul Bailleur');
+    await page.getByLabel('Adresse du bailleur').fill('1 place Bellecour, 69002 Lyon');
+    await page.getByRole('combobox', { name: 'Adresse' }).fill('12 rue de Par');
+    await page.getByRole('option', { name: '12 Rue de Paris 93100 Montreuil' }).click();
+    await page.getByLabel('Type de bail').selectOption({ label: 'Location meublée (résidence principale)' });
+    assert.match(await page.getByLabel('Éléments de mobilier (un par ligne)').inputValue(), /Literie comprenant couette/, 'mobilier minimal proposé');
+    await page.getByLabel('Surface habitable').fill('28');
+    await page.getByLabel('Pièces principales').fill('1');
+    await page.getByLabel('Période de construction').selectOption({ label: 'de 1975 à 1989' });
+    await page.getByLabel('Dépenses d’énergie : estimation basse').fill('700');
+    await page.getByLabel('Dépenses d’énergie : estimation haute').fill('1000');
+    assert.equal(await page.getByRole('alert').filter({ hasText: 'À corriger avant d’éditer le contrat' }).count(), 0, 'plus de point bloquant');
+    const preview = page.locator('.contract-preview');
+    await preview.getByRole('heading', { name: 'Contrat de location – logement meublé' }).waitFor();
+    for (const t of ['I. Désignation des parties', 'III. Date de prise d’effet et durée du contrat', 'Clause résolutoire', 'Mobilier', 'Annexes']) await preview.getByText(t).first().waitFor();
+    await preview.getByText(/reconduit tacitement pour un an/).waitFor();
+    await page.screenshot({ path: join(out, '32-contrat-bail.png'), fullPage: true });
+    const [pdf] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Télécharger le PDF' }).click()]);
+    assert.match(pdf.suggestedFilename(), /^bail-meuble-montreuil-\d{4}-\d{2}-01\.pdf$/);
+    assert.equal((await readFile((await pdf.path())!)).subarray(0, 5).toString(), '%PDF-');
+    await page.getByRole('button', { name: 'Enregistrer dans les documents' }).click();
+    await page.getByText('Bail enregistré dans les documents et partagé avec le locataire.').waitFor();
+    await page.goto(leaseUrl);
+    await page.getByText('location meublée').first().waitFor();
+    await page.getByRole('tab', { name: 'Documents' }).click();
+    const docRow = page.locator('tbody tr', { hasText: 'Contrat de location – logement meublé' });
+    await docRow.getByText('Partagé').waitFor();
+  });
+
+  await step('espace locataire : invitation, aperçu des quittances et documents, révocation', async () => {
+    await page.goto(url + '#/locataires?onglet=locataires');
+    const row = page.locator('tbody tr', { hasText: 'Léa Martin' }).first();
+    await row.getByText('Non invité').waitFor();
+    await row.getByLabel('Actions').click();
+    await row.getByRole('menuitem', { name: 'Inviter à l’espace locataire' }).click();
+    await page.locator('dialog[open]').getByRole('button', { name: 'Inviter' }).click();
+    const sent = page.locator('dialog[open]');
+    await sent.getByRole('heading', { name: 'Invitation préparée' }).waitFor();
+    await sent.getByText(/aucun e-mail n’est envoyé/).waitFor();
+    const link = await sent.locator('code').innerText();
+    assert.match(link, /#\/espace-locataire\?code=[0-9A-F]{12}$/);
+    await sent.getByRole('button', { name: 'Fermer' }).last().click();
+    await row.getByText('Invitation envoyée').waitFor();
+    const queued = await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!).email_outbox.filter((o: { kind: string }) => o.kind === 'invitation_locataire').length);
+    assert.equal(queued, 1, 'invitation placée en file (jamais envoyée en démonstration)');
+    await row.getByLabel('Actions').click();
+    await row.getByRole('menuitem', { name: 'Aperçu de l’espace locataire' }).click();
+    await page.getByRole('heading', { name: 'Aperçu de l’espace locataire : Léa Martin' }).waitFor();
+    const receipts = page.locator('section', { has: page.getByRole('heading', { name: /^Quittances et reçus/ }) });
+    assert.ok(await receipts.locator('tbody tr').count() >= 2, 'quittance et reçu visibles');
+    const docs = page.locator('section', { has: page.getByRole('heading', { name: /^Documents partagés/ }) });
+    assert.equal(await docs.locator('tbody tr').count(), 1, 'seul le document partagé est visible');
+    await docs.getByText('Contrat de location – logement meublé').waitFor();
+    const [q] = await Promise.all([page.waitForEvent('download'), receipts.getByRole('button', { name: 'Télécharger (PDF)' }).first().click()]);
+    assert.equal((await readFile((await q.path())!)).subarray(0, 5).toString(), '%PDF-');
+    await page.screenshot({ path: join(out, '33-espace-locataire.png'), fullPage: true });
+    await page.goto(url + '#/locataires?onglet=locataires');
+    await row.getByLabel('Actions').click();
+    await row.getByRole('menuitem', { name: 'Révoquer l’accès' }).click();
+    await page.locator('dialog[open]').getByRole('button', { name: 'Révoquer' }).click();
+    await row.getByText('Accès révoqué').waitFor();
+    // lien d'invitation ouvert dans ce navigateur (mode démonstration : un seul compte)
+    await page.goto(url + '#/espace-locataire?code=ABCDEF123456');
+    await page.getByRole('heading', { name: 'Mon espace locataire' }).waitFor();
+    await page.getByRole('alert').getByText(/Mode démonstration/).waitFor();
+    await page.goto(url + '#/');
+    await page.getByRole('heading', { name: 'Tableau de bord' }).waitFor();
+  });
+
   await step('déclaration fiscale : 2044 au réel et cases de la 2042', async () => {
     await page.goto(url + '#/declaration');
     await page.getByLabel('Année des revenus').selectOption('2024');
@@ -665,7 +744,33 @@ async function main() {
     await page.getByRole('button', { name: 'Enregistrer les saisies' }).click();
     await page.getByText('Saisies enregistrées.').waitFor();
     assert.match(await row('230'), /100,00 €/);
+    // où déclarer : espace particulier, 2044 puis 2042
+    const guide = page.locator('section', { has: page.getByRole('heading', { name: 'Où déclarer sur impots.gouv.fr (2025)' }) });
+    await guide.getByText('Location nue au réel : 2044').waitFor();
+    await guide.getByText('Espace particulier').first().waitFor();
+    await guide.getByText(/Cochez la rubrique « Revenus fonciers », puis « Déclaration 2044 »/).waitFor();
     await page.screenshot({ path: join(out, '22-declaration-fiscale.png'), fullPage: true });
+    const [dossier] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Dossier PDF' }).click()]);
+    assert.equal(dossier.suggestedFilename(), 'immo-zen-dossier-declaration-2024.pdf');
+    assert.equal((await readFile((await dossier.path())!)).subarray(0, 5).toString(), '%PDF-');
+    // location meublée au réel : liasse 2031 / 2033 dans l'espace professionnel
+    await page.getByLabel('Régime de Parking détenu').selectOption('reel_bic');
+    const liasse = page.locator('table.tax-2033');
+    await liasse.waitFor();
+    assert.match((await liasse.innerText()).replace(/[\u202f\u00a0]/g, ' '), /218[\s\S]*242[\s\S]*254[\s\S]*310/);
+    await guide.getByText('Location meublée au réel (LMNP) : liasse 2031 et 2033').waitFor();
+    await guide.getByText('Espace professionnel').first().waitFor();
+    await guide.getByText(/tuile « Résultat »/).first().waitFor();
+    await page.screenshot({ path: join(out, '34-declaration-lmnp.png'), fullPage: true });
+    // micro-BIC : case selon la nature du meublé
+    await page.getByLabel('Régime de Parking détenu').selectOption('micro_bic');
+    await page.getByText(/Case 5ND/).first().waitFor();
+    await page.getByLabel('Nature de la location : Parking détenu').selectOption('tourisme_classe');
+    await page.getByText(/Case 5NG/).first().waitFor();
+    await page.getByLabel('Nature de la location : Parking détenu').selectOption('longue_duree');
+    await page.getByLabel('Régime de Parking détenu').selectOption('reel_foncier');
+    await page.getByRole('button', { name: 'Enregistrer les saisies' }).click();
+    await page.getByText('Saisies enregistrées.').last().waitFor();
   });
 
   await step('documents : dépôt privé, contrôle du type', async () => {
