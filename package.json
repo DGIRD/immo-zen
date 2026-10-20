@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "node scripts/build.mjs --serve",
     "build": "node scripts/build.mjs",
+    "guides": "node scripts/guides.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --import tsx --test \"tests/**/*.test.ts\"",
     "test:db": "bash supabase/tests/run-local.sh",

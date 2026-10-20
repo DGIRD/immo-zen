@@ -1,0 +1,3 @@
+User-agent: *
+Disallow: /app/
+Sitemap: https://immo-zen.fr/sitemap.xml
