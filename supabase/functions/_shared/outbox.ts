@@ -29,6 +29,8 @@ export interface MailMessage {
   to: string[];
   subject: string;
   text: string;
+  /** Version HTML (logo Immo-Zen en en-tête), envoyée avec la version texte. */
+  html?: string;
   replyTo?: string;
   attachments: { filename: string; content: Uint8Array; contentType: string }[];
 }
@@ -56,6 +58,40 @@ export const CONTACT_EMAIL = 'contact@immo-zen.fr';
 /** Pied de tous les e-mails envoyés par Immo-Zen. */
 export const MAIL_FOOTER = `--\nMessage envoyé avec Immo-Zen. L’équipe Immo-Zen se tient à votre disposition pour toute question sur le service : ${CONTACT_EMAIL}`;
 
+/** Logo publié avec le site (icône Immo-Zen), déduit de l'adresse de l'application. */
+export function logoUrl(appUrl?: string): string {
+  try { if (appUrl && /^https:\/\//.test(appUrl.trim())) return new URL('../icon-192.png', appUrl.trim().replace(/\/?$/, '/')).toString(); } catch { /* adresse invalide */ }
+  return 'https://immo-zen.fr/icon-192.png';
+}
+
+const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+/** Texte → HTML : paragraphes, retours à la ligne et liens cliquables. */
+function textToHtml(text: string): string {
+  return text.trim().split(/\n{2,}/).map((para) => {
+    const html = escapeHtml(para)
+      .replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)»])/g, (u) => `<a href="${u}" style="color:#1f4a45;word-break:break-all;">${u}</a>`)
+      .replace(/([\w.+-]+@[\w-]+\.[\w.-]+)/g, (m, e, off, all) => (/href="[^"]*$/.test(all.slice(0, off)) ? m : `<a href="mailto:${e}" style="color:#1f4a45;">${e}</a>`))
+      .replace(/\n/g, '<br>');
+    return `<p style="margin:0 0 14px;">${html}</p>`;
+  }).join('');
+}
+
+/** Gabarit HTML commun des e-mails Immo-Zen (même présentation que les e-mails de connexion). */
+export function renderEmailHtml(subject: string, text: string, logo: string): string {
+  const [main, footer] = text.split(/\n--\n/);
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(subject)}</title></head>
+<body style="margin:0;padding:24px 12px;background:#f3f6f4;font-family:Arial,Helvetica,sans-serif;color:#18322f;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;background:#ffffff;border:1px solid #d8e0dc;border-radius:6px;">
+<tr><td style="padding:22px 28px 6px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr>
+<td style="padding-right:10px;vertical-align:middle;"><img src="${escapeHtml(logo)}" width="36" height="36" alt="Immo-Zen" style="display:block;border:0;border-radius:6px;"></td>
+<td style="vertical-align:middle;font-family:Georgia,serif;font-size:22px;font-weight:bold;color:#1f4a45;">Immo-Zen</td>
+</tr></table></td></tr>
+<tr><td style="padding:12px 28px 14px;font-size:15px;line-height:1.55;">${textToHtml(main ?? '')}</td></tr>
+${footer ? `<tr><td style="padding:14px 28px;border-top:1px solid #d8e0dc;font-size:13px;line-height:1.5;color:#4a5a57;">${textToHtml(footer).replace(/margin:0 0 14px/g, 'margin:0')}</td></tr>` : ''}
+</table></td></tr></table></body></html>`;
+}
+
 export async function buildMessage(row: OutboxRow, deps: Pick<OutboxDeps, 'receipt' | 'pdfLib' | 'appUrl' | 'invoicePdf' | 'log'>): Promise<MailMessage> {
   const to = row.to_emails.filter((e) => EMAIL.test(e));
   if (!to.length) throw new Error('Aucune adresse e-mail valide.');
@@ -66,7 +102,7 @@ export async function buildMessage(row: OutboxRow, deps: Pick<OutboxDeps, 'recei
     text = text.split('{{APP_URL}}').join(url.endsWith('/') ? url : url + '/');
   }
   if (row.kind !== 'contact_site' && !text.includes(CONTACT_EMAIL)) text = `${text.trimEnd()}\n\n${MAIL_FOOTER}`;
-  const m: MailMessage = { to, subject: row.subject, text, attachments: [], ...(row.reply_to && EMAIL.test(row.reply_to) ? { replyTo: row.reply_to } : {}) };
+  const m: MailMessage = { to, subject: row.subject, text, html: renderEmailHtml(row.subject, text, logoUrl(deps.appUrl)), attachments: [], ...(row.reply_to && EMAIL.test(row.reply_to) ? { replyTo: row.reply_to } : {}) };
   if (row.kind === 'quittance') {
     if (!row.receipt_id) throw new Error('Quittance absente.');
     const r = await deps.receipt(row.receipt_id);
@@ -134,7 +170,7 @@ export function resendSender(apiKey: string, from: string, replyTo?: string, fet
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from, to: m.to, subject: m.subject, text: m.text, ...(m.replyTo || replyTo ? { reply_to: m.replyTo ?? replyTo } : {}),
+        from, to: m.to, subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}), ...(m.replyTo || replyTo ? { reply_to: m.replyTo ?? replyTo } : {}),
         attachments: m.attachments.map((a) => ({ filename: a.filename, content: b64(a.content) })),
       }),
     });
