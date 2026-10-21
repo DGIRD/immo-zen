@@ -64,12 +64,12 @@ Deno.serve(async (req) => {
         log,
         claim: async (limit) => {
           const { data, error } = await sb.rpc('iz_claim_outbox', { p_limit: limit });
-          if (error) throw error;
+          if (error) throw new Error(`File d’e-mails : ${error.message}`);
           return (data ?? []) as OutboxRow[];
         },
         result: async (id, ok, err) => {
           const { error } = await sb.rpc('iz_outbox_result', { p_id: id, p_ok: ok, p_error: err ?? null });
-          if (error) throw error;
+          if (error) throw new Error(`Résultat d’envoi : ${error.message}`);
         },
         receipt: async (id) => {
           const { data } = await sb.from('receipts').select('*, leases(charges_mode)').eq('id', id).maybeSingle();
@@ -112,7 +112,8 @@ Deno.serve(async (req) => {
     log('Exécution terminée', out);
     return Response.json({ ok: true, ...out });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    // erreurs Supabase (objets) : message lisible plutôt que « [object Object] »
+    const message = e instanceof Error ? e.message : typeof e === 'object' && e ? String((e as { message?: string }).message ?? JSON.stringify(e)) : String(e);
     log('Exécution en erreur', { error: message });
     await sb.from('job_runs').insert({ job: 'edge-daily', run_key: new Date().toISOString(), status: 'erreur', details: { error: message, tasks }, finished_at: new Date().toISOString() });
     return Response.json({ ok: false, error: message }, { status: 500 });
