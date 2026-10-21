@@ -43,11 +43,14 @@ export function SubscriptionPage() {
   const [period, setPeriod] = useState<'year' | 'month'>('year');
   const back = route.query.get('retour');
   useEffect(() => { void refreshPlatform(); }, [refreshPlatform]);
+  // périodicité affichée par défaut : celle de l'abonnement en cours
+  const currentInterval = platform?.subscription?.plan_code ? platform.plans.find((p) => p.code === platform.subscription?.plan_code)?.billing_interval : undefined;
+  useEffect(() => { if (currentInterval) setPeriod(currentInterval === 'month' ? 'month' : 'year'); }, [currentInterval]);
 
   async function go(kind: 'checkout' | 'portal' | 'pack', code?: Plan['code']) {
     setBusy(kind + (code ?? ''));
     try {
-      const url = kind === 'checkout' ? await repo.platform.checkout(code!) : kind === 'pack' ? await repo.platform.buyFiscalPack() : await repo.platform.portal();
+      const url = kind === 'checkout' ? await repo.platform.checkout(code!) : kind === 'pack' ? await repo.platform.buyFiscalPack() : await repo.platform.portal(code);
       location.assign(url);
     } catch (e) {
       notify(describeError(e), 'error');
@@ -74,6 +77,10 @@ export function SubscriptionPage() {
   const packOpen = !!pack?.active && !!pack.stripe_price_id;
   const packValid = s?.fiscal_pack_until && new Date(s.fiscal_pack_until) > new Date() ? s.fiscal_pack_until : null;
   const subPlan = s?.plan_code ? plans.find((p) => p.code === s.plan_code) : undefined;
+  // formule payée (indépendante de l'accès effectif, ouvert à tous pendant la phase de lancement)
+  const paidTier = running ? subPlan?.tier ?? null : null;
+  const rank = (code: string | null | undefined) => TIERS.findIndex((t) => t.code === code);
+  const showPack = !!packValid || paidTier === 'essentiel' || paidTier === 'patrimoine' || (plan.enforce && (plan.tier === 'essentiel' || plan.tier === 'patrimoine'));
 
   return (
     <>
@@ -81,6 +88,7 @@ export function SubscriptionPage() {
       {back === 'ok' && <p className="note" role="status">Paiement transmis. L’abonnement s’active dès que Stripe le confirme : quelques secondes par carte, jusqu’à quelques jours ouvrés par prélèvement SEPA. Rechargez la page si besoin.</p>}
       {back === 'pack' && <p className="note" role="status">Paiement du pack fiscal transmis : la déclaration fiscale s’ouvre dès que Stripe confirme le paiement.</p>}
       {back === 'annule' && <p className="note" role="status">Paiement annulé : aucun montant n’a été prélevé.</p>}
+      {back === 'formule' && <p className="note" role="status">Changement de formule transmis à Stripe : votre nouvelle formule s’affiche dès sa confirmation (quelques secondes). Rechargez la page si besoin.</p>}
 
       <Section title="Ma formule">
         <p className="current-tier"><Pill tone={plan.tier === 'decouverte' ? 'neutral' : 'ok'}>{current.label}</Pill> {ACCESS_REASONS[plan.reason] ?? ACCESS_REASONS[access.reason] ?? access.reason}</p>
@@ -107,41 +115,49 @@ export function SubscriptionPage() {
         {plan.enforce && plan.tier === 'decouverte' && access.has_access && <p>Pendant l’offre Découverte, les ajouts au-delà des limites sont bloqués ; vos données restent modifiables et exportables.</p>}
       </Section>
 
-      {running ? (
+      {running && (
         <Section title="Gérer mon abonnement">
-          <p>Factures, moyen de paiement, changement de formule ou de périodicité et résiliation se font dans l’espace client sécurisé de Stripe. Un changement de formule prend effet immédiatement, au prorata.</p>
+          <p>Factures, moyen de paiement et résiliation se font dans l’espace client sécurisé de Stripe. Pour changer de formule, choisissez-la ci-dessous : une formule supérieure s’applique immédiatement, au prorata ; une formule inférieure prend effet à la fin de la période payée.</p>
           <Button variant="primary" disabled={!!busy} onClick={() => void go('portal')}>{busy === 'portal' ? 'Ouverture…' : 'Ouvrir l’espace client'}</Button>
         </Section>
-      ) : (
-        <Section title="Choisir une formule" actions={<Tabs tabs={[['year', 'Annuel : 2 mois offerts'], ['month', 'Mensuel']]} value={period} onChange={setPeriod} />}>
-          <div className="plans tiers">
-            {TIERS.filter((t) => t.code !== 'decouverte').map((t) => {
-              const o = offer(t.code);
-              const open = !!o?.active && !!o.stripe_price_id && (o.amount_cents ?? 0) > 0;
-              const euros = o?.amount_cents ? o.amount_cents / 100 : period === 'year' ? t.annual : t.monthly;
-              return (
-                <div key={t.code} className={`plan${t.code === 'patrimoine' ? ' plan-featured' : ''}${t.code === plan.tier && plan.enforce ? ' plan-current' : ''}`}>
-                  <h3>{t.label}</h3>
-                  <p className="plan-price">{money2(euros)} <span className="muted small">TTC / {period === 'year' ? 'an' : 'mois'}</span></p>
-                  {period === 'year' && <p className="muted small">soit {money2(euros / 12)} par mois</p>}
-                  <p className="small">{t.pitch}</p>
-                  <ul className="plan-list">{tierHighlights(t).map((h) => <li key={h}>{h}</li>)}</ul>
-                  <Button variant={t.code === 'patrimoine' ? 'primary' : 'secondary'} disabled={!open || !!busy || repo.mode === 'demo'} onClick={() => void go('checkout', o!.code)}>
-                    {busy === 'checkout' + o?.code ? 'Redirection…' : open ? `Choisir ${t.label}` : 'Bientôt disponible'}
-                  </Button>
-                </div>
-              );
-            })}
-          </div>
-          {!plans.some((p) => p.tier && p.active && p.stripe_price_id) && (
-            <NotAvailable>Le paiement en ligne n’est pas encore ouvert.{config?.support_email ? <> Contact : <a href={`mailto:${config.support_email}`}>{config.support_email}</a>.</> : null}</NotAvailable>
-          )}
-          <p className="muted small">Offre Découverte gratuite pendant 30 jours à la création du compte : 1 bien détenu, 5 biens en prospection, 2 scénarios par bien, 100 Mo de documents ; ensuite, sans abonnement, consultation et export seulement. Paiement sécurisé par Stripe (carte bancaire, Apple Pay, Google Pay ou prélèvement SEPA) : Immo-Zen ne voit jamais vos coordonnées bancaires. Sans engagement : résiliation en ligne à tout moment, effective à la fin de la période payée.</p>
-          {s?.stripe_customer_id && <Button size="sm" disabled={!!busy} onClick={() => void go('portal')}>Mes factures</Button>}
-        </Section>
       )}
+      <Section title={running ? 'Changer de formule' : 'Choisir une formule'} actions={<Tabs tabs={[['year', 'Annuel : 2 mois offerts'], ['month', 'Mensuel']]} value={period} onChange={setPeriod} />}>
+        <div className="plans tiers">
+          {TIERS.filter((t) => t.code !== 'decouverte').map((t) => {
+            const o = offer(t.code);
+            const open = !!o?.active && !!o.stripe_price_id && (o.amount_cents ?? 0) > 0;
+            const euros = o?.amount_cents ? o.amount_cents / 100 : period === 'year' ? t.annual : t.monthly;
+            const isCurrent = running ? subPlan?.code === o?.code : t.code === plan.tier && plan.enforce;
+            const sameTier = running && paidTier === t.code;
+            const label = !open ? 'Bientôt disponible'
+              : isCurrent ? 'Votre formule actuelle'
+              : !running ? `Choisir ${t.label}`
+              : sameTier ? `Passer en ${period === 'year' ? 'annuel' : 'mensuel'}`
+              : rank(t.code) > rank(paidTier) ? `Passer à ${t.label}` : `Changer pour ${t.label}`;
+            return (
+              <div key={t.code} className={`plan${t.code === 'patrimoine' ? ' plan-featured' : ''}${isCurrent || (!running && t.code === plan.tier && plan.enforce) ? ' plan-current' : ''}`}>
+                <h3>{t.label}</h3>
+                <p className="plan-price">{money2(euros)} <span className="muted small">TTC / {period === 'year' ? 'an' : 'mois'}</span></p>
+                {period === 'year' && <p className="muted small">soit {money2(euros / 12)} par mois</p>}
+                <p className="small">{t.pitch}</p>
+                <ul className="plan-list">{tierHighlights(t).map((h) => <li key={h}>{h}</li>)}</ul>
+                <Button variant={isCurrent ? 'secondary' : t.code === 'patrimoine' ? 'primary' : 'secondary'} disabled={!open || isCurrent || !!busy || repo.mode === 'demo'}
+                  onClick={() => void go(running ? 'portal' : 'checkout', o!.code)}>
+                  {busy === (running ? 'portal' : 'checkout') + o?.code ? 'Redirection…' : label}
+                </Button>
+                {running && open && !isCurrent && !sameTier && rank(t.code) < rank(paidTier) && <p className="muted small">Prend effet à la fin de la période payée.</p>}
+              </div>
+            );
+          })}
+        </div>
+        {!plans.some((p) => p.tier && p.active && p.stripe_price_id) && (
+          <NotAvailable>Le paiement en ligne n’est pas encore ouvert.{config?.support_email ? <> Contact : <a href={`mailto:${config.support_email}`}>{config.support_email}</a>.</> : null}</NotAvailable>
+        )}
+        {!running && <p className="muted small">Offre Découverte gratuite pendant 30 jours à la création du compte : 1 bien détenu, 5 biens en prospection, 2 scénarios par bien, 100 Mo de documents ; ensuite, sans abonnement, consultation et export seulement. Paiement sécurisé par Stripe (carte bancaire, Apple Pay, Google Pay ou prélèvement SEPA) : Immo-Zen ne voit jamais vos coordonnées bancaires. Sans engagement : résiliation en ligne à tout moment, effective à la fin de la période payée.</p>}
+        {!running && s?.stripe_customer_id && <Button size="sm" disabled={!!busy} onClick={() => void go('portal')}>Mes factures</Button>}
+      </Section>
 
-      {(plan.tier === 'essentiel' || plan.tier === 'patrimoine' || packValid) && plan.enforce && (
+      {showPack && (
         <Section title="Pack fiscal">
           <p>Déclaration des revenus fonciers (2044, micro-foncier) et des locations meublées (micro-BIC, LMNP au réel avec amortissements), cases à reporter et export Excel, pendant 12 mois : <strong>{money2((pack?.amount_cents ?? FISCAL_PACK_PRICE * 100) / 100)} TTC</strong>, paiement unique. Inclus dans la formule Pro.</p>
           {packValid ? <p><Pill tone="ok">Actif</Pill> jusqu’au {date(packValid)}</p> : (
