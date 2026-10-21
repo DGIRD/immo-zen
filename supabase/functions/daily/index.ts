@@ -48,6 +48,11 @@ Deno.serve(async (req) => {
     }
 
     if (tasks.includes('outbox')) {
+      // alertes d'exploitation : nouveaux incidents signalés une fois à l'adresse de support (mis en file, envoyés ci-dessous)
+      const { data: incidents, error: alertError } = await sb.rpc('iz_ops_check');
+      if (alertError) log('Alertes d’exploitation indisponibles', { error: alertError.message });
+      else if (incidents) out.alerts = incidents;
+
       // réglages manquants (noms seulement, jamais les valeurs) : affichés dans la réponse pour le diagnostic
       const missing = [
         ...(env('EMAIL_ENABLED').trim().toLowerCase() === 'true' ? [] : [`EMAIL_ENABLED (≠ « true »${env('EMAIL_ENABLED') ? '' : ', absente'})`]),
