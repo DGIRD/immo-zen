@@ -2,6 +2,7 @@
 //  * checkout : page de paiement Stripe pour la formule choisie (l'abonnement n'est activé que par le webhook) ;
 //  * pack     : paiement ponctuel du pack fiscal (12 mois), pour un abonné Essentiel ou Patrimoine ;
 //  * portal   : espace client Stripe (factures, moyen de paiement, résiliation) ; avec « plan » : confirmation directe d'un changement de formule ;
+//  * invoice  : lien de téléchargement d'une facture du compte (rubrique « Mes factures ») ;
 //  * invite   : invitation d'un utilisateur par e-mail (administrateurs) — l'invité choisit lui-même son mot de passe.
 // Secrets : STRIPE_SECRET_KEY, APP_URL (+ SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY fournis par Supabase).
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -24,7 +25,7 @@ Deno.serve(async (req) => {
   const user = auth.user;
   if (!user) return reply(401, { error: 'Session expirée : reconnectez-vous.' });
 
-  const body = await req.json().catch(() => ({})) as { action?: string; plan?: string; email?: string };
+  const body = await req.json().catch(() => ({})) as { action?: string; plan?: string; email?: string; id?: string };
   const appUrl = env('APP_URL').replace(/\/?$/, '/');
 
   try {
@@ -69,6 +70,16 @@ Deno.serve(async (req) => {
       return reply(200, { url: s.url });
     }
 
+    if (body.action === 'invoice') {
+      // téléchargement d'une facture : lien PDF frais demandé à Stripe, pour une facture du compte uniquement
+      const { data: inv } = await admin.from('billing_invoices').select('id').eq('id', String(body.id ?? '')).eq('user_id', user.id).maybeSingle();
+      if (!inv) return reply(404, { error: 'Facture introuvable.' });
+      const f = await stripeRequest<{ invoice_pdf?: string | null; hosted_invoice_url?: string | null }>(secret, 'GET', `invoices/${inv.id}`);
+      const url = f.invoice_pdf ?? f.hosted_invoice_url;
+      if (!url) return reply(409, { error: 'Facture pas encore disponible : réessayez dans quelques instants.' });
+      return reply(200, { url });
+    }
+
     if (body.action === 'checkout') {
       const { data: plan } = await admin.from('plans').select('*').eq('code', body.plan ?? '').eq('active', true).eq('kind', 'formule').maybeSingle();
       if (!plan?.stripe_price_id) return reply(400, { error: 'Offre indisponible.' });
@@ -100,6 +111,9 @@ Deno.serve(async (req) => {
         mode: 'payment', customer: sub.stripe_customer_id, client_reference_id: user.id,
         'line_items[0][price]': pack.stripe_price_id, 'line_items[0][quantity]': 1,
         'metadata[addon]': 'pack_fiscal', 'metadata[user_id]': user.id, 'payment_intent_data[metadata][addon]': 'pack_fiscal',
+        // facture émise pour le pack (envoyée par e-mail et listée dans « Mes factures »)
+        'invoice_creation[enabled]': true, 'invoice_creation[invoice_data][metadata][user_id]': user.id,
+        'invoice_creation[invoice_data][description]': 'Pack fiscal Immo-Zen : déclaration fiscale pendant 12 mois',
         allow_promotion_codes: true, locale: 'fr',
         success_url: `${appUrl}#/abonnement?retour=pack`, cancel_url: `${appUrl}#/abonnement?retour=annule`,
       });

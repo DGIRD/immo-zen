@@ -112,3 +112,18 @@ test('file d’e-mails : demande du site envoyée à contact@ avec l’adresse d
   await send({ ...sent[0]!, replyTo: undefined });
   assert.equal(body.reply_to, 'contact@immo-zen.fr', 'adresse de réponse par défaut');
 });
+
+test('file d’e-mails : confirmation d’abonnement avec la facture PDF jointe, envoi maintenu sans PDF', async () => {
+  const pdf = new Uint8Array([37, 80, 68, 70, 45]);
+  const r1 = deps([row({ kind: 'facture_abonnement', stripe_invoice_id: 'in_1', body_text: 'Factures : {{APP_URL}}#/abonnement' })], {
+    appUrl: 'https://immo-zen.fr/app/', invoicePdf: async () => ({ filename: 'facture-immo-zen-A1-0001.pdf', content: pdf }),
+  });
+  await processOutbox(r1.d);
+  assert.equal(r1.sent[0]!.attachments[0]!.filename, 'facture-immo-zen-A1-0001.pdf');
+  assert.match(r1.sent[0]!.text, /https:\/\/immo-zen\.fr\/app\/#\/abonnement/);
+  const r2 = deps([row({ kind: 'facture_abonnement', stripe_invoice_id: 'in_2', body_text: 'b' })], { invoicePdf: async () => { throw new Error('Stripe 500'); } });
+  const rep = await processOutbox(r2.d);
+  assert.equal(rep.sent, 1, 'envoyé quand même, avec le lien');
+  assert.equal(r2.sent[0]!.attachments.length, 0);
+  assert.ok(r2.logs.some((l) => l.startsWith('Facture PDF indisponible')));
+});

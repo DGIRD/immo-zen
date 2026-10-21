@@ -15,6 +15,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import * as pdfLib from 'npm:pdf-lib@1.17.1';
 import { processOutbox, resendSender, type OutboxRow } from '../_shared/outbox.ts';
+import { stripeRequest } from '../_shared/stripe.ts';
 
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 
@@ -83,6 +84,15 @@ Deno.serve(async (req) => {
         cancelReminder: async (id, reason) => {
           await sb.from('reminders').update({ status: 'annule', error: reason }).eq('id', id);
           await sb.from('email_outbox').update({ status: 'annule' }).eq('reminder_id', id).in('status', ['a_envoyer', 'en_cours']);
+        },
+        invoicePdf: async (id) => {
+          const key = env('STRIPE_SECRET_KEY').trim();
+          if (!key) return null;
+          const inv = await stripeRequest<{ number?: string | null; invoice_pdf?: string | null }>(key, 'GET', `invoices/${id}`);
+          if (!inv.invoice_pdf) return null;
+          const res = await fetch(inv.invoice_pdf);
+          if (!res.ok) throw new Error(`PDF de la facture : HTTP ${res.status}`);
+          return { filename: `facture-immo-zen-${inv.number ?? id}.pdf`, content: new Uint8Array(await res.arrayBuffer()) };
         },
         send: resendSender(env('RESEND_API_KEY').trim(), env('EMAIL_FROM').trim(), env('EMAIL_REPLY_TO').trim() || undefined),
       });

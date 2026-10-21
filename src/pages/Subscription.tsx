@@ -47,6 +47,13 @@ export function SubscriptionPage() {
   const currentInterval = platform?.subscription?.plan_code ? platform.plans.find((p) => p.code === platform.subscription?.plan_code)?.billing_interval : undefined;
   useEffect(() => { if (currentInterval) setPeriod(currentInterval === 'month' ? 'month' : 'year'); }, [currentInterval]);
 
+  async function download(id: string) {
+    setBusy('facture' + id);
+    try { window.open(await repo.platform.invoiceUrl(id), '_blank', 'noopener'); }
+    catch (e) { notify(describeError(e), 'error'); }
+    finally { setBusy(null); }
+  }
+
   async function go(kind: 'checkout' | 'portal' | 'pack', code?: Plan['code']) {
     setBusy(kind + (code ?? ''));
     try {
@@ -69,6 +76,7 @@ export function SubscriptionPage() {
     );
   }
   const { access, subscription: s, plans, config } = platform;
+  const invoices = platform.invoices ?? [];
   const running = s?.source === 'stripe' && ['active', 'trialing', 'past_due', 'unpaid', 'incomplete'].includes(s.status);
   const usage = planUsage(data);
   const current = tierDef(plan.tier);
@@ -165,6 +173,29 @@ export function SubscriptionPage() {
               {busy === 'pack' ? 'Redirection…' : !packOpen ? 'Bientôt disponible' : 'Ajouter le pack fiscal'}
             </Button>
           )}
+        </Section>
+      )}
+
+      {(invoices.length > 0 || !!s?.stripe_customer_id) && (
+        <Section title="Mes factures">
+          {invoices.length === 0 ? <p className="muted">Aucune facture pour l’instant. Chaque paiement (abonnement, renouvellement, changement de formule, pack fiscal) produit une facture, envoyée par e-mail et disponible ici.</p> : (
+            <div className="dt-scroll"><table className="dt-table">
+              <thead><tr><th>Date</th><th>Objet</th><th>Période</th><th>N°</th><th className="num">Montant TTC</th><th><span className="sr-only">Télécharger</span></th></tr></thead>
+              <tbody>
+                {invoices.map((f) => (
+                  <tr key={f.id}>
+                    <td>{date(f.invoice_date)}</td>
+                    <td>{f.description ?? 'Immo-Zen'}</td>
+                    <td>{f.period_start && f.period_end && f.plan_code !== 'pack_fiscal' ? `${date(f.period_start)} – ${date(f.period_end)}` : '—'}</td>
+                    <td>{f.number ?? '—'}</td>
+                    <td className="num">{money2(f.amount_paid_cents / 100)}</td>
+                    <td><Button size="sm" disabled={!!busy || repo.mode === 'demo'} onClick={() => void download(f.id)}>{busy === 'facture' + f.id ? 'Ouverture…' : 'Télécharger (PDF)'}</Button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
+          )}
+          <p className="muted small">Les factures sont aussi envoyées par e-mail à chaque paiement et restent consultables dans l’espace client Stripe.</p>
         </Section>
       )}
     </>

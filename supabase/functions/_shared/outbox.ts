@@ -13,7 +13,7 @@ import { buildReceiptPdf, type ReceiptData } from './receiptPdf.ts';
 
 export interface OutboxRow {
   id: string;
-  kind: 'confirmation_paiement' | 'quittance' | 'relance' | 'relance_a_valider' | 'invitation_locataire' | 'contact_site';
+  kind: 'confirmation_paiement' | 'quittance' | 'relance' | 'relance_a_valider' | 'invitation_locataire' | 'contact_site' | 'facture_abonnement';
   to_emails: string[];
   subject: string;
   body_text: string;
@@ -21,6 +21,8 @@ export interface OutboxRow {
   reminder_id: string | null;
   /** Adresse de réponse propre au message (demande du site : adresse du visiteur). */
   reply_to?: string | null;
+  /** Facture Stripe à joindre (confirmation d'abonnement ou de pack). */
+  stripe_invoice_id?: string | null;
 }
 
 export interface MailMessage {
@@ -40,6 +42,8 @@ export interface OutboxDeps {
   reminderStillDue(id: string): Promise<number>;
   cancelReminder(id: string, reason: string): Promise<void>;
   send(m: MailMessage): Promise<void>;
+  /** PDF d'une facture Stripe (null si indisponible : l'e-mail part alors avec le lien seulement). */
+  invoicePdf?(id: string): Promise<{ filename: string; content: Uint8Array } | null>;
   pdfLib: Parameters<typeof buildReceiptPdf>[0];
   enabled: boolean;
   /** Adresse publique de l'application (lien des invitations à l'espace locataire, « {{APP_URL}} » dans le texte). */
@@ -52,7 +56,7 @@ export const CONTACT_EMAIL = 'contact@immo-zen.fr';
 /** Pied de tous les e-mails envoyés par Immo-Zen. */
 export const MAIL_FOOTER = `--\nMessage envoyé avec Immo-Zen. L’équipe Immo-Zen se tient à votre disposition pour toute question sur le service : ${CONTACT_EMAIL}`;
 
-export async function buildMessage(row: OutboxRow, deps: Pick<OutboxDeps, 'receipt' | 'pdfLib' | 'appUrl'>): Promise<MailMessage> {
+export async function buildMessage(row: OutboxRow, deps: Pick<OutboxDeps, 'receipt' | 'pdfLib' | 'appUrl' | 'invoicePdf' | 'log'>): Promise<MailMessage> {
   const to = row.to_emails.filter((e) => EMAIL.test(e));
   if (!to.length) throw new Error('Aucune adresse e-mail valide.');
   let text = row.body_text;
@@ -70,6 +74,15 @@ export async function buildMessage(row: OutboxRow, deps: Pick<OutboxDeps, 'recei
     if (r.cancelled_at) throw new Error('Quittance annulée : envoi abandonné.');
     const pdf = await buildReceiptPdf(deps.pdfLib, { ...r, charges_label: r.charges_mode === 'forfait' ? 'Forfait de charges' : 'Provision pour charges' });
     m.attachments.push({ filename: `${r.kind === 'quittance' ? 'quittance' : 'recu'}-${r.number}.pdf`, content: pdf, contentType: 'application/pdf' });
+  }
+  if (row.kind === 'facture_abonnement' && row.stripe_invoice_id && deps.invoicePdf) {
+    try {
+      const f = await deps.invoicePdf(row.stripe_invoice_id);
+      if (f) m.attachments.push({ filename: f.filename, content: f.content, contentType: 'application/pdf' });
+    } catch (e) {
+      // la facture reste consultable en ligne (lien dans le message) : l'envoi n'est pas bloqué
+      deps.log?.('Facture PDF indisponible', { id: row.id, error: e instanceof Error ? e.message : String(e) });
+    }
   }
   return m;
 }

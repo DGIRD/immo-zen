@@ -118,3 +118,92 @@ export async function stripeRequest<T>(secret: string, method: 'GET' | 'POST', p
   if (!res.ok) throw new Error(`Stripe ${res.status} : ${json.error?.message ?? 'erreur'}`);
   return json;
 }
+
+// ---------------------------------------------------------------------------
+// Factures : lecture d'une facture Stripe (formes d'API anciennes et récentes) et e-mail de confirmation
+// ---------------------------------------------------------------------------
+
+export interface InvoiceInfo {
+  id: string;
+  number: string | null;
+  customer: string | null;
+  subscriptionId: string | null;
+  /** Compte Immo-Zen indiqué dans les métadonnées (abonnement ou facture), s'il y en a. */
+  userIdHint: string | null;
+  amountPaid: number;
+  currency: string;
+  created: number;
+  periodStart: number | null;
+  periodEnd: number | null;
+  billingReason: string | null;
+  hostedUrl: string | null;
+  priceIds: string[];
+  description: string | null;
+}
+
+type Obj = Record<string, unknown>;
+const obj = (v: unknown): Obj => (v && typeof v === 'object' ? v as Obj : {});
+const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+
+export function invoiceInfo(o: Obj): InvoiceInfo {
+  const parent = obj(obj(o.parent).subscription_details);
+  const legacy = obj(o.subscription_details);
+  const lines = (obj(o.lines).data as Obj[] | undefined) ?? [];
+  const priceIds = lines.map((l) => str(obj(l.price).id) ?? str(obj(obj(l.pricing).price_details).price)).filter((x): x is string => !!x);
+  const first = lines[0] ? obj(lines[0].period) : {};
+  return {
+    id: String(o.id),
+    number: str(o.number),
+    customer: str(o.customer) ?? str(obj(o.customer).id),
+    subscriptionId: str(o.subscription) ?? str(parent.subscription),
+    userIdHint: str(obj(parent.metadata).user_id) ?? str(obj(legacy.metadata).user_id) ?? str(obj(o.metadata).user_id),
+    amountPaid: Number(o.amount_paid ?? 0),
+    currency: str(o.currency) ?? 'eur',
+    created: Number(o.created ?? 0),
+    periodStart: typeof first.start === 'number' ? first.start : null,
+    periodEnd: typeof first.end === 'number' ? first.end : null,
+    billingReason: str(o.billing_reason),
+    hostedUrl: str(o.hosted_invoice_url),
+    priceIds,
+    description: lines[0] ? str(lines[0].description) : null,
+  };
+}
+
+const euros = (cents: number) => {
+  const [i, d] = (Math.abs(cents) / 100).toFixed(2).split('.');
+  return `${cents < 0 ? '-' : ''}${i!.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')},${d} €`;
+};
+const day = (sec: number) => new Date(sec * 1000).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' });
+
+/** Objet et texte de l'e-mail de confirmation joint à une facture payée (« {{APP_URL}} » remplacé à l'envoi). */
+export function invoiceEmail(inv: InvoiceInfo, offer: { label: string; kind: 'formule' | 'option' } | null): { subject: string; body: string } {
+  const label = offer?.label ?? 'Immo-Zen';
+  const pack = offer?.kind === 'option';
+  const subject = pack ? 'Votre pack fiscal Immo-Zen est activé'
+    : inv.billingReason === 'subscription_create' ? `Bienvenue : votre abonnement Immo-Zen ${label} est actif`
+    : inv.billingReason === 'subscription_cycle' ? `Renouvellement de votre abonnement Immo-Zen ${label}`
+    : inv.billingReason === 'subscription_update' ? `Votre nouvelle formule Immo-Zen ${label}`
+    : 'Votre paiement Immo-Zen';
+  const intro = pack ? 'Merci pour votre achat : la déclaration fiscale est ouverte dans votre espace pour 12 mois.'
+    : inv.billingReason === 'subscription_create' ? `Merci pour votre confiance : votre abonnement ${label} est actif et toutes les fonctions de votre formule sont ouvertes.`
+    : inv.billingReason === 'subscription_cycle' ? `Votre abonnement ${label} a été renouvelé.`
+    : inv.billingReason === 'subscription_update' ? `Votre changement de formule est pris en compte : vous êtes désormais en ${label}.`
+    : 'Nous avons bien reçu votre paiement.';
+  const rows = [
+    `Offre : ${pack ? label : `Immo-Zen ${label}`}`,
+    `Montant réglé : ${euros(inv.amountPaid)} TTC`,
+    `Date : ${day(inv.created)}`,
+    ...(inv.periodStart && inv.periodEnd && !pack ? [`Période : du ${day(inv.periodStart)} au ${day(inv.periodEnd)}`] : []),
+    ...(inv.number ? [`Facture n° ${inv.number}`] : []),
+  ];
+  const body = [
+    'Bonjour,', '',
+    intro, '',
+    ...rows, '',
+    'Votre facture est jointe à ce message au format PDF.' + (inv.hostedUrl ? ` Vous pouvez aussi la consulter en ligne : ${inv.hostedUrl}` : ''),
+    'Toutes vos factures restent disponibles dans Immo-Zen, rubrique « Mon abonnement » : {{APP_URL}}#/abonnement',
+    ...(pack ? [] : ['', 'Changement de formule, moyen de paiement ou résiliation : depuis « Mon abonnement », à tout moment. La résiliation prend effet à la fin de la période payée.']),
+    '', 'Bonne gestion,', 'L’équipe Immo-Zen',
+  ];
+  return { subject, body: body.join('\n') };
+}

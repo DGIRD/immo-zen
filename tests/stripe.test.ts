@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fiscalPackFromSession, signStripePayload, subscriptionFields, subscriptionIdOf, verifyStripeSignature } from '../supabase/functions/_shared/stripe.ts';
+import { fiscalPackFromSession, invoiceEmail, invoiceInfo, signStripePayload, subscriptionFields, subscriptionIdOf, verifyStripeSignature } from '../supabase/functions/_shared/stripe.ts';
 
 const SECRET = 'whsec_test';
 const body = JSON.stringify({ id: 'evt_1', type: 'customer.subscription.updated', created: 1760000000, data: { object: { id: 'sub_1' } } });
@@ -58,4 +58,28 @@ test('pack fiscal : crédité seulement une fois le paiement encaissé', () => {
   assert.equal(fiscalPackFromSession(ev('checkout.session.completed', { ...paid, metadata: {} })), null, 'autre paiement ponctuel');
   assert.deepEqual(fiscalPackFromSession(ev('checkout.session.completed', { ...paid, client_reference_id: null })), { userId: 'u1' }, 'compte retrouvé par les métadonnées');
   assert.equal(fiscalPackFromSession(ev('invoice.paid', paid)), null);
+});
+
+test('facture Stripe : formes d’API récente et ancienne, e-mail de confirmation', () => {
+  const recent = invoiceInfo({ id: 'in_1', number: 'A1-0001', customer: 'cus_1', amount_paid: 9900, currency: 'eur', created: 1792610447, billing_reason: 'subscription_create',
+    hosted_invoice_url: 'https://invoice.stripe.com/i/x', parent: { subscription_details: { subscription: 'sub_1', metadata: { user_id: 'u1' } } },
+    lines: { data: [{ description: '1 × Immo-Zen Essentiel', period: { start: 1792610447, end: 1824146447 }, pricing: { price_details: { price: 'price_A' } } }] } });
+  assert.equal(recent.subscriptionId, 'sub_1');
+  assert.equal(recent.userIdHint, 'u1');
+  assert.deepEqual(recent.priceIds, ['price_A']);
+  const legacy = invoiceInfo({ id: 'in_2', subscription: 'sub_2', subscription_details: { metadata: { user_id: 'u2' } }, amount_paid: 4900, lines: { data: [{ price: { id: 'price_P' } }] } });
+  assert.equal(legacy.subscriptionId, 'sub_2');
+  assert.equal(legacy.userIdHint, 'u2');
+  assert.deepEqual(legacy.priceIds, ['price_P']);
+  const m = invoiceEmail(recent, { label: 'Essentiel (annuel)', kind: 'formule' });
+  assert.equal(m.subject, 'Bienvenue : votre abonnement Immo-Zen Essentiel (annuel) est actif');
+  assert.match(m.body, /Montant réglé : 99,00 € TTC/);
+  assert.match(m.body, /Facture n° A1-0001/);
+  assert.match(m.body, /Période : du 21\/10\/2026 au 21\/10\/2027/);
+  assert.match(m.body, /facture est jointe/);
+  assert.match(m.body, /\{\{APP_URL\}\}#\/abonnement/);
+  assert.equal(invoiceEmail({ ...recent, billingReason: 'subscription_cycle' }, { label: 'Pro', kind: 'formule' }).subject, 'Renouvellement de votre abonnement Immo-Zen Pro');
+  const pack = invoiceEmail({ ...legacy, billingReason: 'manual' }, { label: 'Pack fiscal (12 mois)', kind: 'option' });
+  assert.equal(pack.subject, 'Votre pack fiscal Immo-Zen est activé');
+  assert.doesNotMatch(pack.body, /Période/);
 });

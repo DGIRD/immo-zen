@@ -23,6 +23,8 @@ export interface Subscription {
 }
 export interface PlatformState {
   access: AccessState; config: AppConfig | null; plans: Plan[]; subscription: Subscription | null; supportUntil: string | null;
+  /** Factures payées (abonnement, renouvellements, pack fiscal), les plus récentes d'abord. */
+  invoices?: BillingInvoice[];
   /** null : migration des formules absente (aucune limite) */
   plan: PlanInfo | null;
 }
@@ -47,6 +49,12 @@ export class AssistantUnavailable extends Error {}
 export class FunctionUnavailable extends Error {}
 export interface ChatMessage { role: 'user' | 'assistant'; content: string }
 
+/** Facture Stripe enregistrée par le webhook (table billing_invoices). */
+export interface BillingInvoice {
+  id: string; number: string | null; invoice_date: string; amount_paid_cents: number; currency: string; status: string;
+  billing_reason: string | null; description: string | null; plan_code: string | null; period_start: string | null; period_end: string | null;
+}
+
 export interface PlatformApi {
   /** Réponse de l'assistant conversationnel (fonction « assistant »). */
   ask(messages: ChatMessage[], page: string): Promise<string>;
@@ -59,6 +67,8 @@ export interface PlatformApi {
   buyFiscalPack(): Promise<string>;
   /** Espace client Stripe ; avec un code d'offre, ouvre directement la confirmation du changement de formule. */
   portal(plan?: string): Promise<string>;
+  /** Lien de téléchargement (PDF) d'une facture du compte. */
+  invoiceUrl(id: string): Promise<string>;
   setSupportAccess(until: string | null): Promise<void>;
   admin: {
     users(): Promise<AdminUser[]>;
@@ -134,23 +144,27 @@ export function createSupabasePlatform(sb: SupabaseClient): PlatformApi {
       const acc = await sb.rpc('iz_my_access').maybeSingle();
       if (missing(acc.error)) return null;
       const access = check(acc) as AccessState;
-      const [config, plans, sub, support, plan] = await Promise.all([
+      const [config, plans, sub, support, plan, invoices] = await Promise.all([
         sb.from('app_config').select('*').maybeSingle(),
         sb.from('plans').select('*').order('billing_interval'),
         sb.from('subscriptions').select('*').maybeSingle(),
         sb.from('support_access').select('granted_until').maybeSingle(),
         sb.rpc('iz_my_plan'),
+        sb.from('billing_invoices').select('id, number, invoice_date, amount_paid_cents, currency, status, billing_reason, description, plan_code, period_start, period_end').order('invoice_date', { ascending: false }).limit(100),
       ]);
       const list = (check(plans) as Plan[]).sort((a, b) => (a.sort ?? 100) - (b.sort ?? 100));
       return {
         access, config: check(config) as AppConfig | null, plans: list, subscription: check(sub) as Subscription | null,
         supportUntil: (check(support) as { granted_until: string } | null)?.granted_until ?? null,
         plan: missing(plan.error) ? null : (check(plan) as PlanInfo),
+        // table absente (migration du 21/10 non exécutée) : liste vide, sans erreur
+        invoices: invoices.error ? [] : (invoices.data ?? []) as BillingInvoice[],
       };
     },
     async checkout(plan) { return String((await invoke({ action: 'checkout', plan })).url); },
     async buyFiscalPack() { return String((await invoke({ action: 'pack' })).url); },
     async portal(plan?: string) { return String((await invoke({ action: 'portal', ...(plan ? { plan } : {}) })).url); },
+    async invoiceUrl(id: string) { return String((await invoke({ action: 'invoice', id })).url); },
     async setSupportAccess(until) {
       const { data: s } = await sb.auth.getSession();
       const uid = s.session?.user.id;
@@ -224,6 +238,7 @@ export function createDemoPlatform(storage: Storage, userId: () => string | null
     checkout: async () => noPay(),
     buyFiscalPack: async () => noPay(),
     portal: async () => noPay(),
+    invoiceUrl: async () => noPay(),
     async setSupportAccess(until) { const d = read(); d.supportUntil = until; write(d); },
     admin: {
       async users() {
