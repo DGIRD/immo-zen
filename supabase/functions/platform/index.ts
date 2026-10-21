@@ -1,7 +1,7 @@
 // Immo-Zen – fonctions de la plateforme appelées par l'application (utilisateur connecté).
 //  * checkout : page de paiement Stripe pour la formule choisie (l'abonnement n'est activé que par le webhook) ;
 //  * pack     : paiement ponctuel du pack fiscal (12 mois), pour un abonné Essentiel ou Patrimoine ;
-//  * portal   : espace client Stripe (factures, moyen de paiement, résiliation) ;
+//  * portal   : espace client Stripe (factures, moyen de paiement, résiliation) ; avec « plan » : confirmation directe d'un changement de formule ;
 //  * invite   : invitation d'un utilisateur par e-mail (administrateurs) — l'invité choisit lui-même son mot de passe.
 // Secrets : STRIPE_SECRET_KEY, APP_URL (+ SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY fournis par Supabase).
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -45,7 +45,27 @@ Deno.serve(async (req) => {
 
     if (body.action === 'portal') {
       if (!sub?.stripe_customer_id) return reply(400, { error: 'Aucun abonnement Stripe pour ce compte.' });
-      const s = await stripeRequest<{ url: string }>(secret, 'POST', 'billing_portal/sessions', { customer: sub.stripe_customer_id, return_url: `${appUrl}#/abonnement` });
+      const params: Record<string, string | number> = { customer: sub.stripe_customer_id, return_url: `${appUrl}#/abonnement` };
+      // changement de formule : l'espace client s'ouvre directement sur la confirmation de la nouvelle offre
+      if (body.plan) {
+        const { data: target } = await admin.from('plans').select('*').eq('code', body.plan).eq('active', true).eq('kind', 'formule').maybeSingle();
+        if (!target?.stripe_price_id) return reply(400, { error: 'Offre indisponible.' });
+        if (!sub.stripe_subscription_id || !['active', 'trialing', 'past_due'].includes(sub.status)) return reply(409, { error: 'Aucun abonnement en cours à modifier.' });
+        if (sub.plan_code === target.code) return reply(409, { error: 'C’est déjà votre offre actuelle.' });
+        const current = await stripeRequest<{ items: { data: { id: string }[] } }>(secret, 'GET', `subscriptions/${sub.stripe_subscription_id}`);
+        const item = current.items?.data?.[0]?.id;
+        if (!item) return reply(409, { error: 'Abonnement Stripe introuvable : ouvrez l’espace client.' });
+        Object.assign(params, {
+          'flow_data[type]': 'subscription_update_confirm',
+          'flow_data[subscription_update_confirm][subscription]': sub.stripe_subscription_id,
+          'flow_data[subscription_update_confirm][items][0][id]': item,
+          'flow_data[subscription_update_confirm][items][0][price]': target.stripe_price_id,
+          'flow_data[subscription_update_confirm][items][0][quantity]': 1,
+          'flow_data[after_completion][type]': 'redirect',
+          'flow_data[after_completion][redirect][return_url]': `${appUrl}#/abonnement?retour=formule`,
+        });
+      }
+      const s = await stripeRequest<{ url: string }>(secret, 'POST', 'billing_portal/sessions', params);
       return reply(200, { url: s.url });
     }
 
@@ -70,9 +90,11 @@ Deno.serve(async (req) => {
     if (body.action === 'pack') {
       const { data: pack } = await admin.from('plans').select('*').eq('code', 'pack_fiscal').eq('active', true).maybeSingle();
       if (!pack?.stripe_price_id) return reply(400, { error: 'Le pack fiscal n’est pas encore proposé.' });
-      const { data: tier } = await admin.rpc('iz_user_tier', { p_user: user.id });
-      if (tier === 'pro') return reply(409, { error: 'La déclaration fiscale est déjà incluse dans la formule Pro.' });
+      // éligibilité selon la formule payée (et non l'accès effectif, ouvert à tous pendant la phase de lancement)
       const paying = sub?.source === 'stripe' && ['active', 'trialing', 'past_due'].includes(sub.status);
+      const { data: subPlan } = sub?.plan_code ? await admin.from('plans').select('tier').eq('code', sub.plan_code).maybeSingle() : { data: null };
+      const tier = subPlan?.tier ?? null;
+      if (paying && tier === 'pro') return reply(409, { error: 'La déclaration fiscale est déjà incluse dans la formule Pro.' });
       if (!paying || !['essentiel', 'patrimoine'].includes(String(tier))) return reply(409, { error: 'Le pack fiscal complète une formule Essentiel ou Patrimoine : abonnez-vous d’abord.' });
       const s = await stripeRequest<{ url: string }>(secret, 'POST', 'checkout/sessions', {
         mode: 'payment', customer: sub.stripe_customer_id, client_reference_id: user.id,

@@ -57,7 +57,8 @@ export interface PlatformApi {
   checkout(plan: Plan['code']): Promise<string>;
   /** Paiement ponctuel du pack fiscal (12 mois). */
   buyFiscalPack(): Promise<string>;
-  portal(): Promise<string>;
+  /** Espace client Stripe ; avec un code d'offre, ouvre directement la confirmation du changement de formule. */
+  portal(plan?: string): Promise<string>;
   setSupportAccess(until: string | null): Promise<void>;
   admin: {
     users(): Promise<AdminUser[]>;
@@ -149,7 +150,7 @@ export function createSupabasePlatform(sb: SupabaseClient): PlatformApi {
     },
     async checkout(plan) { return String((await invoke({ action: 'checkout', plan })).url); },
     async buyFiscalPack() { return String((await invoke({ action: 'pack' })).url); },
-    async portal() { return String((await invoke({ action: 'portal' })).url); },
+    async portal(plan?: string) { return String((await invoke({ action: 'portal', ...(plan ? { plan } : {}) })).url); },
     async setSupportAccess(until) {
       const { data: s } = await sb.auth.getSession();
       const uid = s.session?.user.id;
