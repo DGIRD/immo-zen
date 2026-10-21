@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as pdfLib from 'pdf-lib';
-import { processOutbox, resendSender, type MailMessage, type OutboxDeps, type OutboxRow } from '../supabase/functions/_shared/outbox.ts';
+import { logoUrl, processOutbox, renderEmailHtml, resendSender, type MailMessage, type OutboxDeps, type OutboxRow } from '../supabase/functions/_shared/outbox.ts';
 
 const receipt = {
   kind: 'quittance' as const, number: 'Q-2026-0001', issued_on: '2026-02-05', period_start: '2026-01-01', period_end: '2026-01-31', rent_amount: 500, charges_amount: 40,
@@ -126,4 +126,21 @@ test('file d’e-mails : confirmation d’abonnement avec la facture PDF jointe,
   assert.equal(rep.sent, 1, 'envoyé quand même, avec le lien');
   assert.equal(r2.sent[0]!.attachments.length, 0);
   assert.ok(r2.logs.some((l) => l.startsWith('Facture PDF indisponible')));
+});
+
+test('e-mails : version HTML avec le logo Immo-Zen, liens cliquables, texte échappé', async () => {
+  assert.equal(logoUrl('https://immo-zen.fr/app/'), 'https://immo-zen.fr/icon-192.png');
+  assert.equal(logoUrl(undefined), 'https://immo-zen.fr/icon-192.png');
+  const html = renderEmailHtml('Objet', 'Bonjour <Léa>,\n\nVoir https://immo-zen.fr/app/#/abonnement.\n\n--\nContact : contact@immo-zen.fr', 'https://immo-zen.fr/icon-192.png');
+  assert.match(html, /<img src="https:\/\/immo-zen\.fr\/icon-192\.png"[^>]*alt="Immo-Zen"/);
+  assert.match(html, /Bonjour &lt;Léa&gt;,/);
+  assert.match(html, /<a href="https:\/\/immo-zen\.fr\/app\/#\/abonnement"/);
+  assert.match(html, /href="mailto:contact@immo-zen\.fr"/);
+  const { d, sent } = deps([row({ body_text: 'Bonjour' })], { appUrl: 'https://immo-zen.fr/app/' });
+  await processOutbox(d);
+  assert.match(sent[0]!.html ?? '', /icon-192\.png/);
+  let posted: Record<string, unknown> = {};
+  const fakeFetch = (async (_u: string, init: { body: string }) => { posted = JSON.parse(init.body); return new Response('{}', { status: 200 }); }) as unknown as typeof fetch;
+  await resendSender('k', 'Immo-Zen <a@b.fr>', undefined, fakeFetch)(sent[0]!);
+  assert.ok(String(posted.html).includes('Immo-Zen') && posted.text === sent[0]!.text, 'HTML et texte transmis à Resend');
 });

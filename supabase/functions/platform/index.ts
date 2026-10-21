@@ -86,7 +86,8 @@ Deno.serve(async (req) => {
       if (sub?.source === 'stripe' && ['active', 'trialing', 'past_due'].includes(sub.status)) return reply(409, { error: 'Un abonnement est déjà en cours : gérez-le depuis l’espace client.' });
       let customer = sub?.stripe_customer_id as string | undefined;
       if (!customer) {
-        const c = await stripeRequest<{ id: string }>(secret, 'POST', 'customers', { email: user.email ?? '', 'metadata[user_id]': user.id });
+        // factures, reçus et espace client Stripe en français
+        const c = await stripeRequest<{ id: string }>(secret, 'POST', 'customers', { email: user.email ?? '', 'metadata[user_id]': user.id, 'preferred_locales[0]': 'fr-FR' });
         customer = c.id;
         await admin.from('subscriptions').upsert({ user_id: user.id, stripe_customer_id: customer, source: 'stripe' }, { onConflict: 'user_id' });
       }
