@@ -6,7 +6,7 @@
 //  * en cas d'erreur, réponse 500 : Stripe renvoie l'événement plus tard.
 // Secrets : STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET (+ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY fournis par Supabase).
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { fiscalPackFromSession, HANDLED_EVENTS, stripeRequest, subscriptionFields, subscriptionIdOf, verifyStripeSignature, type StripeEvent, type StripeSubscription } from '../_shared/stripe.ts';
+import { fiscalPackFromSession, HANDLED_EVENTS, invoiceEmail, invoiceInfo, stripeRequest, subscriptionFields, subscriptionIdOf, verifyStripeSignature, type StripeEvent, type StripeSubscription } from '../_shared/stripe.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 
@@ -30,6 +30,42 @@ Deno.serve(async (req) => {
   const done = (status: 'traite' | 'ignore' | 'erreur', extra: Record<string, unknown> = {}) =>
     sb.from('stripe_events').update({ status, processed_at: new Date().toISOString(), ...extra }).eq('id', ev.id);
 
+  /** Facture payée : enregistrée pour « Mes factures », et e-mail de confirmation (facture jointe à l'envoi). */
+  async function recordInvoice(o: Record<string, unknown>): Promise<string> {
+    const inv = invoiceInfo(o);
+    let userId = inv.userIdHint;
+    if (!userId && inv.customer) {
+      const { data } = await sb.from('subscriptions').select('user_id').eq('stripe_customer_id', inv.customer).maybeSingle();
+      userId = data?.user_id ?? null;
+    }
+    if (!userId && inv.customer) userId = (await stripeRequest<{ metadata?: Record<string, string> }>(secret, 'GET', `customers/${inv.customer}`)).metadata?.user_id ?? null;
+    if (!userId && inv.subscriptionId) userId = (await stripeRequest<StripeSubscription>(secret, 'GET', `subscriptions/${inv.subscriptionId}`)).metadata?.user_id ?? null;
+    if (!userId) throw new Error('Facture sans compte Immo-Zen rattaché');
+    const { data: plans } = await sb.from('plans').select('code, label, tier, kind, stripe_price_id');
+    const plan = (plans ?? []).find((p) => p.stripe_price_id && inv.priceIds.includes(p.stripe_price_id));
+    const label = plan ? (plan.kind === 'option' ? plan.label : `${String(plan.tier ?? '').replace(/^./, (c: string) => c.toUpperCase())}${plan.code.endsWith('_annuel') ? ' (annuel)' : plan.code.endsWith('_mensuel') ? ' (mensuel)' : ''}`) : null;
+    const iso = (sec: number | null) => (sec ? new Date(sec * 1000).toISOString() : null);
+    const { error } = await sb.from('billing_invoices').upsert({
+      id: inv.id, user_id: userId, number: inv.number, invoice_date: iso(inv.created), amount_paid_cents: inv.amountPaid, currency: inv.currency,
+      status: 'paid', billing_reason: inv.billingReason, description: label ? (plan?.kind === 'option' ? label : `Abonnement Immo-Zen ${label}`) : inv.description,
+      plan_code: plan?.code ?? null, period_start: iso(inv.periodStart), period_end: iso(inv.periodEnd), hosted_invoice_url: inv.hostedUrl, updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' });
+    if (error) throw new Error(error.message);
+    if (inv.amountPaid > 0 || inv.billingReason === 'subscription_create') {
+      const { data: u } = await sb.auth.admin.getUserById(userId);
+      const email = u.user?.email;
+      if (email) {
+        const m = invoiceEmail(inv, label ? { label, kind: plan?.kind === 'option' ? 'option' : 'formule' } : null);
+        const { error: e2 } = await sb.from('email_outbox').upsert({
+          user_id: userId, kind: 'facture_abonnement', to_emails: [email], subject: m.subject.slice(0, 200), body_text: m.body,
+          stripe_invoice_id: inv.id, dedupe_key: `facture:${inv.id}`,
+        }, { onConflict: 'dedupe_key', ignoreDuplicates: true });
+        if (e2) throw new Error(e2.message);
+      }
+    }
+    return userId;
+  }
+
   try {
     if (!HANDLED_EVENTS.includes(ev.type) || ev.type === 'charge.refunded') {
       // remboursement : l'accès dépend de l'état de l'abonnement, transmis par ses propres événements
@@ -37,6 +73,8 @@ Deno.serve(async (req) => {
       return Response.json({ received: true });
     }
     const o = ev.data.object as Record<string, unknown>;
+    let invoiceUser: string | null = null;
+    if (ev.type === 'invoice.paid') invoiceUser = await recordInvoice(o);
     // Paiement ponctuel (pack fiscal) : aucun abonnement concerné
     if (ev.type.startsWith('checkout.session.') && o.mode === 'payment') {
       const pack = fiscalPackFromSession(ev);
@@ -54,7 +92,7 @@ Deno.serve(async (req) => {
       }
     }
     const subId = subscriptionIdOf(ev);
-    if (!subId) { await done('ignore'); return Response.json({ received: true }); }
+    if (!subId) { await done(invoiceUser ? 'traite' : 'ignore', invoiceUser ? { user_id: invoiceUser } : {}); return Response.json({ received: true }); }
     const sub = await stripeRequest<StripeSubscription>(secret, 'GET', `subscriptions/${subId}`);
     if (!userId) userId = sub.metadata?.user_id ?? null;
     if (!userId) {
