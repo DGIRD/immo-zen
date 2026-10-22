@@ -131,6 +131,8 @@ export interface InvoiceInfo {
   /** Compte Immo-Zen indiqué dans les métadonnées (abonnement ou facture), s'il y en a. */
   userIdHint: string | null;
   amountPaid: number;
+  /** Montant dû (échec de paiement). */
+  amountDue?: number;
   currency: string;
   created: number;
   periodStart: number | null;
@@ -148,9 +150,12 @@ const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : nul
 export function invoiceInfo(o: Obj): InvoiceInfo {
   const parent = obj(obj(o.parent).subscription_details);
   const legacy = obj(o.subscription_details);
-  const lines = (obj(o.lines).data as Obj[] | undefined) ?? [];
+  // lignes triées par montant décroissant : sur une facture de changement de formule, la nouvelle offre
+  // (ligne positive) passe avant le crédit de l'ancienne (ligne négative)
+  const lines = [...((obj(o.lines).data as Obj[] | undefined) ?? [])].sort((a, b) => Number(b.amount ?? 0) - Number(a.amount ?? 0));
   const priceIds = lines.map((l) => str(obj(l.price).id) ?? str(obj(obj(l.pricing).price_details).price)).filter((x): x is string => !!x);
   const first = lines[0] ? obj(lines[0].period) : {};
+  const proration = lines.some((l) => l.proration === true || obj(obj(l.parent).subscription_item_details).proration === true || obj(obj(l.parent).invoice_item_details).proration === true);
   return {
     id: String(o.id),
     number: str(o.number),
@@ -158,11 +163,13 @@ export function invoiceInfo(o: Obj): InvoiceInfo {
     subscriptionId: str(o.subscription) ?? str(parent.subscription),
     userIdHint: str(obj(parent.metadata).user_id) ?? str(obj(legacy.metadata).user_id) ?? str(obj(o.metadata).user_id),
     amountPaid: Number(o.amount_paid ?? 0),
+    amountDue: Number(o.amount_due ?? 0),
     currency: str(o.currency) ?? 'eur',
     created: Number(o.created ?? 0),
     periodStart: typeof first.start === 'number' ? first.start : null,
     periodEnd: typeof first.end === 'number' ? first.end : null,
-    billingReason: str(o.billing_reason),
+    // reliquat de changement de formule facturé à part : traité comme un changement de formule
+    billingReason: str(o.billing_reason) === 'manual' && proration ? 'subscription_update' : str(o.billing_reason),
     hostedUrl: str(o.hosted_invoice_url),
     priceIds,
     description: lines[0] ? str(lines[0].description) : null,
@@ -206,4 +213,20 @@ export function invoiceEmail(inv: InvoiceInfo, offer: { label: string; kind: 'fo
     '', 'Bonne gestion,', 'L’équipe Immo-Zen',
   ];
   return { subject, body: body.join('\n') };
+}
+
+/** E-mail d'échec de paiement (renouvellement ou changement de formule) : l'abonné met à jour son moyen de paiement. */
+export function paymentFailedEmail(inv: InvoiceInfo, label: string | null, nextAttempt: number | null): { subject: string; body: string } {
+  const day = (sec: number) => new Date(sec * 1000).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' });
+  return {
+    subject: 'Immo-Zen : votre paiement n’a pas abouti',
+    body: [
+      'Bonjour,', '',
+      `Le paiement de ${euros(inv.amountDue ?? inv.amountPaid)} TTC pour votre abonnement${label ? ` Immo-Zen ${label}` : ' Immo-Zen'} n’a pas abouti (carte expirée, plafond atteint ou prélèvement refusé).`,
+      nextAttempt ? `Une nouvelle tentative aura lieu automatiquement le ${day(nextAttempt)}.` : 'Sans régularisation, l’abonnement sera suspendu à la fin des nouvelles tentatives.',
+      '', 'Pour éviter toute interruption, mettez à jour votre moyen de paiement depuis « Mon abonnement » → « Ouvrir l’espace client » : {{APP_URL}}#/abonnement',
+      '', 'Vos données restent conservées et consultables quoi qu’il arrive.',
+      '', 'L’équipe Immo-Zen',
+    ].join('\n'),
+  };
 }
