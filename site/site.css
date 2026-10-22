@@ -130,6 +130,18 @@ details p { margin: .8rem 0 0; color: var(--ardoise); }
 .tier-for { font-size: .97rem; min-height: 3.2em; }
 .tier .ticks { flex: 1; font-size: .95rem; margin: 0 0 1.2rem; }
 .tier .btn { align-self: flex-start; }
+/* périodicité : mensuel par défaut (et sans JavaScript), annuel au choix */
+.billing { display: inline-flex; margin: 1.6rem 0 0; padding: .25rem; border: 1px solid var(--trait); border-radius: 999px; background: var(--blanc); gap: .2rem; }
+.billing[hidden] { display: none; }
+.billing button { font: 600 .95rem var(--sans); color: var(--ardoise); background: none; border: 0; border-radius: 999px; padding: .5rem 1.1rem; cursor: pointer; display: inline-flex; align-items: center; gap: .45rem; }
+.billing button[aria-checked="true"] { background: var(--sapin); color: var(--blanc); }
+.billing button:focus-visible { outline: 2px solid var(--laiton); outline-offset: 2px; }
+.billing-badge { background: var(--laiton); color: var(--blanc); font-size: .75rem; padding: .1rem .45rem; border-radius: 3px; }
+.tiers[data-period="month"] .tier-y, .tiers[data-period="year"] .tier-m { display: none; }
+.tier-save { margin: 0 0 .8rem; font-size: .9rem; color: var(--sapin); }
+.tier-y .tier-save { margin: .1rem 0 .3rem; font-weight: 600; }
+.save-badge { background: var(--laiton); color: var(--blanc); font-size: .78rem; padding: .05rem .4rem; border-radius: 3px; margin-right: .2rem; }
+.tier-y .tier-alt s { color: var(--ardoise); }
 .price-notes { margin-top: 2rem; max-width: 52rem; }
 .price-notes p { margin-bottom: .7rem; }
 

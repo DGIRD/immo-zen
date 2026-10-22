@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { EMPTY_SNAPSHOT, type Snapshot } from '../src/data/repo.ts';
-import { demoPlan, planUsage, planViolation, TIERS, UNLIMITED_PLAN } from '../src/domain/plans.ts';
+import { annualSaving, demoPlan, planUsage, planViolation, TIERS, UNLIMITED_PLAN } from '../src/domain/plans.ts';
 
 const prop = (id: string, status: string) => ({ id, status }) as unknown as Snapshot['properties'][number];
 const snap = (over: Partial<Snapshot>): Snapshot => ({ ...EMPTY_SNAPSHOT, ...over });
@@ -61,4 +61,13 @@ test('Découverte : scénarios, contacts, documents, automatisations', () => {
   assert.equal(planViolation(decouverte, data, { table: 'leases', current: data.leases[0]!, patch: { rent_hc: 700 } }), null, 'bail déjà automatisé modifiable');
   assert.match(planViolation(decouverte, data, { table: 'reminders', rows: [{ subject: 'x' }] })!, /relances/);
   assert.deepEqual(planUsage(data), { owned: 0, prospects: 0, storage_bytes: 100 * 1048576 - 10 });
+});
+
+test('abonnement annuel : économie affichée par rapport à 12 mensualités', () => {
+  assert.deepEqual(annualSaving(9.9, 99), { euros: 19.8, percent: 17, months: 2 });
+  assert.deepEqual(annualSaving(19.9, 199), { euros: 39.8, percent: 17, months: 2 });
+  assert.deepEqual(annualSaving(39.9, 399), { euros: 79.8, percent: 17, months: 2 });
+  assert.deepEqual(annualSaving(0, 0), { euros: 0, percent: 0, months: 0 });
+  assert.deepEqual(annualSaving(10, 130), { euros: 0, percent: 0, months: 0 }, 'pas d’économie annoncée si l’annuel coûte plus');
+  for (const t of TIERS.filter((x) => x.monthly > 0)) assert.ok(annualSaving(t.monthly, t.annual).euros > 0, t.code);
 });

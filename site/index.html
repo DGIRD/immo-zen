@@ -209,10 +209,15 @@
     <section class="price" id="tarifs" aria-labelledby="price-title">
       <div class="wrap">
         <h2 id="price-title">Tarifs</h2>
-        <p class="intro">Une offre Découverte gratuite pendant 30 jours pour commencer, puis trois formules selon le nombre de biens que vous détenez. Les biens en prospection ne sont jamais comptés. Prix TTC, sans engagement : l'abonnement annuel coûte dix mois.</p>
+        <p class="intro">Une offre Découverte gratuite pendant 30 jours pour commencer, puis trois formules selon le nombre de biens que vous détenez. Les biens en prospection ne sont jamais comptés. Prix TTC, sans engagement, à partir de 9,90&nbsp;€ par mois. En annuel, 2 mois sont offerts.</p>
         <p class="launch" role="note"><strong>Phase de lancement :</strong> toutes les fonctions sont ouvertes gratuitement. Vous serez prévenu avant l'ouverture des abonnements, et rien ne sera prélevé sans votre accord.</p>
 
-        <ul class="tiers" role="list">
+        <div class="billing" role="radiogroup" aria-label="Périodicité du paiement" hidden>
+          <button type="button" role="radio" aria-checked="true" data-period="month">Mensuel</button>
+          <button type="button" role="radio" aria-checked="false" data-period="year">Annuel <span class="billing-badge">2 mois offerts</span></button>
+        </div>
+
+        <ul class="tiers" data-period="month" role="list">
           <li class="tier">
             <p class="tier-flag tier-flag-limit">Offre limitée à 30 jours</p>
             <h3>Découverte</h3>
@@ -230,8 +235,16 @@
           </li>
           <li class="tier">
             <h3>Essentiel</h3>
-            <p class="tier-price">99&nbsp;€<span> / an</span></p>
-            <p class="tier-alt">ou 9,90&nbsp;€ par mois</p>
+            <div class="tier-m">
+              <p class="tier-price">9,90&nbsp;€<span> / mois</span></p>
+              <p class="tier-alt">sans engagement</p>
+              <p class="tier-save">ou 99&nbsp;€ / an : <strong>2 mois offerts</strong></p>
+            </div>
+            <div class="tier-y">
+              <p class="tier-save"><span class="save-badge">−17&nbsp;%</span> 19,80&nbsp;€ économisés par an</p>
+              <p class="tier-price">8,25&nbsp;€<span> / mois</span></p>
+              <p class="tier-alt">soit 99&nbsp;€ par an au lieu de <s>118,80&nbsp;€</s></p>
+            </div>
             <p class="tier-for">Pour l'investisseur qui prospecte et gère jusqu'à 3 biens.</p>
             <ul class="ticks">
               <li>Jusqu'à 3 biens détenus</li>
@@ -245,8 +258,16 @@
           <li class="tier tier-main">
             <p class="tier-flag">Recommandée</p>
             <h3>Patrimoine</h3>
-            <p class="tier-price">199&nbsp;€<span> / an</span></p>
-            <p class="tier-alt">ou 19,90&nbsp;€ par mois</p>
+            <div class="tier-m">
+              <p class="tier-price">19,90&nbsp;€<span> / mois</span></p>
+              <p class="tier-alt">sans engagement</p>
+              <p class="tier-save">ou 199&nbsp;€ / an : <strong>2 mois offerts</strong></p>
+            </div>
+            <div class="tier-y">
+              <p class="tier-save"><span class="save-badge">−17&nbsp;%</span> 39,80&nbsp;€ économisés par an</p>
+              <p class="tier-price">16,58&nbsp;€<span> / mois</span></p>
+              <p class="tier-alt">soit 199&nbsp;€ par an au lieu de <s>238,80&nbsp;€</s></p>
+            </div>
             <p class="tier-for">Pour piloter un patrimoine jusqu'à 10 biens.</p>
             <ul class="ticks">
               <li>Tout Essentiel, jusqu'à 10 biens détenus</li>
@@ -257,8 +278,16 @@
           </li>
           <li class="tier">
             <h3>Pro</h3>
-            <p class="tier-price">399&nbsp;€<span> / an</span></p>
-            <p class="tier-alt">ou 39,90&nbsp;€ par mois</p>
+            <div class="tier-m">
+              <p class="tier-price">39,90&nbsp;€<span> / mois</span></p>
+              <p class="tier-alt">sans engagement</p>
+              <p class="tier-save">ou 399&nbsp;€ / an : <strong>2 mois offerts</strong></p>
+            </div>
+            <div class="tier-y">
+              <p class="tier-save"><span class="save-badge">−17&nbsp;%</span> 79,80&nbsp;€ économisés par an</p>
+              <p class="tier-price">33,25&nbsp;€<span> / mois</span></p>
+              <p class="tier-alt">soit 399&nbsp;€ par an au lieu de <s>478,80&nbsp;€</s></p>
+            </div>
             <p class="tier-for">Pour les grands patrimoines, avec la déclaration incluse.</p>
             <ul class="ticks">
               <li>Biens détenus illimités</li>

@@ -38,6 +38,17 @@ const PRO = TIERS[TIERS.length - 1] as TierDef;
 export const tierDef = (code: string | null | undefined): TierDef => TIERS.find((t) => t.code === code) ?? PRO;
 export const FISCAL_PACK_PRICE = 49;
 
+/**
+ * Économie de l'abonnement annuel par rapport à 12 mensualités.
+ * 9,90 €/mois et 99 €/an → 19,80 € économisés, −17 %, 2 mois offerts.
+ */
+export function annualSaving(monthly: number, annual: number): { euros: number; percent: number; months: number } {
+  const full = Math.round(monthly * 12 * 100) / 100;
+  if (!(monthly > 0) || !(annual > 0) || annual >= full) return { euros: 0, percent: 0, months: 0 };
+  const euros = Math.round((full - annual) * 100) / 100;
+  return { euros, percent: Math.round((euros / full) * 100), months: Math.round(euros / monthly) };
+}
+
 /** Formule du compte connecté, telle que renvoyée par iz_my_plan(). */
 export interface PlanInfo {
   tier: TierCode;
