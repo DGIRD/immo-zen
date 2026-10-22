@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fiscalPackFromSession, invoiceEmail, invoiceInfo, signStripePayload, subscriptionFields, subscriptionIdOf, verifyStripeSignature } from '../supabase/functions/_shared/stripe.ts';
+import { fiscalPackFromSession, invoiceEmail, invoiceInfo, paymentFailedEmail, signStripePayload, subscriptionFields, subscriptionIdOf, verifyStripeSignature } from '../supabase/functions/_shared/stripe.ts';
 
 const SECRET = 'whsec_test';
 const body = JSON.stringify({ id: 'evt_1', type: 'customer.subscription.updated', created: 1760000000, data: { object: { id: 'sub_1' } } });
@@ -82,4 +82,27 @@ test('facture Stripe : formes d’API récente et ancienne, e-mail de confirmati
   const pack = invoiceEmail({ ...legacy, billingReason: 'manual' }, { label: 'Pack fiscal (12 mois)', kind: 'option' });
   assert.equal(pack.subject, 'Votre pack fiscal Immo-Zen est activé');
   assert.doesNotMatch(pack.body, /Période/);
+});
+
+test('facture de changement de formule : nouvelle formule en tête, motif « subscription_update »', () => {
+  const inv = invoiceInfo({
+    id: 'in_3', customer: 'cus_1', amount_paid: 29958, amount_due: 29958, billing_reason: 'manual',
+    lines: { data: [
+      { amount: -19872, pricing: { price_details: { price: 'price_E' } }, parent: { invoice_item_details: { proration: true } } },
+      { amount: 39844, pricing: { price_details: { price: 'price_P' } }, parent: { invoice_item_details: { proration: true } } },
+    ] },
+  });
+  assert.equal(inv.billingReason, 'subscription_update');
+  assert.equal(inv.priceIds[0], 'price_P', 'la ligne au montant le plus élevé (nouvelle formule) vient en premier');
+  assert.equal(invoiceInfo({ id: 'in_4', billing_reason: 'manual', lines: { data: [{ amount: 4900 }] } }).billingReason, 'manual', 'pack fiscal : motif conservé');
+});
+
+test('paiement échoué : e-mail avec montant dû et date de la prochaine tentative', () => {
+  const inv = invoiceInfo({ id: 'in_5', amount_paid: 0, amount_due: 9900, billing_reason: 'subscription_cycle' });
+  const m = paymentFailedEmail(inv, 'Essentiel (annuel)', 1792610447);
+  assert.match(m.subject, /paiement n’a pas abouti/);
+  assert.match(m.body, /99,00\s€ TTC/);
+  assert.match(m.body, /Essentiel \(annuel\)/);
+  assert.match(m.body, /nouvelle tentative aura lieu automatiquement le \d{2}\/\d{2}\/\d{4}/);
+  assert.match(paymentFailedEmail(inv, null, null).body, /suspendu/);
 });

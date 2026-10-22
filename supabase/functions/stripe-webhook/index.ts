@@ -6,7 +6,7 @@
 //  * en cas d'erreur, réponse 500 : Stripe renvoie l'événement plus tard.
 // Secrets : STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET (+ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY fournis par Supabase).
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { fiscalPackFromSession, HANDLED_EVENTS, invoiceEmail, invoiceInfo, stripeRequest, subscriptionFields, subscriptionIdOf, verifyStripeSignature, type StripeEvent, type StripeSubscription } from '../_shared/stripe.ts';
+import { fiscalPackFromSession, HANDLED_EVENTS, invoiceEmail, invoiceInfo, paymentFailedEmail, stripeRequest, subscriptionFields, subscriptionIdOf, verifyStripeSignature, type StripeEvent, type StripeSubscription } from '../_shared/stripe.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 
@@ -30,8 +30,8 @@ Deno.serve(async (req) => {
   const done = (status: 'traite' | 'ignore' | 'erreur', extra: Record<string, unknown> = {}) =>
     sb.from('stripe_events').update({ status, processed_at: new Date().toISOString(), ...extra }).eq('id', ev.id);
 
-  /** Facture payée : enregistrée pour « Mes factures », et e-mail de confirmation (facture jointe à l'envoi). */
-  async function recordInvoice(o: Record<string, unknown>): Promise<string> {
+  /** Compte et offre concernés par une facture Stripe. */
+  async function resolveInvoice(o: Record<string, unknown>) {
     const inv = invoiceInfo(o);
     let userId = inv.userIdHint;
     if (!userId && inv.customer) {
@@ -44,6 +44,27 @@ Deno.serve(async (req) => {
     const { data: plans } = await sb.from('plans').select('code, label, tier, kind, stripe_price_id');
     const plan = (plans ?? []).find((p) => p.stripe_price_id && inv.priceIds.includes(p.stripe_price_id));
     const label = plan ? (plan.kind === 'option' ? plan.label : `${String(plan.tier ?? '').replace(/^./, (c: string) => c.toUpperCase())}${plan.code.endsWith('_annuel') ? ' (annuel)' : plan.code.endsWith('_mensuel') ? ' (mensuel)' : ''}`) : null;
+    return { inv, userId, plan, label };
+  }
+
+  /** Paiement échoué : e-mail à l'abonné pour mettre à jour son moyen de paiement (un par tentative). */
+  async function paymentFailed(o: Record<string, unknown>): Promise<string> {
+    const { inv, userId, label } = await resolveInvoice(o);
+    const { data: u } = await sb.auth.admin.getUserById(userId);
+    if (u.user?.email) {
+      const m = paymentFailedEmail(inv, label, typeof o.next_payment_attempt === 'number' ? o.next_payment_attempt : null);
+      const { error } = await sb.from('email_outbox').upsert({
+        user_id: userId, kind: 'facture_abonnement', to_emails: [u.user.email], subject: m.subject, body_text: m.body,
+        dedupe_key: `echec:${inv.id}:${Number(o.attempt_count ?? 0)}`,
+      }, { onConflict: 'dedupe_key', ignoreDuplicates: true });
+      if (error) throw new Error(error.message);
+    }
+    return userId;
+  }
+
+  /** Facture payée : enregistrée pour « Mes factures », et e-mail de confirmation (facture jointe à l'envoi). */
+  async function recordInvoice(o: Record<string, unknown>): Promise<string> {
+    const { inv, userId, plan, label } = await resolveInvoice(o);
     const iso = (sec: number | null) => (sec ? new Date(sec * 1000).toISOString() : null);
     const { error } = await sb.from('billing_invoices').upsert({
       id: inv.id, user_id: userId, number: inv.number, invoice_date: iso(inv.created), amount_paid_cents: inv.amountPaid, currency: inv.currency,
@@ -75,6 +96,7 @@ Deno.serve(async (req) => {
     const o = ev.data.object as Record<string, unknown>;
     let invoiceUser: string | null = null;
     if (ev.type === 'invoice.paid') invoiceUser = await recordInvoice(o);
+    if (ev.type === 'invoice.payment_failed') invoiceUser = await paymentFailed(o);
     // Paiement ponctuel (pack fiscal) : aucun abonnement concerné
     if (ev.type.startsWith('checkout.session.') && o.mode === 'payment') {
       const pack = fiscalPackFromSession(ev);
