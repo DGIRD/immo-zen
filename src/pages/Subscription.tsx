@@ -3,7 +3,7 @@ import { usePlan, useStore } from '../data/store.tsx';
 import { ACCESS_REASONS, STATUS_LABELS, type Plan } from '../data/platform.ts';
 import { describeError } from '../data/repo.ts';
 import { date, money2 } from '../domain/format.ts';
-import { FISCAL_PACK_PRICE, planUsage, sizeLabel, TIERS, tierDef, type TierDef } from '../domain/plans.ts';
+import { annualSaving, FISCAL_PACK_PRICE, planUsage, sizeLabel, TIERS, tierDef, type TierDef } from '../domain/plans.ts';
 import { Button, KeyValue, NotAvailable, PageHeader, Pill, Section, Tabs } from '../ui/components.tsx';
 import { useRoute } from '../ui/router.ts';
 
@@ -40,10 +40,10 @@ export function SubscriptionPage() {
   const plan = usePlan();
   const route = useRoute();
   const [busy, setBusy] = useState<string | null>(null);
-  const [period, setPeriod] = useState<'year' | 'month'>('year');
+  const [period, setPeriod] = useState<'year' | 'month'>('month');
   const back = route.query.get('retour');
   useEffect(() => { void refreshPlatform(); }, [refreshPlatform]);
-  // périodicité affichée par défaut : celle de l'abonnement en cours
+  // périodicité affichée par défaut : mensuelle (prix d'entrée le plus bas), sinon celle de l'abonnement en cours
   const currentInterval = platform?.subscription?.plan_code ? platform.plans.find((p) => p.code === platform.subscription?.plan_code)?.billing_interval : undefined;
   useEffect(() => { if (currentInterval) setPeriod(currentInterval === 'month' ? 'month' : 'year'); }, [currentInterval]);
 
@@ -80,7 +80,14 @@ export function SubscriptionPage() {
   const running = s?.source === 'stripe' && ['active', 'trialing', 'past_due', 'unpaid', 'incomplete'].includes(s.status);
   const usage = planUsage(data);
   const current = tierDef(plan.tier);
-  const offer = (tier: string) => plans.find((p) => p.tier === tier && p.kind !== 'option' && p.billing_interval === period && p.code !== 'mensuel' && p.code !== 'annuel');
+  const offerFor = (tier: string, interval: 'year' | 'month') => plans.find((p) => p.tier === tier && p.kind !== 'option' && p.billing_interval === interval && p.code !== 'mensuel' && p.code !== 'annuel');
+  const offer = (tier: string) => offerFor(tier, period);
+  /** Prix mensuel et annuel d'une formule : le prix Stripe fait foi, sinon la grille. */
+  const prices = (t: TierDef) => ({
+    monthly: (offerFor(t.code, 'month')?.amount_cents ?? 0) / 100 || t.monthly,
+    annual: (offerFor(t.code, 'year')?.amount_cents ?? 0) / 100 || t.annual,
+  });
+  const maxSaving = Math.max(0, ...TIERS.map((t) => annualSaving(prices(t).monthly, prices(t).annual).percent));
   const pack = plans.find((p) => p.code === 'pack_fiscal');
   const packOpen = !!pack?.active && !!pack.stripe_price_id;
   const packValid = s?.fiscal_pack_until && new Date(s.fiscal_pack_until) > new Date() ? s.fiscal_pack_until : null;
@@ -129,12 +136,14 @@ export function SubscriptionPage() {
           <Button variant="primary" disabled={!!busy} onClick={() => void go('portal')}>{busy === 'portal' ? 'Ouverture…' : 'Ouvrir l’espace client'}</Button>
         </Section>
       )}
-      <Section title={running ? 'Changer de formule' : 'Choisir une formule'} actions={<Tabs tabs={[['year', 'Annuel : 2 mois offerts'], ['month', 'Mensuel']]} value={period} onChange={setPeriod} />}>
+      <Section title={running ? 'Changer de formule' : 'Choisir une formule'} actions={<Tabs tabs={[['month', 'Mensuel'], ['year', maxSaving ? `Annuel · −${maxSaving} %` : 'Annuel']]} value={period} onChange={setPeriod} />}>
         <div className="plans tiers">
           {TIERS.filter((t) => t.code !== 'decouverte').map((t) => {
             const o = offer(t.code);
             const open = !!o?.active && !!o.stripe_price_id && (o.amount_cents ?? 0) > 0;
-            const euros = o?.amount_cents ? o.amount_cents / 100 : period === 'year' ? t.annual : t.monthly;
+            const pr = prices(t);
+            const euros = period === 'year' ? pr.annual : pr.monthly;
+            const saving = annualSaving(pr.monthly, pr.annual);
             const isCurrent = running ? subPlan?.code === o?.code : t.code === plan.tier && plan.enforce;
             const sameTier = running && paidTier === t.code;
             const label = !open ? 'Bientôt disponible'
@@ -145,8 +154,23 @@ export function SubscriptionPage() {
             return (
               <div key={t.code} className={`plan${t.code === 'patrimoine' ? ' plan-featured' : ''}${isCurrent || (!running && t.code === plan.tier && plan.enforce) ? ' plan-current' : ''}`}>
                 <h3>{t.label}</h3>
-                <p className="plan-price">{money2(euros)} <span className="muted small">TTC / {period === 'year' ? 'an' : 'mois'}</span></p>
-                {period === 'year' && <p className="muted small">soit {money2(euros / 12)} par mois</p>}
+                {period === 'month' ? (
+                  <>
+                    <p className="plan-price">{money2(euros)} <span className="muted small">TTC / mois</span></p>
+                    <p className="small muted">Sans engagement, résiliable à tout moment.</p>
+                    {saving.euros > 0 && (
+                      <button type="button" className="plan-saving-link" onClick={() => setPeriod('year')}>
+                        ou {money2(pr.annual)} / an : <strong>{saving.months} mois offerts</strong>, {money2(saving.euros)} économisés
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {saving.euros > 0 && <p className="plan-saving"><span className="plan-saving-badge">−{saving.percent} %</span> {saving.months} mois offerts · {money2(saving.euros)} économisés par an</p>}
+                    <p className="plan-price">{money2(euros / 12)} <span className="muted small">TTC / mois</span></p>
+                    <p className="small muted">soit {money2(euros)} payés une fois par an{saving.euros > 0 && <> au lieu de <s>{money2(pr.monthly * 12)}</s></>}</p>
+                  </>
+                )}
                 <p className="small">{t.pitch}</p>
                 <ul className="plan-list">{tierHighlights(t).map((h) => <li key={h}>{h}</li>)}</ul>
                 <Button variant={isCurrent ? 'secondary' : t.code === 'patrimoine' ? 'primary' : 'secondary'} disabled={!open || isCurrent || !!busy || repo.mode === 'demo'}

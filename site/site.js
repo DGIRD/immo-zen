@@ -21,6 +21,28 @@
     nav.addEventListener('click', (e) => { if (e.target.closest('a')) { nav.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); } });
   }
 
+  // ---------- tarifs : mensuel par défaut, annuel au choix
+  const billing = document.querySelector('.billing');
+  const tiers = document.querySelector('.tiers[data-period]');
+  if (billing && tiers) {
+    const radios = [...billing.querySelectorAll('[data-period]')];
+    const set = (period) => {
+      tiers.dataset.period = period;
+      radios.forEach((b) => { const on = b.dataset.period === period; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; });
+    };
+    radios.forEach((b) => {
+      b.addEventListener('click', () => set(b.dataset.period));
+      b.addEventListener('keydown', (e) => {
+        if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+        e.preventDefault();
+        const next = radios[(radios.indexOf(b) + 1) % radios.length];
+        set(next.dataset.period); next.focus();
+      });
+    });
+    set('month');
+    billing.hidden = false;
+  }
+
   // ---------- calculateur
   const eur = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
   const num = (v) => { const n = Number(String(v).replace(/[\s €%]/g, '').replace(',', '.')); return Number.isFinite(n) ? n : 0; };
