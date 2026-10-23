@@ -14,8 +14,8 @@ select tests.ok((select has_access and not is_admin and not enforce from public.
 select tests.fails($q$ select * from public.iz_admin_users() $q$, 'admin : liste des comptes refusée à un non-administrateur');
 select tests.fails($q$ insert into public.admins (user_id) values ('11111111-1111-1111-1111-111111111111') $q$, 'admin : impossible de se nommer administrateur');
 select tests.fails($q$ insert into public.subscriptions (user_id, status) values ('11111111-1111-1111-1111-111111111111', 'active') $q$, 'abonnement : impossible de s''attribuer un abonnement');
-update public.plans set amount_cents = 1 where code = 'mensuel';
-select tests.ok((select amount_cents from public.plans where code = 'mensuel') = 0, 'offres : tarif non modifiable par un non-administrateur');
+update public.plans set amount_cents = 1 where code = 'essentiel_mensuel';
+select tests.ok((select amount_cents from public.plans where code = 'essentiel_mensuel') = 990, 'offres : tarif non modifiable par un non-administrateur');
 select tests.ok((select count(*) from public.stripe_events) = 0 and (select count(*) from public.admin_audit) = 0, 'journal et événements invisibles');
 select tests.fails($q$ insert into public.platform_leads (name) values ('X') $q$, 'prospects commerciaux réservés aux administrateurs');
 select tests.fails($q$ insert into public.support_access (user_id, granted_until) values ('11111111-1111-1111-1111-111111111111', now() + interval '90 days') $q$,
@@ -28,8 +28,8 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
 select tests.ok((select count(*) from public.iz_admin_users()) >= 2, 'admin : liste des comptes');
 select tests.ok((select is_admin from public.iz_my_access()), 'admin : reconnu');
-update public.plans set amount_cents = 990, stripe_price_id = 'price_123abc', active = true where code = 'mensuel';
-select tests.ok((select amount_cents from public.plans where code = 'mensuel') = 990, 'admin : tarif modifié');
+update public.plans set amount_cents = 1090, stripe_price_id = 'price_123abc', active = true where code = 'essentiel_mensuel';
+select tests.ok((select amount_cents from public.plans where code = 'essentiel_mensuel') = 1090, 'admin : tarif modifié');
 select public.iz_admin_set_config(true, 0, 'support@immo-zen.test');
 select tests.ok((select enforce_subscription from public.app_config), 'admin : contrôle d''accès activé');
 select tests.fails($q$ select public.iz_admin_support_summary('11111111-1111-1111-1111-111111111111') $q$, 'support : refusé sans autorisation de l''abonné');
@@ -53,7 +53,7 @@ commit;
 
 -- ---------- Abonnement mis à jour par le serveur (webhook) puis accès offert
 insert into public.subscriptions (user_id, status, plan_code, stripe_customer_id, stripe_subscription_id, current_period_end, stripe_updated_at)
-values ('11111111-1111-1111-1111-111111111111', 'canceled', 'mensuel', 'cus_1', 'sub_1', now() + interval '10 days', 100);
+values ('11111111-1111-1111-1111-111111111111', 'canceled', 'essentiel_mensuel', 'cus_1', 'sub_1', now() + interval '10 days', 100);
 begin;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
@@ -74,4 +74,5 @@ select tests.ok((select count(*) from public.admin_audit where action in ('acces
 select public.iz_admin_set_config(false, 30, null);
 commit;
 
+select tests.ok(not exists (select 1 from public.plans where code in ('mensuel', 'annuel')), 'offres : anciennes offres supprimées');
 select 'Tests SQL de la plateforme passés' as fin;

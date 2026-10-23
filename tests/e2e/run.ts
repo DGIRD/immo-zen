@@ -492,7 +492,8 @@ async function main() {
     await pdf.saveAs(join(out, 'quittance.pdf'));
     await dlg.getByRole('button', { name: 'Envoyer au locataire' }).click();
     await page.getByText(/aucun e-mail n’est envoyé/).first().waitFor();
-    await dlg.getByRole('button', { name: 'Fermer' }).click();
+    await page.locator('dialog[open]').waitFor({ state: 'detached', timeout: 5000 }).catch(() => undefined);
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'la fenêtre de la quittance se ferme après l’envoi');
     assert.equal(await page.getByRole('button', { name: 'Émettre la quittance' }).count(), 0);
     await page.getByRole('button', { name: /Quittance Q-/ }).waitFor();
     await page.getByRole('button', { name: 'Reçu partiel' }).click();

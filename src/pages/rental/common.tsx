@@ -234,7 +234,11 @@ export function ReceiptDialog({ receipt, onClose }: { receipt: Receipt | null; o
         {!live.cancelled_at && (
           <Button variant="primary" disabled={live.send_status === 'envoye' || live.send_status === 'a_envoyer'}
             title={live.tenant_emails.length ? `À : ${live.tenant_emails.join(', ')}` : 'Aucun e-mail de locataire'}
-            onClick={() => void store.call((r) => r.queueReceiptEmail(live.id), store.repo.mode === 'demo' ? 'Mis en file (mode démonstration : aucun e-mail n’est envoyé).' : 'Envoi programmé.')}>
+            onClick={async () => {
+              // la fenêtre se ferme dès que l'envoi est programmé ; elle reste ouverte en cas d'erreur
+              const ok = await store.call((r) => r.queueReceiptEmail(live.id), store.repo.mode === 'demo' ? 'Mis en file (mode démonstration : aucun e-mail n’est envoyé).' : 'Envoi programmé : la quittance part au locataire dans quelques minutes.');
+              if (ok !== null) onClose();
+            }}>
             {live.send_status === 'envoye' ? 'Envoyé' : live.send_status === 'a_envoyer' ? 'Envoi en attente' : 'Envoyer au locataire'}
           </Button>
         )}
