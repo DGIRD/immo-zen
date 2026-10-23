@@ -19,4 +19,13 @@ createRoot(document.getElementById('root')!).render(
 
 if ('serviceWorker' in navigator && config.env !== 'development') {
   addEventListener('load', () => { void navigator.serviceWorker.register('service-worker.js'); });
+  // Nouvelle version publiée : le nouveau service worker prend la main, la page se recharge une fois
+  // pour utiliser tout de suite les nouveaux fichiers (sinon il fallait recharger deux fois).
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    reloading = true;
+    location.reload();
+  });
 }

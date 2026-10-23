@@ -208,7 +208,9 @@ export function receiptFileName(r: Receipt) {
 }
 
 const SEND_LABELS: Record<Receipt['send_status'], string> = { non_envoye: 'Non envoyé', a_envoyer: 'Envoi en attente', envoye: 'Envoyé', echec: 'Échec de l’envoi' };
-export const sendLabel = (r: Receipt) => (r.cancelled_at ? 'Annulé' : SEND_LABELS[r.send_status]);
+export const sendLabel = (r: Receipt) => (r.cancelled_at ? 'Annulé'
+  : r.send_status === 'envoye' && r.sent_at ? `Envoyé le ${dateTime(r.sent_at).replace(' ', ' à ')}`
+  : SEND_LABELS[r.send_status]);
 
 export function ReceiptDialog({ receipt, onClose }: { receipt: Receipt | null; onClose: () => void }) {
   const store = useStore();
@@ -234,19 +236,19 @@ export function ReceiptDialog({ receipt, onClose }: { receipt: Receipt | null; o
         {!live.cancelled_at && (
           <Button variant="primary" disabled={live.send_status === 'envoye' || live.send_status === 'a_envoyer'}
             title={live.tenant_emails.length ? `À : ${live.tenant_emails.join(', ')}` : 'Aucun e-mail de locataire'}
-            onClick={async () => {
-              // la fenêtre se ferme dès que l'envoi est programmé ; elle reste ouverte en cas d'erreur
-              const ok = await store.call((r) => r.queueReceiptEmail(live.id), store.repo.mode === 'demo' ? 'Mis en file (mode démonstration : aucun e-mail n’est envoyé).' : 'Envoi programmé : la quittance part au locataire dans quelques minutes.');
-              if (ok !== null) onClose();
+            onClick={() => {
+              // la fenêtre se ferme tout de suite ; le résultat (ou l'erreur) s'affiche en message
+              onClose();
+              void store.call((r) => r.queueReceiptEmail(live.id), store.repo.mode === 'demo' ? 'Mis en file (mode démonstration : aucun e-mail n’est envoyé).' : 'Envoi programmé : la quittance part au locataire dans quelques minutes.');
             }}>
-            {live.send_status === 'envoye' ? 'Envoyé' : live.send_status === 'a_envoyer' ? 'Envoi en attente' : 'Envoyer au locataire'}
+            {live.send_status === 'envoye' ? (live.sent_at ? `Envoyé le ${date(live.sent_at)}` : 'Envoyé') : live.send_status === 'a_envoyer' ? 'Envoi en attente' : 'Envoyer au locataire'}
           </Button>
         )}
       </>}>
       {(live.extra_lines ?? []).length > 0 && <p className="note">Rappel de charges inclus : {live.extra_lines!.map((x) => `${x.label} (${money2(x.amount)})`).join(', ')}.</p>}
       <p className="muted small">
         {label} du {date(live.issued_on)} pour {periodLabel({ ...live, kind: 'loyer', label: null })}. Statut : {sendLabel(live)}
-        {live.sent_at ? ` le ${dateTime(live.sent_at)}` : ''}{live.send_error && live.send_status !== 'envoye' ? ` (${live.send_error})` : ''}.
+        {live.sent_at && live.send_status === 'envoye' && live.tenant_emails.length ? ` à ${live.tenant_emails.join(', ')}` : ''}{live.send_error && live.send_status !== 'envoye' ? ` (${live.send_error})` : ''}.
         {live.cancelled_at && <> Annulé le {date(live.cancelled_at)} : {live.cancel_reason}.</>}
       </p>
       {cancelReason !== null && (
