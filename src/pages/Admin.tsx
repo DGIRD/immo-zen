@@ -107,8 +107,11 @@ function Users({ run, api }: { run: Run; api: Api }) {
   );
 }
 
+const LEGACY_PLANS = ['mensuel', 'annuel'];
+
 function Plans({ plans, run, onSaved, api }: { plans: Plan[]; run: Run; onSaved: () => Promise<void>; api: Api }) {
-  const [draft, setDraft] = useState<Record<string, Plan>>(() => Object.fromEntries(plans.map((p) => [p.code, { ...p }])));
+  // anciennes offres d'avant les formules : jamais affichées (supprimées en base si aucun abonnement ne s'y rattache)
+  const [draft, setDraft] = useState<Record<string, Plan>>(() => Object.fromEntries(plans.filter((p) => !LEGACY_PLANS.includes(p.code)).map((p) => [p.code, { ...p }])));
   return (
     <Section title="Offres">
       <p className="muted">Dans Stripe, créez un produit par formule (Essentiel, Patrimoine, Pro) avec deux prix récurrents, mensuel et annuel, et un produit « Pack fiscal » avec un prix <strong>ponctuel</strong>. Collez ici chaque identifiant <code>price_…</code>. Le montant affiché doit correspondre au prix Stripe, qui seul fait foi pour le paiement. Les limites de chaque formule sont dans la table <code>plan_tiers</code> (SQL).</p>
