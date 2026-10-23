@@ -9,22 +9,24 @@ import { DataTable, type Column } from '../../ui/DataTable.tsx';
 import { Button, EmptyState, PageHeader, Section, Tabs } from '../../ui/components.tsx';
 import { navigate } from '../../ui/router.ts';
 import { RentImportDialog } from './RentImport.tsx';
-import { ChargeActions, ChargeBadge, PaymentDialog, paymentAllocated, periodLabel, ReceiptDialog, useRental } from './common.tsx';
+import { ChargeActions, ChargeBadge, PaymentDialog, paymentAllocated, periodLabel, ReceiptDialog, ReceiptsTable, usePaymentActions, useRental } from './common.tsx';
 
 type Filter = 'a_traiter' | 'impayee' | 'partielle' | 'payee' | 'a_venir' | 'toutes';
 
 export function RentsPage() {
   const { data } = useStore();
   const { views, leaseById, leaseLabel, quittanceFor } = useRental();
-  const [tab, setTab] = useState<'echeances' | 'paiements'>('echeances');
+  const [tab, setTab] = useState<'echeances' | 'paiements' | 'quittances'>('echeances');
   const [filter, setFilter] = useState<Filter>('a_traiter');
   const [month, setMonth] = useState('');
+  const [leaseFilter, setLeaseFilter] = useState('');
   const [pay, setPay] = useState<{ chargeId?: string; leaseId?: string; mode: 'saisie' | 'confirmation' } | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [importing, setImporting] = useState(false);
 
   const months = useMemo(() => [...new Set(views.map((v) => v.charge.period_start.slice(0, 7)))].sort().reverse(), [views]);
   const rows = views.filter((v) => {
+    if (leaseFilter && v.charge.lease_id !== leaseFilter) return false;
     if (month && !v.charge.period_start.startsWith(month)) return false;
     if (filter === 'a_traiter') return v.overdue || (v.status === 'payee' && !quittanceFor(v.charge.id) && !v.charge.cancelled_at);
     if (filter === 'toutes') return true;
@@ -79,7 +81,15 @@ export function RentsPage() {
             <div className="figure"><span className="figure-label">Reste dû (sélection)</span><span className={`figure-value ${totals.rest ? 'neg' : ''}`}>{money2(totals.rest)}</span></div>
           </div>
           <p className="muted small">L’absence de réponse à l’e-mail de confirmation ne vaut jamais paiement : une échéance reste impayée tant que vous n’avez pas confirmé ou saisi le paiement.</p>
-          <Tabs tabs={[['echeances', 'Échéances'], ['paiements', `Paiements (${data.payments.length})`]]} value={tab} onChange={setTab} />
+          <div className="row lease-filter">
+            <label className="inline-select">Bail
+              <select value={leaseFilter} onChange={(e) => setLeaseFilter(e.target.value)} aria-label="Filtrer par bail">
+                <option value="">Tous les baux</option>
+                {[...data.leases].sort((a, b) => leaseLabel(a).localeCompare(leaseLabel(b))).map((l) => <option key={l.id} value={l.id}>{leaseLabel(l)}</option>)}
+              </select></label>
+          </div>
+          <Tabs tabs={[['echeances', 'Échéances'], ['paiements', `Paiements (${data.payments.filter((p) => !leaseFilter || p.lease_id === leaseFilter).length})`],
+            ['quittances', `Quittances et reçus (${data.receipts.filter((r) => !r.cancelled_at && (!leaseFilter || r.lease_id === leaseFilter)).length})`]]} value={tab} onChange={setTab} />
           {tab === 'echeances' ? (
             <DataTable id="echeances" rows={rows} columns={columns} rowKey={(v) => v.charge.id} initialSort={{ id: 'due', dir: 'desc' }}
               onOpen={(v) => navigate(`/baux/${v.charge.lease_id}`)}
@@ -95,7 +105,9 @@ export function RentsPage() {
                   </select></label>
               </>}
               empty={<EmptyState title={filter === 'a_traiter' ? 'Rien à traiter' : 'Aucune échéance'}>{filter === 'a_traiter' ? 'Aucun impayé échu et aucune quittance en attente.' : 'Aucune échéance ne correspond.'}</EmptyState>} />
-          ) : <PaymentsTable />}
+          ) : tab === 'paiements' ? <PaymentsTable leaseId={leaseFilter} />
+            : <Section><ReceiptsTable receipts={data.receipts.filter((r) => !leaseFilter || r.lease_id === leaseFilter).sort((a, b) => b.period_start.localeCompare(a.period_start) || b.number.localeCompare(a.number))}
+                onOpen={setReceipt} leaseLabelOf={(id) => { const l = leaseById.get(id); return l ? leaseLabel(l) : '—'; }} /></Section>}
           <div className="export-row">
             <span className="muted">Exporter :</span>
             <Button size="sm" onClick={() => void exp('xlsx')}>Excel (.xlsx)</Button>
@@ -104,7 +116,7 @@ export function RentsPage() {
         </>
       )}
       <PaymentDialog open={!!pay} onClose={() => setPay(null)} leaseId={pay?.leaseId} chargeId={pay?.chargeId} mode={pay?.mode} />
-      <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} />
+      <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} onReplaced={setReceipt} />
     </>
   );
 }
@@ -120,9 +132,10 @@ function paymentExport(labelOf: (leaseId: string) => string | null): ExportColum
   ];
 }
 
-function PaymentsTable() {
+function PaymentsTable({ leaseId }: { leaseId: string }) {
   const { data } = useStore();
   const { leaseById, leaseLabel } = useRental();
+  const pay = usePaymentActions();
   const columns: Column<Payment>[] = [
     { id: 'date', label: 'Date', value: (p) => p.paid_on, kind: 'date', render: (p) => <>{date(p.paid_on)}{p.date_defaulted && <span className="pill pill-warn">date par défaut</span>}</>, primary: true },
     { id: 'lease', label: 'Bail', value: (p) => { const l = leaseById.get(p.lease_id); return l ? leaseLabel(l) : '—'; }, mobile: true },
@@ -134,8 +147,15 @@ function PaymentsTable() {
   ];
   return (
     <Section>
-      <DataTable id="paiements" rows={data.payments} columns={columns} rowKey={(p) => p.id} initialSort={{ id: 'date', dir: 'desc' }}
-        onOpen={(p) => navigate(`/baux/${p.lease_id}`)} empty={<EmptyState title="Aucun paiement" />} />
+      <DataTable id="paiements" rows={data.payments.filter((p) => !leaseId || p.lease_id === leaseId)} columns={columns} rowKey={(p) => p.id} initialSort={{ id: 'date', dir: 'desc' }}
+        onOpen={(p) => navigate(`/baux/${p.lease_id}`)}
+        rowActions={(p) => [
+          { label: 'Modifier', onSelect: () => pay.edit(p) },
+          { label: 'Voir le bail', onSelect: () => navigate(`/baux/${p.lease_id}`) },
+          { label: 'Supprimer', danger: true, onSelect: () => pay.remove(p) },
+        ]}
+        empty={<EmptyState title="Aucun paiement" />} />
+      {pay.ui}
     </Section>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../../data/store.tsx';
 import type { Lease, Payment, PaymentMethod, Receipt, RentCharge } from '../../data/types.ts';
+import type { ReceiptChanges } from '../../data/repo.ts';
 import { date, dateTime, money2, todayParis } from '../../domain/format.ts';
 import {
   autoAllocate, CHARGE_STATUS_LABELS, chargeViews, checkAllocation, leaseState, leaseTenants, LEASE_STATE_LABELS, monthLabel,
@@ -212,8 +213,9 @@ export const sendLabel = (r: Receipt) => (r.cancelled_at ? 'Annulé'
   : r.send_status === 'envoye' && r.sent_at ? `Envoyé le ${dateTime(r.sent_at).replace(' ', ' à ')}`
   : SEND_LABELS[r.send_status]);
 
-export function ReceiptDialog({ receipt, onClose }: { receipt: Receipt | null; onClose: () => void }) {
+export function ReceiptDialog({ receipt, onClose, onReplaced }: { receipt: Receipt | null; onClose: () => void; onReplaced?: (r: Receipt) => void }) {
   const store = useStore();
+  const actions = useReceiptActions((n) => { if (onReplaced) onReplaced(n); else onClose(); });
   const lease = receipt ? store.data.leases.find((l) => l.id === receipt.lease_id) : undefined;
   const [url, setUrl] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState<string | null>(null);
@@ -231,7 +233,9 @@ export function ReceiptDialog({ receipt, onClose }: { receipt: Receipt | null; o
   return (
     <Modal open={!!receipt} wide title={`${label} ${live.number}`} onClose={onClose}
       footer={<>
-        {!live.cancelled_at && cancelReason === null && <Button variant="ghost" onClick={() => setCancelReason('')}>Annuler ce document</Button>}
+        {!live.cancelled_at && cancelReason === null && <Button variant="ghost" onClick={() => setCancelReason('')}>Supprimer</Button>}
+        {!live.cancelled_at && <Button onClick={() => actions.edit(live)}>Modifier</Button>}
+        {!live.cancelled_at && <Button onClick={() => void actions.reissue(live)}>Rééditer</Button>}
         <Button onClick={async () => downloadBlob(await receiptBlob(live, lease), receiptFileName(live))}>Télécharger le PDF</Button>
         {!live.cancelled_at && (
           <Button variant="primary" disabled={live.send_status === 'envoye' || live.send_status === 'a_envoyer'}
@@ -253,12 +257,14 @@ export function ReceiptDialog({ receipt, onClose }: { receipt: Receipt | null; o
       </p>
       {cancelReason !== null && (
         <div className="row cancel-row">
-          <TextInput label="Motif d’annulation" value={cancelReason} onChange={setCancelReason} maxLength={500} />
+          <TextInput label="Motif de la suppression" value={cancelReason} onChange={setCancelReason} maxLength={500} />
           <Button variant="danger" disabled={!cancelReason.trim()} onClick={async () => {
-            if (await store.call((r) => r.cancelReceipt(live.id, cancelReason), 'Document annulé.')) setCancelReason(null);
-          }}>Confirmer l’annulation</Button>
+            if (await store.call((r) => r.cancelReceipt(live.id, cancelReason), 'Document supprimé (annulé).')) { setCancelReason(null); onClose(); }
+          }}>Supprimer le document</Button>
         </div>
       )}
+      {cancelReason !== null && <p className="muted small">Le document est annulé et retiré des listes ; il reste consultable dans l’historique (« Afficher les documents annulés ») pour garder une numérotation continue. Les paiements de la période redeviennent modifiables.</p>}
+      {actions.ui}
       {url ? <iframe className="pdf-frame" title={`Aperçu ${label}`} src={url} /> : <p className="muted">Préparation de l’aperçu…</p>}
       <p className="muted small">Modèle établi d’après les mentions usuelles d’une quittance ; relisez-le avant le premier envoi. Il n’a pas fait l’objet d’une validation juridique.</p>
     </Modal>
@@ -305,4 +311,211 @@ export function ChargeActions({ v, onPay, onConfirm, onReceipt }: {
 
 export function paymentAllocated(p: Payment, allocations: { payment_id: string; amount: number }[]) {
   return round2(allocations.filter((a) => a.payment_id === p.id).reduce((s, a) => s + a.amount, 0));
+}
+
+// ---------------------------------------------------------------------
+// Quittances : modifier (corriger), rééditer (données actuelles), supprimer
+// ---------------------------------------------------------------------
+type ReceiptFields = { landlord_name: string; landlord_address: string; tenant_names: string; property_address: string; issued_on: string };
+
+export function useReceiptActions(onDone?: (r: Receipt) => void) {
+  const store = useStore();
+  const [editing, setEditing] = useState<Receipt | null>(null);
+  const [form, setForm] = useState<ReceiptFields | null>(null);
+  const [confirm, setConfirm] = useState<Receipt | null>(null);
+  const [removing, setRemoving] = useState<Receipt | null>(null);
+  const [reason, setReason] = useState('');
+  const edit = (r: Receipt) => {
+    setEditing(r);
+    setForm({ landlord_name: r.landlord_name ?? '', landlord_address: r.landlord_address ?? '', tenant_names: r.tenant_names, property_address: r.property_address ?? '', issued_on: r.issued_on });
+  };
+  const label = (r: Receipt) => (r.kind === 'quittance' ? 'quittance' : 'reçu');
+  async function run(r: Receipt, changes: ReceiptChanges | undefined, verb: string) {
+    const n = await store.call((x) => x.reissueReceipt(r.id, changes), `${r.kind === 'quittance' ? `Quittance ${verb}e` : `Reçu ${verb}`} : un nouveau numéro est attribué, l’ancien document est annulé.`);
+    if (n) { setEditing(null); setConfirm(null); onDone?.(n); }
+    return n;
+  }
+  const reissue = async (r: Receipt) => { setConfirm(r); };
+  const remove = (r: Receipt) => { setRemoving(r); setReason(''); };
+  const ui = (
+    <>
+      <Modal open={!!removing} title={removing ? `Supprimer ${removing.kind === 'quittance' ? 'la quittance' : 'le reçu'} ${removing.number}` : ''} onClose={() => setRemoving(null)}
+        footer={<><Button onClick={() => setRemoving(null)}>Annuler</Button><Button variant="danger" disabled={!reason.trim()} onClick={async () => {
+          if (removing && await store.call((x) => x.cancelReceipt(removing.id, reason), 'Document supprimé (annulé).')) setRemoving(null);
+        }}>Supprimer le document</Button></>}>
+        <p>Le document est annulé et retiré des listes ; il reste consultable dans l’historique pour garder une numérotation continue. Les paiements de la période redeviennent modifiables et une nouvelle quittance pourra être émise.</p>
+        <TextInput label="Motif de la suppression" value={reason} onChange={setReason} maxLength={500} />
+      </Modal>
+      <Modal open={!!editing} title={editing ? `Modifier ${editing.kind === 'quittance' ? 'la quittance' : 'le reçu'} ${editing.number}` : ''} onClose={() => setEditing(null)}
+        footer={<><Button onClick={() => setEditing(null)}>Annuler</Button><Button variant="primary" disabled={!form?.tenant_names.trim()} onClick={() => {
+          if (!editing || !form) return;
+          void run(editing, {
+            landlord_name: form.landlord_name, landlord_address: form.landlord_address, tenant_names: form.tenant_names,
+            property_address: form.property_address, issued_on: form.issued_on || undefined,
+          }, 'modifié');
+        }}>Enregistrer la correction</Button></>}>
+        {form && editing && <>
+          <p className="muted small">Une {label(editing)} émise n’est jamais modifiée en place : la version corrigée reçoit un nouveau numéro et l’ancienne est annulée (elle reste dans l’historique). Montants et paiements viennent des échéances : pour les corriger, modifiez le paiement.</p>
+          <div className="grid">
+            <TextInput label="Nom du bailleur" value={form.landlord_name} onChange={(v) => setForm({ ...form, landlord_name: v })} maxLength={200} />
+            <TextInput label="Date d’émission" type="date" value={form.issued_on} onChange={(v) => setForm({ ...form, issued_on: v })} />
+            <TextInput label="Adresse du bailleur" wide value={form.landlord_address} onChange={(v) => setForm({ ...form, landlord_address: v })} maxLength={500} />
+            <TextInput label="Locataire(s)" wide value={form.tenant_names} onChange={(v) => setForm({ ...form, tenant_names: v })} maxLength={500} />
+            <TextInput label="Adresse du logement" wide value={form.property_address} onChange={(v) => setForm({ ...form, property_address: v })} maxLength={500} />
+          </div>
+        </>}
+      </Modal>
+      <Modal open={!!confirm} title={confirm ? `Rééditer ${confirm.kind === 'quittance' ? 'la quittance' : 'le reçu'} ${confirm.number}` : ''} onClose={() => setConfirm(null)}
+        footer={<><Button onClick={() => setConfirm(null)}>Annuler</Button><Button variant="primary" onClick={() => { if (confirm) void run(confirm, undefined, 'réédité'); }}>Rééditer</Button></>}>
+        <p>Le document est émis de nouveau avec les informations actuelles du bail, du bien, des locataires et des paiements (utile après une correction). Il reçoit un nouveau numéro ; l’ancien est annulé et reste dans l’historique.</p>
+        {confirm?.send_status === 'envoye' && <p className="muted small">L’ancien document avait été envoyé au locataire : pensez à lui envoyer la nouvelle version.</p>}
+      </Modal>
+    </>
+  );
+  return { edit, reissue, remove, ui };
+}
+
+// ---------------------------------------------------------------------
+// Paiements : modifier, supprimer (avec les quittances concernées)
+// ---------------------------------------------------------------------
+export function usePaymentActions() {
+  const store = useStore();
+  const { data } = store;
+  const { views } = useRental();
+  const [editing, setEditing] = useState<Payment | null>(null);
+  const [f, setF] = useState<{ amount: number | null; paid_on: string; method: PaymentMethod; reference: string; comment: string } | null>(null);
+  const [removing, setRemoving] = useState<Payment | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /** Quittances et reçus valables couvrant une échéance réglée par ce paiement. */
+  const coveredBy = (p: Payment) => {
+    const ids = new Set(data.allocations.filter((a) => a.payment_id === p.id).map((a) => a.charge_id));
+    return data.receipts.filter((r) => !r.cancelled_at && (ids.has(r.charge_id) || (r.extra_lines ?? []).some((x) => ids.has(x.charge_id))));
+  };
+  const numbers = (rs: Receipt[]) => rs.map((r) => r.number).join(', ');
+  const edit = (p: Payment) => {
+    setEditing(p); setError(null);
+    setF({ amount: p.amount, paid_on: p.paid_on, method: p.method, reference: p.reference ?? '', comment: p.comment ?? '' });
+  };
+
+  async function save() {
+    if (!editing || !f) return;
+    if (!f.amount || !(f.amount > 0)) { setError('Indiquez un montant positif.'); return; }
+    if (!f.paid_on) { setError('Indiquez la date de réception.'); return; }
+    setBusy(true); setError(null);
+    try {
+      const p = editing;
+      const covered = coveredBy(p);
+      const old = data.allocations.filter((a) => a.payment_id === p.id);
+      const patch = { amount: round2(f.amount), paid_on: f.paid_on, method: f.method, reference: f.reference.trim() || null, comment: f.comment.trim() || null, date_defaulted: false };
+      if (round2(f.amount) !== p.amount) {
+        // montant modifié : quittances concernées annulées, répartition refaite, quittances rééditées si la période reste réglée
+        for (const r of covered) if ((await store.call((x) => x.cancelReceipt(r.id, 'Paiement modifié'))) === null) return;
+        if (old.length && !(await store.removeWhere('payment_allocations', { payment_id: p.id }))) return;
+        const row = await store.update('payments', p, patch, 'Le paiement');
+        if (!row) return;
+        const freed = new Map(old.map((a) => [a.charge_id, a.amount]));
+        const open = views.filter((v) => v.charge.lease_id === p.lease_id && !v.charge.cancelled_at)
+          .map((v) => ({ ...v, remaining: round2(v.remaining + (freed.get(v.charge.id) ?? 0)) }))
+          .filter((v) => v.remaining > 0);
+        // les échéances réglées auparavant par ce paiement sont servies en premier
+        const first = autoAllocate(round2(f.amount), open.filter((v) => freed.has(v.charge.id)));
+        const rest = autoAllocate(first.remainder, open.filter((v) => !freed.has(v.charge.id)));
+        const plan = [...first.allocations, ...rest.allocations];
+        if (plan.length && !(await store.createMany('payment_allocations', plan.map((a) => ({ payment_id: p.id, ...a }))))) return;
+        let reissued = 0;
+        for (const r of covered) {
+          const v = open.find((x) => x.charge.id === r.charge_id);
+          const paidNow = plan.filter((a) => a.charge_id === r.charge_id).reduce((s, a) => s + a.amount, 0);
+          const extras = (r.extra_lines ?? []).map((x) => x.charge_id);
+          if (r.kind === 'quittance' && v && round2(paidNow) >= v.remaining) {
+            const n = await store.call((x) => (extras.length ? x.issueReceiptWithExtras(r.charge_id, extras) : x.issueReceipt(r.charge_id, 'quittance')));
+            if (n) reissued++;
+          }
+        }
+        store.notify(covered.length
+          ? `Paiement modifié. ${covered.length} document(s) annulé(s)${reissued ? `, ${reissued} quittance(s) rééditée(s)` : ''}${reissued < covered.length ? ' ; émettez un nouveau document depuis l’échéance si besoin' : ''}.`
+          : 'Paiement modifié et réparti de nouveau.');
+      } else {
+        const row = await store.update('payments', p, patch, 'Le paiement');
+        if (!row) return;
+        // date ou moyen de paiement corrigés : les quittances qui les mentionnent sont rééditées
+        let n = 0;
+        if (patch.paid_on !== p.paid_on || patch.method !== p.method) for (const r of covered) if (await store.call((x) => x.reissueReceipt(r.id))) n++;
+        store.notify(n ? `Paiement modifié, ${n} document(s) réédité(s).` : 'Paiement modifié.');
+      }
+      setEditing(null);
+    } finally { setBusy(false); }
+  }
+
+  async function confirmRemove() {
+    if (!removing) return;
+    setBusy(true);
+    try {
+      for (const r of coveredBy(removing)) if ((await store.call((x) => x.cancelReceipt(r.id, 'Paiement supprimé'))) === null) return;
+      if (await store.remove('payments', removing.id)) store.notify('Paiement supprimé.');
+      setRemoving(null);
+    } finally { setBusy(false); }
+  }
+
+  const ui = (
+    <>
+      <Modal open={!!editing} title="Modifier le paiement" onClose={() => setEditing(null)}
+        footer={<><Button onClick={() => setEditing(null)}>Annuler</Button><Button variant="primary" disabled={busy} onClick={() => void save()}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button></>}>
+        {f && editing && <>
+          <div className="grid">
+            <NumberInput label="Montant reçu" suffix="€" value={f.amount} onChange={(v) => setF({ ...f, amount: v })} />
+            <TextInput label="Date de réception" type="date" value={f.paid_on} onChange={(v) => setF({ ...f, paid_on: v })} />
+            <Select label="Moyen de paiement" value={f.method} onChange={(v) => setF({ ...f, method: v ?? 'virement' })} options={METHODS} />
+            <TextInput label="Référence" value={f.reference} onChange={(v) => setF({ ...f, reference: v })} maxLength={200} />
+            <TextInput label="Commentaire" wide value={f.comment} onChange={(v) => setF({ ...f, comment: v })} maxLength={2000} />
+          </div>
+          {coveredBy(editing).length > 0 && <p className="note">Ce paiement figure sur {coveredBy(editing).length > 1 ? 'les documents' : 'le document'} n° {numbers(coveredBy(editing))}. Si le montant, la date ou le moyen change, {coveredBy(editing).length > 1 ? 'ils seront annulés et réédités' : 'il sera annulé et réédité'} automatiquement.</p>}
+          {round2(f.amount ?? 0) !== editing.amount && <p className="muted small">Le montant change : la répartition sur les échéances est refaite (échéances réglées par ce paiement d’abord, puis les plus anciennes impayées).</p>}
+          {error && <p className="form-error" role="alert">{error}</p>}
+        </>}
+      </Modal>
+      <Modal open={!!removing} title="Supprimer le paiement" onClose={() => setRemoving(null)}
+        footer={<><Button onClick={() => setRemoving(null)}>Annuler</Button><Button variant="danger" disabled={busy} onClick={() => void confirmRemove()}>Supprimer</Button></>}>
+        {removing && <>
+          <p>Le paiement de {money2(removing.amount)} du {date(removing.paid_on)} et sa répartition seront supprimés ; les échéances concernées redeviennent dues.</p>
+          {coveredBy(removing).length > 0 && <p className="note">{coveredBy(removing).length > 1 ? 'Les documents' : 'Le document'} n° {numbers(coveredBy(removing))} {coveredBy(removing).length > 1 ? 'seront annulés' : 'sera annulé'} (conservé{coveredBy(removing).length > 1 ? 's' : ''} dans l’historique).</p>}
+        </>}
+      </Modal>
+    </>
+  );
+  return { edit, remove: (p: Payment) => setRemoving(p), ui };
+}
+
+/** Liste des quittances et reçus : documents annulés masqués par défaut ; ouvrir, modifier, rééditer. */
+export function ReceiptsTable({ receipts, onOpen, leaseLabelOf }: { receipts: Receipt[]; onOpen: (r: Receipt) => void; leaseLabelOf?: (leaseId: string) => string }) {
+  const [showCancelled, setShowCancelled] = useState(false);
+  const actions = useReceiptActions(onOpen);
+  const cancelled = receipts.filter((r) => r.cancelled_at).length;
+  const rows = receipts.filter((r) => showCancelled || !r.cancelled_at);
+  return (
+    <>
+      {cancelled > 0 && <Checkbox label={`Afficher les documents annulés ou remplacés (${cancelled})`} checked={showCancelled} onChange={setShowCancelled} />}
+      {rows.length === 0 ? <p className="muted">Aucun document. Une quittance s’émet depuis une échéance intégralement réglée ; un reçu depuis une échéance partiellement réglée.</p> : (
+        <div className="dt-scroll"><table className="dt-table receipts-table">
+          <thead><tr><th>N°</th><th>Type</th>{leaseLabelOf && <th>Bail</th>}<th>Période</th><th>Émis le</th><th className="num">Montant</th><th>Envoi</th><th><span className="sr-only">Actions</span></th></tr></thead>
+          <tbody>{rows.map((r) => (
+            <tr key={r.id} className={r.cancelled_at ? 'muted' : ''}>
+              <td>{r.number}</td><td>{r.kind === 'quittance' ? 'Quittance' : 'Reçu partiel'}</td>{leaseLabelOf && <td>{leaseLabelOf(r.lease_id)}</td>}
+              <td>{monthLabel(r.period_start)}</td><td>{date(r.issued_on)}</td>
+              <td className="num">{money2(r.paid_amount)}</td><td>{r.cancelled_at ? <span title={r.cancel_reason ?? undefined}>{r.cancel_reason?.startsWith('Remplacé') ? r.cancel_reason : 'Annulé'}</span> : sendLabel(r)}</td>
+              <td><div className="row">
+                <Button size="sm" onClick={() => onOpen(r)}>Ouvrir</Button>
+                {!r.cancelled_at && <Button size="sm" variant="ghost" onClick={() => actions.edit(r)}>Modifier</Button>}
+                {!r.cancelled_at && <Button size="sm" variant="ghost" onClick={() => void actions.reissue(r)}>Rééditer</Button>}
+                {!r.cancelled_at && <Button size="sm" variant="ghost" onClick={() => actions.remove(r)}>Supprimer</Button>}
+              </div></td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
+      {actions.ui}
+    </>
+  );
 }

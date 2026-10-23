@@ -12,7 +12,7 @@ import { href, navigate } from '../../ui/router.ts';
 import { DocumentList } from './Documents.tsx';
 import { AccessPill, useTenantAccess } from './TenantAccess.tsx';
 import { IRL_VALUES, irlLabel, revisionPlan } from '../../domain/irl.ts';
-import { ChargeActions, ChargeBadge, LeaseBadge, PaymentDialog, paymentAllocated, periodLabel, ReceiptDialog, sendLabel, useRental } from './common.tsx';
+import { ChargeActions, ChargeBadge, LeaseBadge, PaymentDialog, paymentAllocated, periodLabel, ReceiptDialog, ReceiptsTable, usePaymentActions, useRental } from './common.tsx';
 
 type Tab = 'echeances' | 'paiements' | 'quittances' | 'relances' | 'depot' | 'titulaires' | 'documents';
 
@@ -99,18 +99,7 @@ export function LeaseDetailPage({ id }: { id: string }) {
 
       {tab === 'quittances' && (
         <Section title="Quittances et reçus">
-          {receipts.length === 0 ? <p className="muted">Aucun document. Une quittance s’émet depuis une échéance intégralement réglée ; un reçu depuis une échéance partiellement réglée.</p> : (
-            <div className="dt-scroll"><table className="dt-table">
-              <thead><tr><th>N°</th><th>Type</th><th>Période</th><th>Émis le</th><th className="num">Montant</th><th>Envoi</th><th /></tr></thead>
-              <tbody>{receipts.map((r) => (
-                <tr key={r.id} className={r.cancelled_at ? 'muted' : ''}>
-                  <td>{r.number}</td><td>{r.kind === 'quittance' ? 'Quittance' : 'Reçu partiel'}</td><td>{monthLabel(r.period_start)}</td><td>{date(r.issued_on)}</td>
-                  <td className="num">{money2(r.paid_amount)}</td><td>{sendLabel(r)}</td>
-                  <td><Button size="sm" onClick={() => setReceipt(r)}>Ouvrir</Button></td>
-                </tr>
-              ))}</tbody>
-            </table></div>
-          )}
+          <ReceiptsTable receipts={receipts} onOpen={setReceipt} />
         </Section>
       )}
 
@@ -120,7 +109,7 @@ export function LeaseDetailPage({ id }: { id: string }) {
       {tab === 'documents' && <DocumentList filter={{ lease_id: lease.id, property_id: lease.property_id }} />}
 
       <PaymentDialog open={!!pay} onClose={() => setPay(null)} leaseId={lease.id} chargeId={pay?.chargeId} mode={pay?.mode} />
-      <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} />
+      <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} onReplaced={setReceipt} />
       <ChargeDialog open={chargeForm} leaseId={lease.id} onClose={() => setChargeForm(false)} />
       <Modal open={!!cancelling} title="Annuler l’échéance" onClose={() => setCancelling(null)}
         footer={<><Button onClick={() => setCancelling(null)}>Retour</Button>
@@ -142,9 +131,7 @@ export function LeaseDetailPage({ id }: { id: string }) {
 function PaymentsList({ payments, views, onAdd }: { payments: Payment[]; views: ChargeView[]; onAdd: () => void }) {
   const store = useStore();
   const { data } = store;
-  const { ask, dialog } = useConfirm();
-  const [editDate, setEditDate] = useState<Payment | null>(null);
-  const [newDate, setNewDate] = useState('');
+  const pay = usePaymentActions();
   const viewById = new Map(views.map((v) => [v.charge.id, v]));
   return (
     <Section title="Paiements" actions={<Button size="sm" variant="primary" onClick={onAdd}>Enregistrer un paiement</Button>}>
@@ -167,23 +154,15 @@ function PaymentsList({ payments, views, onAdd }: { payments: Payment[]; views: 
                       if (plan.allocations.length) await store.createMany('payment_allocations', plan.allocations.map((a) => ({ payment_id: p.id, ...a })));
                     }}>Affecter l’avance</Button>
                   )}
-                  <Button size="sm" variant="ghost" onClick={() => { setEditDate(p); setNewDate(p.paid_on); }}>Modifier la date</Button>
-                  <Button size="sm" variant="ghost" onClick={async () => {
-                    if (await ask('Supprimer le paiement', `Le paiement de ${money2(p.amount)} du ${date(p.paid_on)} et sa répartition seront supprimés.`, 'Supprimer')) await store.remove('payments', p.id);
-                  }}>Supprimer</Button>
+                  <Button size="sm" variant="ghost" onClick={() => pay.edit(p)}>Modifier</Button>
+                  <Button size="sm" variant="ghost" onClick={() => pay.remove(p)}>Supprimer</Button>
                 </div></td>
               </tr>
             );
           })}</tbody>
         </table></div>
       )}
-      <Modal open={!!editDate} title="Date de réception" onClose={() => setEditDate(null)}
-        footer={<><Button onClick={() => setEditDate(null)}>Annuler</Button><Button variant="primary" disabled={!newDate} onClick={async () => {
-          if (editDate && await store.update('payments', editDate, { paid_on: newDate, date_defaulted: false }, 'Le paiement')) setEditDate(null);
-        }}>Enregistrer</Button></>}>
-        <TextInput label="Date de réception" type="date" value={newDate} onChange={setNewDate} />
-      </Modal>
-      {dialog}
+      {pay.ui}
     </Section>
   );
 }

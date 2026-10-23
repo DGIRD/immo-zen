@@ -123,8 +123,17 @@ export async function buildReceiptPdf(lib: PdfLib, r: ReceiptData): Promise<Uint
   const line = lib.rgb(0.8, 0.84, 0.82);
   const M = 56;
   const W = 595.28 - 2 * M;
-  let y = 841.89 - 64;
   const text = (s: string, x: number, size = 10.5, f = font, color = ink) => page.drawText(pdfSafe(s), { x, y, size, font: f, color });
+
+  // Logo Immo-Zen (maison stylisée, mêmes tracés que l'icône de l'application) et nom
+  const sapin = lib.rgb(0.122, 0.29, 0.27);
+  const s = 1, lx = M, ly = 841.89 - 28; // coin haut gauche du logo (32 × 32 unités)
+  page.drawSvgPath('M4 17 L16 6 L28 17', { x: lx, y: ly, scale: s, borderColor: sapin, borderWidth: 2.6 * s, borderLineCap: 1 });
+  page.drawSvgPath('M9 26 H23', { x: lx, y: ly, scale: s, borderColor: sapin, borderWidth: 2.6 * s, borderLineCap: 1 });
+  page.drawCircle({ x: lx + 16 * s, y: ly - 19 * s, size: 2.4 * s, color: sapin });
+  page.drawText('Immo-Zen', { x: lx + 32 * s + 6, y: ly - 20 * s, size: 16, font: bold, color: sapin });
+  page.drawLine({ start: { x: M, y: ly - 32 * s - 8 }, end: { x: M + W, y: ly - 32 * s - 8 }, thickness: 0.6, color: line });
+  let y = 841.89 - 106;
 
   text(L.title, M, 22, bold);
   page.drawText(pdfSafe(L.number), { x: M + W - bold.widthOfTextAtSize(pdfSafe(L.number), 11), y: y + 4, size: 11, font: bold, color: ink });

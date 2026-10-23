@@ -71,6 +71,8 @@ export interface PortalDocument { id: string; title: string; category: string; m
 export interface PortalAccount { id: string; tenant_id: string; accepted_at: string; tenant_name: string; leases: PortalLease[]; receipts: PortalReceipt[]; documents: PortalDocument[] }
 export interface TenantPortal { accounts: PortalAccount[] }
 
+export type ReceiptChanges = Partial<Pick<Receipt, 'landlord_name' | 'landlord_address' | 'tenant_names' | 'property_address' | 'issued_on'>>;
+
 export interface ReviseRentArgs { leaseId: string; effective: string; oldLabel: string; oldIndex: number; newLabel: string; newIndex: number }
 
 export interface Repo {
@@ -98,6 +100,8 @@ export interface Repo {
   generateCharges(leaseId: string, until?: string): Promise<number>;
   issueReceipt(chargeId: string, kind: Receipt['kind']): Promise<Receipt>;
   cancelReceipt(receiptId: string, reason: string): Promise<Receipt>;
+  /** Réédition : annule le document et en émet un nouveau (données actuelles, corrections éventuelles). */
+  reissueReceipt(receiptId: string, changes?: ReceiptChanges): Promise<Receipt>;
   queueReceiptEmail(receiptId: string): Promise<void>;
   queueReminder(reminderId: string): Promise<Reminder>;
   /** Quittance d'une échéance reprenant des rappels de charges réglés. */
