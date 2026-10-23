@@ -109,4 +109,29 @@ select public.iz_accept_tenant_invite(:'code2');
 select tests.ok(jsonb_array_length(public.iz_tenant_portal() -> 'accounts') = 1, 'nouvelle invitation : accès rétabli');
 commit;
 
+-- ---------- Réédition d'une quittance (correction du bailleur, du locataire, de la date)
+begin;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"f0000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+select id as old_receipt from public.receipts where lease_id = 'f3000000-0000-0000-0000-000000000001' and cancelled_at is null and kind = 'quittance' \gset
+select tests.fails(format('select public.iz_reissue_receipt(%L, %L)', :'old_receipt', '{"issued_on":"2099-01-01"}'), 'réédition : date d''émission future refusée');
+select tests.fails(format('select public.iz_reissue_receipt(%L, %L)', :'old_receipt', '{"tenant_names":" "}'), 'réédition : locataire obligatoire');
+select (public.iz_reissue_receipt(:'old_receipt', '{"landlord_name":"Paul Bailleur-Martin","issued_on":"2026-02-02"}'::jsonb)).id as new_receipt \gset
+select tests.ok((select cancelled_at is not null and cancel_reason like 'Remplacé par la quittance n° Q-%' from public.receipts where id = :'old_receipt'), 'réédition : quittance d''origine annulée avec renvoi vers la nouvelle');
+select tests.ok((select landlord_name = 'Paul Bailleur-Martin' and issued_on = '2026-02-02' and cancelled_at is null and number like 'Q-2026-%' from public.receipts where id = :'new_receipt'), 'réédition : nouvelle quittance corrigée, numérotée à la suite');
+select tests.ok((select count(*) from public.receipts where charge_id = (select charge_id from public.receipts where id = :'new_receipt') and kind = 'quittance' and cancelled_at is null) = 1, 'réédition : une seule quittance valable pour la période');
+select tests.fails(format('select public.iz_reissue_receipt(%L)', :'old_receipt'), 'réédition : document annulé non modifiable');
+commit;
+begin;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"f0000000-0000-0000-0000-000000000003","role":"authenticated"}', true);
+select tests.fails(format('select public.iz_reissue_receipt(%L)', :'new_receipt'), 'réédition : impossible sur le document d''un autre compte');
+commit;
+begin;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"f0000000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+select tests.ok((select count(*) from jsonb_array_elements(public.iz_tenant_portal() -> 'accounts' -> 0 -> 'receipts') r where r ->> 'landlord_name' = 'Paul Bailleur-Martin') = 1
+  and jsonb_array_length(public.iz_tenant_portal() -> 'accounts' -> 0 -> 'receipts') = 1, 'réédition : le locataire ne voit que la quittance corrigée');
+commit;
+
 select 'Tests SQL espace locataire passés' as fin;

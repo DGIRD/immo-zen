@@ -161,6 +161,9 @@ export function createSupabaseRepo(url: string, anonKey: string): Repo {
     async issueReceipt(chargeId, kind) {
       return check(await sb.rpc('iz_issue_receipt', { p_charge: chargeId, p_kind: kind }).single()) as Receipt;
     },
+    async reissueReceipt(receiptId, changes = {}) {
+      return check(await sb.rpc('iz_reissue_receipt', { p_receipt: receiptId, p_changes: changes }).single()) as Receipt;
+    },
     async cancelReceipt(receiptId, reason) {
       return check(await sb.rpc('iz_cancel_receipt', { p_receipt: receiptId, p_reason: reason }).single()) as Receipt;
     },

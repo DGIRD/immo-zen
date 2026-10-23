@@ -91,6 +91,10 @@ Dans le bail, cochez « révision annuelle » et choisissez l'IRL de référence
 
 Envoi automatique (option du bail) : la quittance part seule quand un paiement que vous avez saisi ou confirmé règle exactement la période. Elle ne part jamais sur la seule base d'une date.
 
+
+**Modifier, rééditer, supprimer.** Une quittance émise n'est jamais modifiée en place, pour garder une numérotation continue : **Modifier** (bailleur, locataires, adresse du logement, date d'émission) et **Rééditer** (informations actuelles du bail et des paiements) émettent un nouveau document numéroté à la suite et annulent l'ancien, qui reste visible avec « Afficher les documents annulés ou remplacés ». **Supprimer** annule le document avec un motif. Les quittances portent le logo Immo-Zen ; la date d'envoi au locataire s'affiche dans la liste. Loyers et paiements → **Quittances et reçus** les regroupe toutes, avec un filtre par bail.
+
+**Paiements.** Un paiement se modifie (montant, date, moyen, référence, commentaire) ou se supprime depuis l'onglet Paiements de la rubrique ou de la fiche du bail. S'il figure sur une quittance, celle-ci est annulée puis rééditée automatiquement (si la période reste intégralement réglée).
 ## Relances
 
 « Préparer une relance » rédige un rappel amiable à partir de votre modèle (Paramètres), avec le montant dû et les périodes. Relisez, modifiez, puis envoyez par e-mail ou marquez « envoyée par vos soins » (courrier). Si l'option est activée sur le bail, une relance est préparée automatiquement après le délai choisi et vous êtes prévenu : elle n'est jamais envoyée sans votre validation, et elle est annulée si la dette est réglée entre-temps. Aucune pénalité n'est ajoutée.

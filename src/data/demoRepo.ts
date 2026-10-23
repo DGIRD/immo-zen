@@ -451,6 +451,34 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
       write(db);
       return structuredClone(r);
     },
+    async reissueReceipt(receiptId, changes = {}) {
+      const db = read();
+      const o = db.receipts.find((x) => x.id === receiptId) ?? fail('Document introuvable.');
+      if (o.cancelled_at) fail('Document annulé : il ne peut plus être modifié.');
+      if ('tenant_names' in changes && !changes.tenant_names?.trim()) fail('Indiquez le nom du ou des locataires.');
+      if (changes.issued_on && changes.issued_on > today()) fail('La date d’émission ne peut pas être dans le futur.');
+      o.cancelled_at = now();
+      o.cancel_reason = 'Réédition';
+      db.email_outbox.forEach((m) => { if (m.receipt_id === o.id && m.status === 'a_envoyer') m.status = 'annule'; });
+      write(db);
+      const extras = (o.extra_lines ?? []).map((x) => x.charge_id);
+      let n: Receipt;
+      try {
+        n = o.kind === 'quittance' && extras.length ? await this.issueReceiptWithExtras(o.charge_id, extras) : await this.issueReceipt(o.charge_id, o.kind);
+      } catch (e) {
+        const back = read(); const r0 = back.receipts.find((x) => x.id === o.id)!; r0.cancelled_at = null; r0.cancel_reason = null; write(back);
+        throw e;
+      }
+      const db2 = read();
+      const r = db2.receipts.find((x) => x.id === n.id)!;
+      for (const k of ['landlord_name', 'landlord_address', 'property_address'] as const) if (k in changes) r[k] = changes[k]?.trim() || null;
+      if (changes.tenant_names !== undefined) r.tenant_names = changes.tenant_names.trim();
+      if (changes.issued_on) r.issued_on = changes.issued_on;
+      const old = db2.receipts.find((x) => x.id === o.id)!;
+      old.cancel_reason = `Remplacé par ${r.kind === 'quittance' ? 'la quittance' : 'le reçu'} n° ${r.number}`;
+      write(db2);
+      return structuredClone(r);
+    },
     async cancelReceipt(receiptId, reason) {
       if (!reason.trim()) fail('Indiquez le motif d’annulation.');
       const db = read();

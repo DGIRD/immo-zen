@@ -729,6 +729,57 @@ async function main() {
     await page.getByRole('heading', { name: 'Tableau de bord' }).waitFor();
   });
 
+  await step('loyers : filtre par bail, modification et réédition de quittance, paiement modifié, suppression', async () => {
+    await page.goto(url + '#/loyers');
+    await page.getByLabel('Filtrer par bail').selectOption({ index: 1 });
+    await page.getByRole('tab', { name: /^Quittances et reçus/ }).click();
+    const table = page.locator('table.receipts-table');
+    await table.waitFor();
+    const before = await table.locator('tbody tr').count();
+    assert.ok(before >= 2, 'quittances du bail listées');
+    const first = table.locator('tbody tr').filter({ hasText: 'Quittance' }).first();
+    const oldNumber = (await first.locator('td').first().innerText()).trim();
+    await first.getByRole('button', { name: 'Modifier' }).click();
+    let dlg = page.locator('dialog[open]');
+    await dlg.getByRole('heading', { name: `Modifier la quittance ${oldNumber}` }).waitFor();
+    await dlg.getByLabel('Nom du bailleur').fill('Paul Bailleur-Martin');
+    await dlg.getByRole('button', { name: 'Enregistrer la correction' }).click();
+    await page.getByText(/Quittance modifiée : un nouveau numéro est attribué/).first().waitFor();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByRole('heading', { name: /^Quittance Q-/ }).waitFor();
+    assert.notEqual((await dlg.getByRole('heading').first().innerText()).trim(), `Quittance ${oldNumber}`, 'nouveau numéro');
+    await dlg.getByRole('button', { name: 'Fermer' }).click();
+    await page.getByLabel(/Afficher les documents annulés ou remplacés/).check();
+    await table.locator('tbody tr', { hasText: oldNumber }).getByText(/Remplacé par la quittance n° Q-/).waitFor();
+    await page.getByLabel(/Afficher les documents annulés ou remplacés/).uncheck();
+    // réédition avec les données actuelles
+    await table.locator('tbody tr').filter({ hasText: 'Quittance' }).first().getByRole('button', { name: 'Rééditer' }).click();
+    await page.locator('dialog[open]').getByRole('button', { name: 'Rééditer' }).click();
+    await page.getByText(/Quittance rééditée/).first().waitFor();
+    await page.locator('dialog[open]').getByRole('button', { name: 'Fermer' }).click();
+    // suppression d'un reçu partiel
+    const recu = table.locator('tbody tr').filter({ hasText: 'Reçu partiel' }).first();
+    if (await recu.count()) {
+      await recu.getByRole('button', { name: 'Supprimer' }).click();
+      dlg = page.locator('dialog[open]');
+      await dlg.getByLabel('Motif de la suppression').fill('Doublon');
+      await dlg.getByRole('button', { name: 'Supprimer le document' }).click();
+      await page.getByText('Document supprimé (annulé).').first().waitFor();
+    }
+    // paiement : modification de la référence
+    await page.getByRole('tab', { name: /^Paiements/ }).click();
+    const prow = page.locator('tbody tr').first();
+    await prow.getByLabel('Actions').click();
+    await prow.getByRole('menuitem', { name: 'Modifier' }).click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByRole('heading', { name: 'Modifier le paiement' }).waitFor();
+    await dlg.getByLabel('Référence').fill('VIR-TEST-42');
+    await dlg.getByRole('button', { name: 'Enregistrer' }).click();
+    await page.getByText(/Paiement modifié/).first().waitFor();
+    await page.locator('tbody tr', { hasText: 'VIR-TEST-42' }).waitFor();
+    await page.screenshot({ path: join(out, '35-loyers-quittances.png'), fullPage: true });
+  });
+
   await step('déclaration fiscale : 2044 au réel et cases de la 2042', async () => {
     await page.goto(url + '#/declaration');
     await page.getByLabel('Année des revenus').selectOption('2024');

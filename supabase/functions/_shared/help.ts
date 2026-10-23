@@ -115,7 +115,7 @@ Loyer, charges, dépôt, dates et IRL viennent du bail ; le reste se complète �
   {
     id: 'loyers', title: 'Loyers et paiements', pages: ['loyers', 'locataires'],
     keywords: ['loyer', 'loyers', 'paiement', 'payer', 'encaisser', 'confirmer', 'impaye', 'partiel', 'trop', 'percu', 'avance', 'solde', 'echeance', 'retard'],
-    body: `**Enregistrer un paiement** : montant, date, moyen, référence ; il est réparti de la plus ancienne échéance à la plus récente (ou « Répartir à la main »). Un excédent reste en avance.
+    body: `**Enregistrer un paiement** : montant, date, moyen, référence ; il est réparti de la plus ancienne échéance à la plus récente (ou « Répartir à la main »). Un excédent reste en avance. **Filtre « Bail »** en haut de la rubrique (échéances, paiements, quittances). Un paiement se **modifie** (montant, date, moyen, référence) ou se **supprime** depuis l'onglet Paiements ou la fiche du bail ; les quittances qui le mentionnent sont annulées puis rééditées automatiquement.
 **Confirmer le paiement** d'une échéance passée : la date du jour est proposée et signalée « date par défaut ». Sans confirmation, l'échéance reste impayée, même si vous ne répondez pas à l'e-mail de rappel.
 Le **solde** se calcule uniquement à partir des échéances et des paiements ; le dépôt de garantie n'y entre pas.`,
     questions: ['Comment enregistrer un loyer reçu ?', 'Comment importer mes loyers depuis Excel ?', 'Que faire d’un paiement partiel ?'],
@@ -129,7 +129,7 @@ Le **solde** se calcule uniquement à partir des échéances et des paiements ; 
   {
     id: 'quittances', title: 'Quittances, reçus et rappel de charges', pages: ['loyers', 'locataires'],
     keywords: ['quittance', 'quittances', 'recu', 'pdf', 'envoyer', 'email', 'annuler', 'rappel', 'charges', 'regularisation', 'annee', 'precedente'],
-    body: `**Émettre la quittance** n'est proposé que pour une échéance intégralement réglée, une seule fois par période. Paiement partiel : **reçu** (« ne vaut pas quittance »). Aperçu, PDF, envoi au locataire par e-mail ; annulation avec motif.
+    body: `**Émettre la quittance** n'est proposé que pour une échéance intégralement réglée, une seule fois par période. Paiement partiel : **reçu** (« ne vaut pas quittance »). Aperçu, PDF au logo Immo-Zen, envoi au locataire par e-mail (la date d'envoi s'affiche ensuite). **Modifier** corrige le bailleur, les locataires, le logement ou la date d'émission ; **Rééditer** reprend les informations actuelles du bail : dans les deux cas un nouveau numéro est attribué et l'ancien document est annulé (visible avec « Afficher les documents annulés »). **Supprimer** annule le document avec un motif. Toutes les quittances sont aussi dans Loyers et paiements → Quittances et reçus, filtrables par bail.
 **Rappel de charges d'une année précédente** : fiche du bail → « Ajouter une somme due » → *Rappel de charges* (année, montant). Une fois réglé, « Émettre la quittance » d'un loyer propose de l'ajouter sur une ligne distincte ; il ne peut pas être quittancé deux fois.
 Option du bail « quittance automatique » : émise et envoyée seulement après un paiement saisi ou confirmé qui règle exactement la période.`,
     questions: ['Comment émettre une quittance ?', 'Comment ajouter un rappel de charges sur une quittance ?'],
