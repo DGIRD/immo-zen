@@ -378,7 +378,7 @@ async function main() {
     const afterDup = await rows.count();
     assert.equal(afterDup, before + 1, 'duplication');
     await rows.nth(0).getByRole('checkbox').check(); await rows.nth(1).getByRole('checkbox').check();
-    await page.getByRole('button', { name: /Supprimer/ }).first().click();
+    await page.getByRole('button', { name: /^Supprimer \(\d+\)$/ }).click();
     await confirm(/Supprimer/);
     await page.waitForTimeout(400);
     assert.equal(await rows.count(), afterDup - 2, 'suppression multiple');

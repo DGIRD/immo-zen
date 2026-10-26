@@ -786,6 +786,98 @@ async function main() {
     await page.screenshot({ path: join(out, '35-loyers-quittances.png'), fullPage: true });
   });
 
+  await step('paiements et dépenses : doublons signalés, suppression multiple, modification en grille, mise en cohérence des quittances', async () => {
+    const txt = async (l: import('playwright').Locator) => (await l.innerText()).replace(/[\u202f\u00a0]/g, ' ').trim();
+    await page.goto(url + '#/loyers');
+    await page.getByLabel('Filtrer par bail').selectOption({ index: 1 });
+    // doublon : même montant, même date qu'un paiement existant
+    await page.getByRole('tab', { name: /^Paiements/ }).click();
+    const first = page.locator('table.dt-table tbody tr').first();
+    const cells = first.locator('td');
+    const [d, m, y] = (await txt(cells.nth(1))).slice(0, 10).split('/');
+    const amount = (await txt(cells.nth(3))).replace(/[^\d,]/g, '');
+    await page.getByRole('button', { name: 'Enregistrer un paiement' }).first().click();
+    let dlg = page.locator('dialog[open]');
+    await dlg.getByLabel('Bail').selectOption({ index: 1 });
+    await dlg.getByLabel('Montant reçu').fill(amount);
+    await dlg.getByLabel('Date de réception').fill(`${y}-${m}-${d}`);
+    await dlg.getByRole('button', { name: 'Enregistrer le paiement' }).click();
+    await dlg.getByText('Doublon probable.').waitFor();
+    await dlg.getByRole('button', { name: 'Enregistrer quand même' }).click();
+    await page.getByText('Paiement enregistré.').first().waitFor();
+    await page.getByText(/semble en double/).waitFor();
+    await page.getByRole('button', { name: /Supprimer les doublons/ }).click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByRole('heading', { name: /Supprimer le paiement|Supprimer \d+ paiements/ }).waitFor();
+    await dlg.getByRole('button', { name: 'Supprimer' }).click();
+    await page.getByText(/paiements? supprimés?\./i).first().waitFor();
+    assert.equal(await page.getByText(/semble en double|semblent en double/).count(), 0, 'plus de doublon');
+    // bouton Supprimer visible sur chaque ligne
+    assert.ok(await page.getByRole('button', { name: /^Supprimer le paiement du / }).count() > 0, 'suppression directe par ligne');
+    // modification en grille
+    await page.getByRole('button', { name: 'Modifier en grille' }).click();
+    const ref = page.getByLabel(/^Référence – paiement du /).first();
+    await ref.fill('GRILLE-01');
+    await page.getByRole('button', { name: 'Enregistrer (1)' }).click();
+    await page.getByText(/1 paiement modifié/).first().waitFor();
+    await page.locator('tbody tr', { hasText: 'GRILLE-01' }).waitFor();
+    // mise en cohérence : une quittance supprimée est réémise depuis les paiements déjà reçus
+    await page.getByRole('tab', { name: /^Quittances et reçus/ }).click();
+    const q = page.locator('table.receipts-table tbody tr').filter({ hasText: 'Quittance' }).first();
+    await q.getByRole('button', { name: 'Supprimer' }).click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByLabel('Motif de la suppression').fill('Test de cohérence');
+    await dlg.getByRole('button', { name: 'Supprimer le document' }).click();
+    await page.getByText('Document supprimé (annulé).').first().waitFor();
+    await page.getByRole('tab', { name: /^Échéances/ }).click();
+    await page.getByRole('button', { name: /^Mettre en cohérence les quittances \(\d+\)/ }).click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByRole('heading', { name: 'Mettre en cohérence les quittances' }).waitFor();
+    await dlg.getByRole('button', { name: /^Émettre \d+ quittances?$/ }).click();
+    await page.getByText(/quittances? émises? : quittances et paiements sont en cohérence/).first().waitFor();
+    assert.equal(await page.getByRole('button', { name: /^Mettre en cohérence les quittances \(/ }).count(), 0, 'plus rien à quittancer');
+    // échéances en grille : une échéance quittancée est verrouillée
+    await page.getByLabel('Afficher').selectOption('toutes');
+    await page.getByRole('button', { name: 'Modifier en grille' }).click();
+    await page.locator('.grid-table').getByText(/^Quittance .* : supprimez-la pour modifier$/).first().waitFor();
+    await page.getByRole('button', { name: 'Fermer la grille' }).click();
+    await page.screenshot({ path: join(out, '36-paiements-grille.png'), fullPage: true });
+
+    // dépenses : doublon à l'ajout rapide, suppression des doublons, grille
+    await page.goto(url + '#/depenses');
+    await page.getByLabel('Année').selectOption('');
+    const quick = page.getByRole('form', { name: 'Ajout rapide d’une dépense' });
+    const add = async () => {
+      await quick.getByLabel('Date').fill('2026-02-03');
+      await quick.getByLabel('Bien').selectOption({ label: 'Parking détenu' });
+      await quick.getByLabel('Catégorie').selectOption('entretien');
+      await quick.getByLabel('Libellé').fill('Nettoyage portail');
+      await quick.getByLabel('Montant').fill('45');
+    };
+    await add();
+    await quick.getByRole('button', { name: '+ Ajouter' }).click();
+    await page.getByText('Ligne ajoutée.').first().waitFor();
+    await add();
+    await quick.getByRole('button', { name: '+ Ajouter' }).click();
+    await page.getByText('Doublon probable.').waitFor();
+    await quick.getByRole('button', { name: 'Ajouter quand même' }).click();
+    await page.getByText(/semble en double/).waitFor();
+    await page.getByRole('button', { name: /Supprimer les doublons/ }).click();
+    await page.locator('dialog[open]').getByRole('button', { name: 'Supprimer' }).click();
+    await page.locator('table.dt-table tbody tr', { hasText: '45,00' }).first().waitFor();
+    assert.equal(await page.locator('table.dt-table tbody tr', { hasText: '45,00' }).count(), 1, 'un seul exemplaire conservé');
+    await page.getByRole('button', { name: 'Modifier en grille' }).click();
+    const lab = page.getByLabel(/^Libellé – dépense du 03\/02\/2026/);
+    await lab.fill('Nettoyage du portail (grille)');
+    await lab.press('Enter');
+    await page.getByRole('button', { name: 'Enregistrer (1)' }).click();
+    await page.getByText('1 ligne modifiée.').first().waitFor();
+    await page.getByLabel('Afficher').selectOption('');
+    await page.getByLabel('Rechercher dans le tableau').fill('portail (grille)');
+    await page.locator('table.dt-table tbody tr', { hasText: '45,00' }).waitFor();
+    await page.getByLabel('Rechercher dans le tableau').fill('');
+  });
+
   await step('déclaration fiscale : 2044 au réel et cases de la 2042', async () => {
     await page.goto(url + '#/declaration');
     await page.getByLabel('Année des revenus').selectOption('2024');
