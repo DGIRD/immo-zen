@@ -19,3 +19,5 @@ begin
   end if;
   return new;
 end $$;
+drop function if exists public.iz_clean_lease_schedule(uuid);
+drop function if exists public.iz__purge_lease_charges(uuid, date, date);

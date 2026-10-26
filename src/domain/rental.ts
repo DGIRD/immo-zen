@@ -90,24 +90,47 @@ export function pastChargeCount(lease: Pick<Lease, 'start_date' | 'end_date' | '
 export interface StartChangeImpact {
   /** Échéances de loyer devenues fausses, supprimées puis régénérées. */
   remove: RentCharge[];
-  /** Parmi elles, celles qui ont reçu un paiement ou une quittance / un reçu non annulé : modification refusée. */
+  /** Parmi elles, celles qui ont reçu des paiements : ces paiements sont réaffectés aux nouvelles échéances. */
+  paid: RentCharge[];
+  /** Parmi elles, celles couvertes par une quittance ou un reçu non annulé : modification refusée. */
   blocked: RentCharge[];
 }
 
 /**
- * Échéances touchées par un changement de date de début (même règle que iz_lease_rules) :
- * toutes les échéances de loyer antérieures à la nouvelle date, et, si la date recule,
- * l'échéance du premier mois incomplet (prorata à recalculer).
+ * Échéances touchées par une date de début (même règle que iz__purge_lease_charges) :
+ * toutes les échéances de loyer antérieures à la date, et, si la date recule,
+ * l'échéance du premier mois incomplet (prorata à recalculer). Avec la date actuelle,
+ * donne les échéances restées d'une ancienne date erronée.
  */
 export function startChangeImpact(lease: Pick<Lease, 'id' | 'start_date'>, newStart: string, charges: RentCharge[], allocations: Allocation[], receipts: Pick<Receipt, 'charge_id' | 'cancelled_at'>[]): StartChangeImpact {
-  if (!newStart || newStart === lease.start_date) return { remove: [], blocked: [] };
+  if (!newStart) return { remove: [], paid: [], blocked: [] };
   const partialFirst = newStart < lease.start_date && !lease.start_date.endsWith('-01');
   const remove = charges.filter((c) => c.lease_id === lease.id && c.kind === 'loyer'
     && (c.period_start < newStart || (partialFirst && c.period_start === lease.start_date)))
     .sort((a, b) => a.period_start.localeCompare(b.period_start));
-  const paid = new Set(allocations.filter((a) => a.amount > 0).map((a) => a.charge_id));
+  const paidIds = new Set(allocations.filter((a) => a.amount > 0).map((a) => a.charge_id));
   const issued = new Set(receipts.filter((r) => !r.cancelled_at).map((r) => r.charge_id));
-  return { remove, blocked: remove.filter((c) => paid.has(c.id) || issued.has(c.id)) };
+  return { remove, paid: remove.filter((c) => paidIds.has(c.id)), blocked: remove.filter((c) => issued.has(c.id)) };
+}
+
+/**
+ * Réaffectation des paiements d'un bail restés (en tout ou partie) non répartis :
+ * du plus ancien paiement au plus récent, sur les échéances ouvertes les plus anciennes.
+ */
+export function reallocatePayments(leaseId: string, charges: RentCharge[], payments: Payment[], allocations: Allocation[], today: string): { payment_id: string; charge_id: string; amount: number }[] {
+  const own = charges.filter((c) => c.lease_id === leaseId);
+  const ids = new Set(own.map((c) => c.id));
+  const alloc = allocations.filter((a) => ids.has(a.charge_id));
+  const byPay = allocatedByPayment(allocations);
+  const out: { payment_id: string; charge_id: string; amount: number }[] = [];
+  const pays = payments.filter((p) => p.lease_id === leaseId).sort((a, b) => a.paid_on.localeCompare(b.paid_on) || a.created_at.localeCompare(b.created_at));
+  for (const p of pays) {
+    const free = round2(p.amount - (byPay.get(p.id) ?? 0));
+    if (free <= 0) continue;
+    const views = chargeViews(own, [...alloc, ...out.map((a, i) => ({ id: `n${i}`, user_id: '', created_at: '', ...a }) as Allocation)], today);
+    for (const a of autoAllocate(free, views).allocations) out.push({ payment_id: p.id, ...a });
+  }
+  return out;
 }
 
 export type LeaseState = 'a_venir' | 'actif' | 'termine';

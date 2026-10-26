@@ -137,6 +137,9 @@ export function createSupabaseRepo(url: string, anonKey: string): Repo {
     async generateCharges(leaseId, until) {
       return check(await sb.rpc('iz_generate_rent_charges', { p_lease: leaseId, ...(until ? { p_until: until } : {}) })) as number;
     },
+    async cleanLeaseSchedule(leaseId) {
+      return check(await sb.rpc('iz_clean_lease_schedule', { p_lease: leaseId })) as number;
+    },
     async issueReceiptWithExtras(chargeId, extras) {
       return check(await sb.rpc('iz_issue_receipt_with_extras', { p_charge: chargeId, p_extras: extras }).single()) as Receipt;
     },

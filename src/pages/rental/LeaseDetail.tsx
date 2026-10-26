@@ -3,7 +3,7 @@ import { useStore } from '../../data/store.tsx';
 import type { DepositMovement, Payment, Receipt, Reminder, RentCharge } from '../../data/types.ts';
 import { date, dateTime, money2, todayParis } from '../../domain/format.ts';
 import {
-  autoAllocate, chargeTotal, DEFAULT_REMINDER_TEMPLATES, leaseLedger, leaseTenants, monthLabel, PAYMENT_METHOD_LABELS, renderTemplate, tenantName,
+  autoAllocate, chargeTotal, DEFAULT_REMINDER_TEMPLATES, leaseLedger, leaseTenants, monthLabel, PAYMENT_METHOD_LABELS, renderTemplate, startChangeImpact, tenantName,
   type ChargeView,
 } from '../../domain/rental.ts';
 import { round2 } from '../../domain/simulator.ts';
@@ -15,6 +15,7 @@ import { chargeDuplicates, findDuplicates, sameCharge } from '../../domain/dupli
 import { receiptBacklog } from '../../domain/receiptBacklog.ts';
 import { AccessPill, useTenantAccess } from './TenantAccess.tsx';
 import { IRL_VALUES, irlLabel, revisionPlan } from '../../domain/irl.ts';
+import { reallocateLease, StartChangeMessage } from './Leases.tsx';
 import { ChargeActions, ChargeBadge, LeaseBadge, PaymentDialog, paymentAllocated, periodLabel, ReceiptDialog, ReceiptsTable, usePaymentActions, useRental } from './common.tsx';
 
 type Tab = 'echeances' | 'paiements' | 'quittances' | 'relances' | 'depot' | 'titulaires' | 'documents';
@@ -48,6 +49,18 @@ export function LeaseDetailPage({ id }: { id: string }) {
   const drafts = reminders.filter((r) => r.status === 'brouillon').length;
   const backlogCount = receiptBacklog(charges, data.receipts, lease.id).items.length;
   const dupIds = chargeDuplicates(charges.map((v) => v.charge)).ids;
+  // échéances restées d'une date de début erronée (antérieures au début du bail)
+  const stale = startChangeImpact(lease, lease.start_date, data.charges, data.allocations, data.receipts);
+  async function cleanSchedule() {
+    if (stale.blocked.length) { store.notify(`${stale.blocked.length} échéance(s) concernée(s) sont couvertes par une quittance ou un reçu : annulez-les d’abord.`); return; }
+    if (!(await ask('Supprimer les échéances antérieures au bail ?', <StartChangeMessage from={lease!.start_date} to={lease!.start_date} imp={stale} />,
+      `Supprimer ${stale.remove.length} échéance${stale.remove.length > 1 ? 's' : ''}`))) return;
+    const n = await store.call((r) => r.cleanLeaseSchedule(lease!.id));
+    if (n === null) return;
+    await store.call((r) => r.generateCharges(lease!.id));
+    const k = stale.paid.length ? await reallocateLease(store, lease!.id) : 0;
+    store.notify(`${n} échéance(s) supprimée(s)${k ? ', paiements réaffectés' : ''}.`);
+  }
 
   return (
     <>
@@ -68,6 +81,14 @@ export function LeaseDetailPage({ id }: { id: string }) {
         <div className="figure"><span className="figure-label">Impayé échu</span><span className={`figure-value ${ledger.overdue ? 'neg' : ''}`}>{money2(ledger.overdue)}</span><span className="figure-hint">échéances passées non réglées</span></div>
         <div className="figure"><span className="figure-label">Dépôt de garantie détenu</span><span className="figure-value">{money2(depositHeld)}</span><span className="figure-hint">prévu au bail : {money2(lease.deposit_amount)}</span></div>
       </div>
+
+      {stale.remove.length > 0 && (
+        <p className="note note-warn" role="alert">
+          {stale.remove.length} échéance{stale.remove.length > 1 ? 's' : ''} de loyer antérieure{stale.remove.length > 1 ? 's' : ''} au début du bail ({date(lease.start_date)}) {stale.remove.length > 1 ? 'subsistent' : 'subsiste'}, sans doute d’une ancienne date de début erronée
+          {stale.paid.length > 0 ? ` ; des paiements y sont répartis à tort` : ''}.{' '}
+          <Button size="sm" onClick={() => void cleanSchedule()}>Supprimer ces échéances</Button>
+        </p>
+      )}
 
       <RentRevision leaseId={lease.id} />
 

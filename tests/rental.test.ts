@@ -156,8 +156,22 @@ test('date de début : contrôle de l’année et échéances à supprimer', asy
   assert.deepEqual(imp.remove.map((c) => c.id), ['a', 'b']);
   assert.equal(imp.blocked.length, 0);
   const blocked = startChangeImpact(l, '2024-03-15', cs, [{ id: 'x', user_id: 'u', payment_id: 'p', charge_id: 'a', amount: 50, created_at: '' } as Allocation], [{ charge_id: 'b', cancelled_at: null }]);
-  assert.deepEqual(blocked.blocked.map((c) => c.id), ['a', 'b']);
+  assert.deepEqual(blocked.paid.map((c) => c.id), ['a'], 'paiement réparti à tort : réaffecté, pas bloquant');
+  assert.deepEqual(blocked.blocked.map((c) => c.id), ['b'], 'reçu non annulé : bloquant');
+  // date inchangée : échéances restées d'une ancienne date erronée
+  assert.deepEqual(startChangeImpact(lease({ start_date: '2024-03-15' }), '2024-03-15', cs, [], []).remove.map((c) => c.id), ['a', 'b']);
   // la date recule : le premier mois incomplet est recalculé
   const l2 = lease({ start_date: '2024-03-15' });
   assert.deepEqual(startChangeImpact(l2, '2024-03-01', [charge('m', '2024-03-15', '2024-03-15', 493.55), charge('n', '2024-04-01', '2024-04-05', 900)], [], []).remove.map((c) => c.id), ['m']);
+});
+
+test('réaffectation des paiements après correction de la date de début', async () => {
+  const { reallocatePayments } = await import('../src/domain/rental.ts');
+  const cs = [charge('s', '2024-09-01', '2024-09-05', 900, 60), charge('o', '2024-10-01', '2024-10-05', 900, 60), charge('n', '2024-11-01', '2024-11-05', 900, 60)];
+  const pays = [pay('p2', 960, '2024-10-06'), pay('p1', 1000, '2024-09-08')];
+  const plan = reallocatePayments('L1', cs, pays, [], '2024-12-01');
+  assert.deepEqual(plan, [
+    { payment_id: 'p1', charge_id: 's', amount: 960 }, { payment_id: 'p1', charge_id: 'o', amount: 40 },
+    { payment_id: 'p2', charge_id: 'o', amount: 920 }, { payment_id: 'p2', charge_id: 'n', amount: 40 },
+  ]);
 });

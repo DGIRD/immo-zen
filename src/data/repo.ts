@@ -106,6 +106,8 @@ export interface Repo {
   queueReminder(reminderId: string): Promise<Reminder>;
   /** Quittance d'une échéance reprenant des rappels de charges réglés. */
   issueReceiptWithExtras(chargeId: string, extraChargeIds: string[]): Promise<Receipt>;
+  /** Supprime les échéances de loyer antérieures à la date de début du bail (nombre supprimé). */
+  cleanLeaseSchedule(leaseId: string): Promise<number>;
   /** Révision annuelle du loyer (IRL). */
   reviseRent(a: ReviseRentArgs): Promise<LeaseRevision>;
 

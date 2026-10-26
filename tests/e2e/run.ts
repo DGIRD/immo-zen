@@ -1118,6 +1118,11 @@ async function main() {
     await dlg.getByRole('heading', { name: 'Vérifiez la date de début' }).waitFor();
     await dlg.getByRole('button', { name: 'La date est correcte, enregistrer' }).click();
     await page.getByRole('tab', { name: /Échéances \(\d{3}\)/ }).waitFor();
+    // un vrai paiement se répartit sur l'échéance la plus ancienne (mars 1990)
+    await page.getByRole('button', { name: 'Enregistrer un paiement' }).first().click();
+    await page.locator('dialog[open]').getByLabel('Montant reçu').fill('100');
+    await page.locator('dialog[open]').getByRole('button', { name: 'Enregistrer le paiement' }).click();
+    await page.getByText('Paiement enregistré.').waitFor();
     await page.getByRole('button', { name: 'Modifier', exact: true }).first().click();
     const today = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()));
     const [y, m] = today.split('-').map(Number) as [number, number];
@@ -1127,8 +1132,14 @@ async function main() {
     dlg = page.locator('dialog[open]');
     await dlg.getByRole('heading', { name: 'Modifier la date de début du bail ?' }).waitFor();
     await dlg.getByText(/supprimer définitivement \d+ échéances/).waitFor();
+    await dlg.getByText(/les paiements sont conservés/).waitFor();
     await dlg.getByRole('button', { name: /^Supprimer \d+ échéances et enregistrer$/ }).click();
     await page.getByRole('tab', { name: 'Échéances (2)' }).waitFor();
+    await page.getByRole('tab', { name: 'Paiements (1)' }).waitFor();
+    const db = await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!));
+    const leaseId = page.url().split('/baux/')[1]!.split(/[/?]/)[0];
+    const ids = new Set(db.rent_charges.filter((c: { lease_id: string }) => c.lease_id === leaseId).map((c: { id: string }) => c.id));
+    assert.equal(db.payment_allocations.filter((a: { charge_id: string }) => ids.has(a.charge_id)).reduce((t: number, a: { amount: number }) => t + a.amount, 0), 100, 'paiement réaffecté aux nouvelles échéances');
   });
 
   await step('rendu mobile (390 px) sans défilement horizontal', async () => {

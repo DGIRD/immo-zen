@@ -62,6 +62,19 @@ const DEFAULTS: Partial<Record<TableName, Record<string, unknown>>> = {
 const UNVERSIONED: TableName[] = ['timeline_events', 'lease_tenants', 'payment_allocations', 'deposit_movements'];
 const fail = (m: string): never => { throw new RepoError(m); };
 
+
+/** Échéances antérieures à la date de début (même règle que iz__purge_lease_charges) ; paiements conservés. */
+function purgeBefore(db: Db, lease: Lease, start: string): number {
+  const imp = startChangeImpact(lease, start, db.rent_charges, db.payment_allocations, db.receipts);
+  if (imp.blocked.length) fail(`${imp.blocked.length} échéance(s) antérieure(s) à la date de début sont couvertes par une quittance ou un reçu : annulez-les avant de modifier la date.`);
+  const gone = new Set(imp.remove.map((c) => c.id));
+  db.rent_charges = db.rent_charges.filter((c) => !gone.has(c.id));
+  db.payment_allocations = db.payment_allocations.filter((a) => !gone.has(a.charge_id));
+  db.receipts = db.receipts.filter((r) => !gone.has(r.charge_id));
+  db.reminders.forEach((r) => { r.charge_ids = r.charge_ids.filter((x) => !gone.has(x)); });
+  return gone.size;
+}
+
 export function createDemoRepo(storage: Storage = localStorage): Repo {
   let listeners: ((s: SessionInfo | null, e: string) => void)[] = [];
   let signedIn = true;
@@ -310,16 +323,7 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
         if (l1.property_id !== l0.property_id && db.rent_charges.some((c) => c.lease_id === id)) fail('Le bien d’un bail ayant des échéances ne peut pas être changé.');
         if (l1.end_date && l1.end_date < l1.start_date) fail('La date de fin précède la date de début.');
         if (l1.start_date < LEASE_START_MIN) fail('Date de début improbable : vérifiez l’année.');
-        if (l1.start_date !== l0.start_date) {
-          // échéances antérieures à la nouvelle date (et premier mois à reproratiser) : supprimées, régénérées ensuite
-          const imp = startChangeImpact(l0, l1.start_date, db.rent_charges, db.payment_allocations, db.receipts);
-          if (imp.blocked.length) fail(`${imp.blocked.length} échéance(s) concernée(s) par la nouvelle date de début ont reçu un paiement ou une quittance : retirez-les avant de modifier la date.`);
-          const gone = new Set(imp.remove.map((c) => c.id));
-          db.rent_charges = db.rent_charges.filter((c) => !gone.has(c.id));
-          db.payment_allocations = db.payment_allocations.filter((a) => !gone.has(a.charge_id));
-          db.receipts = db.receipts.filter((r) => !gone.has(r.charge_id));
-          db.reminders.forEach((r) => { r.charge_ids = r.charge_ids.filter((x) => !gone.has(x)); });
-        }
+        if (l1.start_date !== l0.start_date) purgeBefore(db, l0, l1.start_date);
         if (l1.end_date && (!l0.end_date || l1.end_date < l0.end_date)) {
           db.rent_charges.forEach((c) => {
             if (c.lease_id === id && c.kind === 'loyer' && c.period_start > l1.end_date! && !c.cancelled_at && allocated(db, c.id) === 0) c.cancelled_at = now();
@@ -407,6 +411,13 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
         insertOne(db, 'rent_charges', { lease_id: l.id, kind: 'loyer', ...c });
         n++;
       }
+      write(db);
+      return n;
+    },
+    async cleanLeaseSchedule(leaseId) {
+      const db = read();
+      const l = db.leases.find((x) => x.id === leaseId) ?? fail('Bail introuvable.');
+      const n = purgeBefore(db, l, l.start_date);
       write(db);
       return n;
     },
