@@ -5,7 +5,7 @@ import { DPE_VALUES, STATUS_LABELS, STATUS_ORDER, TYPE_LABELS } from '../domain/
 import { AddressFields } from '../ui/AddressFields.tsx';
 import { downloadBlob, stamp, toXlsx } from '../domain/exporting.ts';
 import { money, money2, pct } from '../domain/format.ts';
-import { inputsFromProperty, isProspect, prospectFieldsFromSimulation } from '../domain/property.ts';
+import { inputsFromProperty, isProspect, primaryScenario, prospectFieldsFromSimulation } from '../domain/property.ts';
 import { autoProvisionMonthly, autoRecoverableAnnual, ENGINE_VERSION, normalizeInputs, simulate, summarize, type FieldError, type SimulationInputs } from '../domain/simulator.ts';
 import { Button, Checkbox, NumberInput, PageHeader, Section, Select, TextArea, TextInput } from '../ui/components.tsx';
 import { EstimatePanel, type EstimateFields } from '../ui/EstimatePanel.tsx';
@@ -13,11 +13,16 @@ import { ListingImport } from '../ui/ListingImport.tsx';
 import type { ListingData, ListingField } from '../../supabase/functions/_shared/listing.ts';
 import { href, navigate } from '../ui/router.ts';
 
-export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string; propertyId?: string }) {
+/**
+ * Fiche d'un bien en prospection et sa simulation, saisies dans un seul écran (une seule simulation par bien).
+ * Sans `propertyId` : création d'un bien en prospection. Bien détenu : simulation seule, la fiche se modifie dans Mes biens.
+ */
+export function SimulatorPage({ propertyId }: { propertyId?: string }) {
   const { data, simulatorDefaults, create, update, notify } = useStore();
-  const scenario = scenarioId ? data.scenarios.find((s) => s.id === scenarioId) : undefined;
-  const initialProperty = scenario?.property_id ?? propertyId ?? null;
+  const initialProperty = propertyId ?? null;
   const property = initialProperty ? data.properties.find((p) => p.id === initialProperty) : undefined;
+  const scenario = property ? primaryScenario(property, data.scenarios) ?? undefined : undefined;
+  const scenarioId = scenario?.id;
 
   const initial = useMemo<SimulationInputs>(() => {
     if (scenario) {
@@ -33,7 +38,6 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
   }, [scenario?.id, property?.id]);
 
   const [inputs, setInputs] = useState<SimulationInputs>(initial);
-  const [name, setName] = useState(scenario?.name ?? (property ? `Scénario ${data.scenarios.filter((s) => s.property_id === property.id).length + 1}` : 'Scénario 1'));
   const [linked, setLinked] = useState<string | null>(initialProperty);
   // Fiche du bien saisie dans le même écran (prospection) : une seule saisie pour le bien et sa simulation
   const bienOf = (p?: Property): Bien => ({
@@ -49,11 +53,6 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
   const [newAgent, setNewAgent] = useState('');
   const [bien, setBien] = useState<Bien>(() => bienOf(property));
   const [bienBase, setBienBase] = useState<Bien>(() => bienOf(property));
-  const changeLinked = (id: string | null) => {
-    setLinked(id);
-    const p = id ? data.properties.find((x) => x.id === id) : undefined;
-    setBien(bienOf(p)); setBienBase(bienOf(p));
-  };
   const setB = <K extends keyof Bien>(k: K, v: Bien[K]) => setBien((b) => ({ ...b, [k]: v }));
   const [detail, setDetail] = useState<'annuel' | 'mensuel' | null>(null);
   const [busy, setBusy] = useState(false);
@@ -112,10 +111,10 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
     });
     notify(`${fields.length} caractéristique${fields.length > 1 ? 's' : ''} reprise${fields.length > 1 ? 's' : ''} de l’annonce : vérifiez-les avant d’enregistrer.`);
   }
-  const dirty = JSON.stringify(inputs) !== JSON.stringify(initial) || name !== (scenario?.name ?? name) || linked !== initialProperty || JSON.stringify(bien) !== JSON.stringify(bienBase);
+  const dirty = JSON.stringify(inputs) !== JSON.stringify(initial) || linked !== initialProperty || JSON.stringify(bien) !== JSON.stringify(bienBase);
 
   const linkedProp = linked ? data.properties.find((p) => p.id === linked) : undefined;
-  async function save(asNew: boolean) {
+  async function save() {
     if (!outcome.ok) { notify('Corrigez les valeurs signalées avant d’enregistrer.', 'error'); return; }
     const editable = !linkedProp || isProspect(linkedProp);
     if (editable && !bien.title.trim()) { notify('Donnez un titre au bien.', 'error'); return; }
@@ -141,25 +140,23 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
         created = true;
         setLinked(prop.id);
       }
-      const payload = { name: name.trim() || 'Scénario', inputs, results: summarize(outcome.result), engine_version: ENGINE_VERSION, property_id: prop.id };
-      let saved: Scenario | null;
-      if (scenario && !asNew) saved = await update('scenarios', scenario, payload, `Le scénario « ${scenario.name} »`);
-      else saved = await create('scenarios', payload);
+      // une seule simulation par bien : elle est mise à jour, ou créée au premier enregistrement
+      const payload = { inputs, results: summarize(outcome.result), engine_version: ENGINE_VERSION, property_id: prop.id };
+      const saved: Scenario | null = scenario && !created
+        ? await update('scenarios', scenario, payload, 'La simulation')
+        : await create('scenarios', { ...payload, name: 'Simulation' });
       if (!saved) return;
       const patch: Partial<Property> = {};
-      const primary = !prop.primary_scenario_id || prop.primary_scenario_id === saved.id;
-      if (!prop.primary_scenario_id) patch.primary_scenario_id = saved.id;
-      // Le scénario principal met à jour la fiche du bien en prospection (prix, surface, travaux, loyer)
+      if (prop.primary_scenario_id !== saved.id) patch.primary_scenario_id = saved.id;
+      // la simulation met à jour la fiche du bien en prospection (titre, adresse, statut… et prix, surface, travaux, loyer)
       if (isProspect(prop) && !created) {
-        // fiche du bien (titre, adresse, type, DPE, statut…) : toujours ; prix, surface, travaux et loyer : scénario principal
-        const own = bienOut;
-        for (const [k, v] of Object.entries({ ...own, ...(primary ? fields : {}) }) as [keyof Property, never][]) if (prop[k] !== v) (patch as Record<string, unknown>)[k] = v;
+        for (const [k, v] of Object.entries({ ...bienOut, ...fields }) as [keyof Property, never][]) if (prop[k] !== v) (patch as Record<string, unknown>)[k] = v;
       }
       if (Object.keys(patch).length) await update('properties', prop, patch, `Le bien « ${prop.title} »`);
       const saved2 = { ...bien, agency_id: agencyId, agent_id: agentId };
       setBien(saved2); setBienBase(saved2);
       notify(created ? `Bien « ${prop.title} » ajouté à la prospection avec sa simulation.` : 'Bien et simulation enregistrés.');
-      if (!scenario || asNew || saved.id !== scenarioId) navigate(`/simulateur/${saved.id}`);
+      if (created) navigate(`/bien/${prop.id}/modifier`);
     } finally {
       setBusy(false);
     }
@@ -184,17 +181,19 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
     downloadBlob(blob, `immo-zen-amortissement-${stamp()}.xlsx`);
   }
 
-  if (scenarioId && !scenario) return <PageHeader title="Simulation introuvable" subtitle="Elle a peut-être été supprimée." />;
+  if (propertyId && !property) return <PageHeader title="Bien introuvable" subtitle="Il a peut-être été supprimé." />;
   const r = outcome.ok ? outcome.result : null;
   const linkedProperty = linked ? data.properties.find((p) => p.id === linked) : undefined;
 
   return (
     <>
-      <PageHeader title={scenario ? scenario.name : 'Simulateur'}
-        subtitle={linkedProperty ? <>Bien : <a href={href(`/bien/${linkedProperty.id}`)}>{linkedProperty.title}</a>{isProspect(linkedProperty) ? ' (prospection)' : ' (Mes biens)'}</> : 'À l’enregistrement, le bien est ajouté à la prospection.'}
+      {linkedProperty && <p className="crumbs"><a href={href(isProspect(linkedProperty) ? '/prospection' : '/biens')}>{isProspect(linkedProperty) ? 'Prospection' : 'Mes biens'}</a>, <a href={href(`/bien/${linkedProperty.id}`)}>{linkedProperty.title}</a></p>}
+      <PageHeader title={!linkedProperty ? 'Ajouter un bien en prospection' : isProspect(linkedProperty) ? `Modifier « ${linkedProperty.title} »` : `Simulation – ${linkedProperty.title}`}
+        subtitle={!linkedProperty ? 'Fiche du bien et simulation en une seule saisie : à l’enregistrement, le bien est ajouté à la prospection.'
+          : isProspect(linkedProperty) ? 'Fiche du bien et sa simulation : une seule simulation par bien, modifiable à tout moment.' : 'Hypothèses d’achat du bien. Sa fiche se modifie dans Mes biens.'}
         actions={<>
-          {scenario && <Button onClick={() => void save(true)} disabled={busy}>Enregistrer comme nouveau scénario</Button>}
-          <Button variant="primary" onClick={() => void save(false)} disabled={busy || !outcome.ok}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button>
+          {linkedProperty && <Button onClick={() => navigate(`/bien/${linkedProperty.id}`)}>Voir la fiche</Button>}
+          <Button variant="primary" onClick={() => void save()} disabled={busy || !outcome.ok}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button>
         </>} />
       {dirty && <p className="unsaved" role="status">Modifications non enregistrées.</p>}
       {scenario?.engine_version === 'legacy-idf-invest' && (
@@ -205,8 +204,6 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
         <div>
           <Section title="Le bien">
             <div className="grid">
-              <Select label="Bien" wide value={linked} onChange={changeLinked} allowEmpty="Nouveau bien en prospection"
-                options={data.properties.filter((p) => (isProspect(p) && p.status !== 'archive') || p.id === linked).map((p) => [p.id, p.title] as const)} />
               {(!linkedProperty || isProspect(linkedProperty)) ? (
                 <>
                   <TextInput label="Titre du bien" required wide value={bien.title} onChange={(v) => setB('title', v)} maxLength={200} placeholder="Ex. T2 lumineux proche gare" />
@@ -228,7 +225,6 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
                   </div>
                 </>
               ) : <p className="muted small field-full">Bien détenu : sa fiche se modifie dans Mes biens. La simulation ne la change pas.</p>}
-              <TextInput label="Nom du scénario" value={name} onChange={setName} maxLength={120} />
             </div>
             {(!linkedProperty || isProspect(linkedProperty)) && <p className="muted small">Une seule fiche : tout ce qui est saisi ici (bien, estimation, simulation, suivi des actions) est enregistré ensemble et repris tel quel dans la prospection.</p>}
           </Section>

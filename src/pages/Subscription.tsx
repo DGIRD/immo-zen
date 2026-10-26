@@ -15,7 +15,7 @@ export function tierHighlights(t: TierDef): string[] {
   return [
     l.owned === null ? 'Biens détenus illimités' : l.owned === 1 ? '1 bien détenu' : `Jusqu’à ${l.owned} biens détenus`,
     l.prospects === null ? 'Prospection illimitée' : `${l.prospects} biens en prospection`,
-    l.scenarios === null ? 'Scénarios de simulation illimités' : `${l.scenarios} scénarios par bien`,
+    'Simulation de rentabilité pour chaque bien',
     f.contacts ? 'Contacts, relances agence, comparaison de biens' : 'Sans contacts ni comparaison',
     f.automations ? 'Quittances envoyées automatiquement, relances d’impayés' : 'Quittances PDF à la main',
     ...(f.consolidated ? ['Cash-flow consolidé'] : []),
@@ -161,7 +161,7 @@ export function SubscriptionPage() {
         {!plans.some((p) => p.tier && p.active && p.stripe_price_id) && (
           <NotAvailable>Le paiement en ligne n’est pas encore ouvert.{config?.support_email ? <> Contact : <a href={`mailto:${config.support_email}`}>{config.support_email}</a>.</> : null}</NotAvailable>
         )}
-        {!running && <p className="muted small">Offre Découverte gratuite pendant 30 jours à la création du compte : 1 bien détenu, 5 biens en prospection, 2 scénarios par bien, 100 Mo de documents ; ensuite, sans abonnement, consultation et export seulement. Paiement sécurisé par Stripe (carte bancaire, Apple Pay, Google Pay ou prélèvement SEPA) : Immo-Zen ne voit jamais vos coordonnées bancaires. Sans engagement : résiliation en ligne à tout moment, effective à la fin de la période payée.</p>}
+        {!running && <p className="muted small">Offre Découverte gratuite pendant 30 jours à la création du compte : 1 bien détenu, 5 biens en prospection avec leur simulation, 100 Mo de documents ; ensuite, sans abonnement, consultation et export seulement. Paiement sécurisé par Stripe (carte bancaire, Apple Pay, Google Pay ou prélèvement SEPA) : Immo-Zen ne voit jamais vos coordonnées bancaires. Sans engagement : résiliation en ligne à tout moment, effective à la fin de la période payée.</p>}
         {!running && s?.stripe_customer_id && <Button size="sm" disabled={!!busy} onClick={() => void go('portal')}>Mes factures</Button>}
       </Section>
 

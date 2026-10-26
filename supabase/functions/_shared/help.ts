@@ -22,29 +22,29 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: 'demarrer', title: 'Bien démarrer avec Immo-Zen', pages: ['dashboard'],
     keywords: ['commencer', 'demarrer', 'debut', 'premier', 'presentation', 'fonctionnement', 'quoi', 'faire', 'application', 'utiliser', 'comment marche'],
     body: `Immo-Zen suit un bien de la recherche à la gestion :
-1. **Prospection** : « Ajouter un bien » ouvre le simulateur, où vous saisissez en une fois la fiche du bien et sa simulation (prix, crédit, loyer, charges).
+1. **Prospection** : « Ajouter un bien » ouvre la fiche du bien, où vous saisissez en une fois ses caractéristiques et sa simulation (prix, crédit, loyer, charges). Il n'y a plus de menu Simulateur : chaque bien a sa simulation.
 2. **Acquisition** : « Marquer comme acquis » fait passer le bien dans **Mes biens**, avec son historique.
 3. **Gestion** : créez le bail (Locataires et baux), suivez les loyers, émettez les quittances, saisissez ou importez les dépenses.
 4. **Déclaration fiscale** : les montants à reporter sont calculés chaque année selon le régime de chaque bien.
 Le site public (page d'accueil de l'adresse) présente Immo-Zen ; le bouton « Espace client » ouvre l'application.
 Le **tableau de bord** regroupe ce qui est à faire : relances, visites, impayés, quittances à émettre, révisions de loyer.`,
-    actions: [{ label: 'Ajouter un bien', path: '/simulateur' }, { label: 'Mes biens', path: '/biens' }],
+    actions: [{ label: 'Ajouter un bien', path: '/bien/nouveau' }, { label: 'Mes biens', path: '/biens' }],
     questions: ['Par où commencer ?', 'Comment ajouter un bien en prospection ?', 'Que montre le cash-flow du tableau de bord ?'],
   },
   {
     id: 'tableau-de-bord', title: 'Tableau de bord', pages: ['dashboard'],
     keywords: ['tableau', 'bord', 'accueil', 'cash', 'flow', 'cashflow', 'previsionnel', 'a faire', 'relances', 'indicateurs'],
-    body: `Le tableau de bord affiche les biens en prospection, les relances à faire, les biens détenus et le **cash-flow prévisionnel** mensuel : loyers charges comprises (bail en cours, sinon loyer saisi) − charges annuelles / 12 − mensualité de crédit, avant impôts. Un bien sans loyer, charges ni crédit renseignés reprend sa simulation principale.
+    body: `Le tableau de bord affiche les biens en prospection, les relances à faire, les biens détenus et le **cash-flow prévisionnel** mensuel : loyers charges comprises (bail en cours, sinon loyer saisi) − charges annuelles / 12 − mensualité de crédit, avant impôts. Un bien sans loyer, charges ni crédit renseignés reprend sa simulation.
 Avec des baux : impayés échus, quittances à émettre, relances à valider, loyers encaissés de l'année. La liste « À faire » regroupe impayés, relances, visites, tâches et révisions de loyer possibles.`,
   },
   {
-    id: 'prospection', title: 'Prospection et simulateur : une seule saisie', pages: ['prospection', 'simulateur'],
+    id: 'prospection', title: 'Prospection : fiche et simulation en une seule saisie', pages: ['prospection', 'simulateur'],
     keywords: ['prospection', 'ajouter', 'bien', 'annonce', 'repere', 'statut', 'visite', 'offre', 'simulation', 'saisie', 'double', 'fiche', 'agence', 'agent', 'relance'],
-    body: `« Ajouter un bien » (Prospection) ouvre le **simulateur**, qui contient la fiche du bien (titre, statut, adresse avec saisie automatique, type, pièces, DPE, lien de l'annonce) et la simulation. **Enregistrer** crée le bien en prospection et son scénario.
-Toutes les données du bien se saisissent au même endroit, dans le simulateur : fiche, prix, surface, travaux, loyer, **estimation DVF** et **suivi** (agence, agent, prochaine action, date de relance, visite, commentaires, points de vigilance). Sur la fiche, « Modifier la fiche et la simulation » rouvre ce même écran ; le **scénario principal** alimente le tableau Prospection.
-Prospection et simulateur ne listent que les biens recherchés : les biens détenus restent dans **Mes biens**.
+    body: `« Ajouter un bien » (Prospection) ouvre la **fiche du bien** : titre, statut, adresse avec saisie automatique, type, prix de présentation FAI, surface, pièces, DPE, lien de l'annonce (avec « Remplir depuis l'annonce »), puis l'estimation DVF, la **simulation** et le **suivi des actions** (agence, agent, prochaine action, date de relance, visite, commentaires, points de vigilance). **Enregistrer** crée le bien en prospection avec sa simulation.
+**Une seule simulation par bien** : sur la fiche, « Modifier la fiche et la simulation » rouvre ce même écran, et chaque enregistrement met à jour la simulation et le tableau Prospection. Il n'y a plus de menu Simulateur.
+La prospection ne liste que les biens recherchés : les biens détenus restent dans **Mes biens**.
 Le tableau Prospection permet recherche, tri, filtres par statut, colonnes personnalisables, comparaison de 2 à 4 biens, exports Excel/CSV/JSON. 15 statuts suivent le parcours, de « Repéré » à « Sous compromis ».`,
-    actions: [{ label: 'Ajouter un bien', path: '/simulateur' }, { label: 'Prospection', path: '/prospection' }],
+    actions: [{ label: 'Ajouter un bien', path: '/bien/nouveau' }, { label: 'Prospection', path: '/prospection' }],
     questions: ['Comment ajouter un bien en prospection ?', 'Comment comparer plusieurs biens ?', 'Où saisir l’agence et la date de relance ?'],
   },
   {
@@ -56,21 +56,21 @@ En prospection, l'écart entre le prix proposé et l'estimation s'affiche ; dans
     questions: ['Comment est calculée l’estimation DVF ?', 'Pourquoi l’estimation est-elle indisponible ?'],
   },
   {
-    id: 'simulateur', title: 'Simulateur : calculs, rendement et cash-flow', pages: ['simulateur'],
-    keywords: ['simulateur', 'calcul', 'cash', 'flow', 'cashflow', 'rendement', 'negociation', 'fai', 'notaire', 'frais', 'agence', 'credit', 'emprunt', 'mensualite', 'apport', 'differe', 'amortissement', 'tableau', 'loyer', 'm2', 'metre', 'bas', 'haut', 'copropriete', 'provision', '80', 'pno', 'scenario', 'principal'],
+    id: 'simulateur', title: 'Simulation d’un bien : calculs, rendement et cash-flow', pages: ['prospection', 'simulateur'],
+    keywords: ['simulateur', 'calcul', 'cash', 'flow', 'cashflow', 'rendement', 'negociation', 'fai', 'notaire', 'frais', 'agence', 'credit', 'emprunt', 'mensualite', 'apport', 'differe', 'amortissement', 'tableau', 'loyer', 'm2', 'metre', 'bas', 'haut', 'copropriete', 'provision', '80', 'pno', 'scenario', 'simulation', 'hypotheses'],
     body: `- **Négociation** = prix de présentation FAI − prix proposé frais d'agence compris, en € et en %.
 - **Loyer hors charges** = surface × loyer au m² bas ou haut (sélecteur), ou « Saisie libre ». Loyer charges comprises = loyer + provision.
 - **Charges de copropriété** : part récupérable et provision proposées à 80 % (arrondies à l'euro supérieur), modifiables.
 - **Coût total** = prix hors honoraires + frais d'agence + notaire (7,5 % par défaut) + travaux + mobilier + garantie + dossier. Indiquez si le prix inclut les honoraires pour ne pas les compter deux fois.
 - **Crédit** : taux (3,5 % par défaut), durée (20 ans), assurance (0,3 %), différé partiel ou total ; tableau d'amortissement par année ou par mois, export Excel.
 - **Cash-flow avant fiscalité** = loyers − vacance − charges non récupérables − mensualités et assurance.
-Plusieurs scénarios par bien ; le premier devient principal (modifiable dans l'onglet Simulations de la fiche). Valeurs par défaut dans Paramètres. « Méthode de calcul » détaille les formules.`,
+Une seule simulation par bien, modifiable à tout moment depuis la fiche (« Modifier la fiche et la simulation »). Valeurs par défaut dans Paramètres. « Méthode de calcul » détaille les formules.`,
     questions: ['Comment est calculé le cash-flow ?', 'À quoi sert le loyer au m² bas et haut ?', 'Comment changer les valeurs par défaut ?'],
   },
   {
     id: 'acquisition', title: 'Passer un bien en « Acquis »', pages: ['prospection', 'biens'],
     keywords: ['acquis', 'acheter', 'achat', 'transferer', 'mes biens', 'photographie', 'revenir'],
-    body: `Sur la fiche du bien, **Marquer comme acquis** (ou statut « Acquis ») le transfère dans **Mes biens**, sans doublon et avec tout son historique. Les hypothèses du scénario principal sont figées (« photographie à l'acquisition »). En cas d'erreur : menu Plus → « Revenir en prospection ».`,
+    body: `Sur la fiche du bien, **Marquer comme acquis** (ou statut « Acquis ») le transfère dans **Mes biens**, sans doublon et avec tout son historique. Les hypothèses de la simulation sont figées (« photographie à l'acquisition »). En cas d'erreur : menu Plus → « Revenir en prospection ».`,
   },
   {
     id: 'mes-biens', title: 'Mes biens : loyer, charges, crédit, cash-flow', pages: ['biens'],
@@ -201,7 +201,7 @@ Les montants viennent des loyers encaissés et dépenses payées de l'année ; l
   {
     id: 'parametres', title: 'Paramètres', pages: ['parametres'],
     keywords: ['parametres', 'reglages', 'valeurs', 'defaut', 'modele', 'bailleur', 'relance'],
-    body: `Paramètres : valeurs par défaut du simulateur (notaire, agence, taux, durée, assurance, PNO), gestion locative (nom et adresse du bailleur, modèles de relance), sauvegarde et import, reprise des anciennes simulations, compte et accès support.`,
+    body: `Paramètres : valeurs par défaut de la simulation (notaire, agence, taux, durée, assurance, PNO), gestion locative (nom et adresse du bailleur, modèles de relance), sauvegarde et import, reprise des anciennes simulations, compte et accès support.`,
   },
 ];
 

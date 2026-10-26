@@ -13,7 +13,7 @@ export function usePropertyActions(ask: (title: string, msg: React.ReactNode, co
     if (status === p.status) return p;
     if (status === 'acquis') {
       const ok = await ask('Marquer comme acquis',
-        <>Le bien « {p.title} » sera transféré dans <strong>Mes biens</strong>, avec son historique. Les hypothèses du scénario principal seront figées comme photographie de l’acquisition.</>,
+        <>Le bien « {p.title} » sera transféré dans <strong>Mes biens</strong>, avec son historique. Les hypothèses de sa simulation seront figées comme photographie de l’acquisition.</>,
         'Transférer dans Mes biens', false);
       if (!ok) return null;
       const s = data.scenarios.find((x) => x.id === p.primary_scenario_id);

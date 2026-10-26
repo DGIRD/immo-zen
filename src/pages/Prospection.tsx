@@ -42,7 +42,7 @@ export function ProspectionPage() {
   return (
     <>
       <PageHeader title="Prospection" subtitle="Les biens que vous étudiez et qui ne sont pas encore acquis."
-        actions={<Button variant="primary" onClick={() => navigate('/simulateur')}>Ajouter un bien</Button>} />
+        actions={<Button variant="primary" onClick={() => navigate('/bien/nouveau')}>Ajouter un bien</Button>} />
       <DataTable
         id="prospection"
         rows={rows}
@@ -68,7 +68,7 @@ export function ProspectionPage() {
         rowActions={(r) => [
           { label: 'Ouvrir la fiche', onSelect: () => navigate(`/bien/${r.p.id}`) },
           { label: 'Modifier', onSelect: () => navigate(`/bien/${r.p.id}/modifier`) },
-          { label: 'Modifier la fiche et la simulation', onSelect: () => navigate(r.m.scenario ? `/simulateur/${r.m.scenario.id}` : `/simulateur?bien=${r.p.id}`) },
+          { label: 'Modifier la fiche et la simulation', onSelect: () => navigate(`/bien/${r.p.id}/modifier`) },
           { label: 'Dupliquer', onSelect: () => void actions.dup(r.p) },
           { label: 'Marquer comme acquis', onSelect: () => void actions.setStatus(r.p, 'acquis') },
           { label: r.p.status === 'archive' ? 'Désarchiver' : 'Archiver', onSelect: () => void actions.toggleArchive(r.p) },
@@ -92,7 +92,7 @@ export function ProspectionPage() {
           <Button size="sm" onClick={() => void exportRows('csv', 'prospection', columns, sel, data.scenarios)}>CSV</Button>
           <Button size="sm" onClick={() => void exportRows('json', 'prospection', columns, sel, data.scenarios)}>JSON</Button>
         </>}
-        empty={<EmptyState title="Aucun bien en prospection" action={<Button variant="primary" onClick={() => navigate('/simulateur')}>Ajouter un premier bien</Button>}>
+        empty={<EmptyState title="Aucun bien en prospection" action={<Button variant="primary" onClick={() => navigate('/bien/nouveau')}>Ajouter un premier bien</Button>}>
           Saisissez le bien et sa simulation dans un seul écran, puis suivez-le jusqu’à l’offre.
         </EmptyState>}
       />

@@ -104,7 +104,7 @@ export function SettingsPage() {
     <>
       <PageHeader title="Paramètres" />
 
-      <Section title="Valeurs par défaut du simulateur" actions={<>
+      <Section title="Valeurs par défaut des simulations" actions={<>
         <Button size="sm" onClick={() => setDefaults({ ...DEFAULT_INPUTS })}>Valeurs d’origine</Button>
         <Button size="sm" variant="primary" onClick={async () => { const picked = Object.fromEntries(DEFAULT_SETTING_FIELDS.map((k) => [k, defaults[k]])); if (await saveSettings({ simulator_defaults: { ...picked, _v: 2 } as never })) notify('Valeurs par défaut enregistrées.'); }}>Enregistrer</Button>
       </>}>

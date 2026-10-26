@@ -63,7 +63,7 @@ async function main() {
 
   await c('NAV-01', async () => {
     const seen: string[] = [];
-    for (const [label, heading] of [['Tableau de bord', 'Tableau de bord'], ['Prospection', 'Prospection'], ['Simulateur', /Simulateur|Le bien/], ['Mes biens', 'Mes biens'], ['Locataires et baux', /Locataires et baux|Baux/], ['Loyers et paiements', 'Loyers et paiements'], ['Dépenses', 'Dépenses'], ['Contacts', 'Contacts'], ['Documents', 'Documents'], ['Déclaration fiscale', 'Déclaration fiscale'], ['Mon abonnement', 'Mon abonnement'], ['Paramètres', 'Paramètres']] as const) {
+    for (const [label, heading] of [['Tableau de bord', 'Tableau de bord'], ['Prospection', 'Prospection'], ['Mes biens', 'Mes biens'], ['Locataires et baux', /Locataires et baux|Baux/], ['Loyers et paiements', 'Loyers et paiements'], ['Dépenses', 'Dépenses'], ['Contacts', 'Contacts'], ['Documents', 'Documents'], ['Déclaration fiscale', 'Déclaration fiscale'], ['Mon abonnement', 'Mon abonnement'], ['Paramètres', 'Paramètres']] as const) {
       await page.locator('#main-nav').getByRole('link', { name: label }).click();
       await page.locator('main h1').first().waitFor();
       const h = await page.locator('main h1').first().innerText();
@@ -210,7 +210,7 @@ async function main() {
   });
 
   await c('SIM-04', async () => {
-    await page.goto(url + '#/simulateur');
+    await page.goto(url + '#/bien/nouveau');
     await page.getByLabel('Prix proposé', { exact: true }).fill('150000');
     await page.getByRole('button', { name: 'Par année' }).click().catch(() => undefined);
     const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: /Excel|xlsx/ }).first().click()]);
@@ -220,11 +220,11 @@ async function main() {
 
   await c('SIM-06', async () => {
     await page.goto(url + '#/parametres');
-    const sec = page.locator('section', { has: page.getByRole('heading', { name: 'Valeurs par défaut du simulateur' }) });
+    const sec = page.locator('section', { has: page.getByRole('heading', { name: 'Valeurs par défaut des simulations' }) });
     await sec.getByLabel(/Frais de notaire/).fill('8');
     await sec.getByRole('button', { name: 'Enregistrer' }).click();
     await page.getByText(/enregistr/i).first().waitFor();
-    await page.goto(url + '#/simulateur');
+    await page.goto(url + '#/bien/nouveau');
     const v = await page.getByLabel('Taux frais de notaire').inputValue();
     assert.equal(v.replace(',', '.'), '8', `taux repris : ${v}`);
     await page.goto(url + '#/parametres');
@@ -454,7 +454,7 @@ async function main() {
     await mp.goto(url);
     await mp.evaluate((s) => localStorage.setItem('immozen:demo:v1', s), await page.evaluate(() => localStorage.getItem('immozen:demo:v1')!));
     const res: string[] = [];
-    for (const p of ['#/prospection', '#/biens', '#/locataires', '#/loyers', '#/depenses', '#/contacts', '#/documents', '#/declaration', '#/abonnement', '#/parametres', '#/simulateur']) {
+    for (const p of ['#/prospection', '#/biens', '#/locataires', '#/loyers', '#/depenses', '#/contacts', '#/documents', '#/declaration', '#/abonnement', '#/parametres', '#/bien/nouveau']) {
       await mp.goto(url + p); await mp.reload(); await mp.locator('main h1').first().waitFor();
       const { sw, iw } = await mp.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
       if (sw > iw + 1) res.push(`${p} : ${sw}px`);

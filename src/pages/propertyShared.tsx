@@ -4,7 +4,7 @@ import type { Contact, Insert, Property, Scenario } from '../data/types.ts';
 import { downloadBlob, stamp, toCsv, toXlsx, type ExportColumn } from '../domain/exporting.ts';
 import { date, money, number, pct, todayParis } from '../domain/format.ts';
 import { OCCUPATION_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, TYPE_LABELS } from '../domain/labels.ts';
-import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, isOwned, loanInfo, metrics, ownedCashflow, rentWithCharges, summarize, type CashflowEstimate, type PropertyMetrics } from '../domain/property.ts';
+import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, isOwned, loanInfo, metrics, ownedCashflow, rentWithCharges, summarize, type CashflowEstimate, type PropertyMetrics, primaryScenario } from '../domain/property.ts';
 import { propertyRentalSummary, type PropertyRentalSummary } from '../domain/rental.ts';
 
 import { normalizeInputs, simulate } from '../domain/simulator.ts';
@@ -157,7 +157,7 @@ export async function exportRows(format: 'xlsx' | 'csv' | 'json', name: string, 
   }
 }
 
-/** Copie d'un bien (et de ses scénarios) en prospection, sans historique ni tâches. */
+/** Copie d'un bien (et de sa simulation) en prospection, sans historique ni tâches. */
 export function useDuplicate() {
   const { create, createMany, update, data, notify } = useStore();
   return async (p: Property): Promise<Property | null> => {
@@ -165,12 +165,11 @@ export function useDuplicate() {
     const copy: Insert<Property> = { ...rest, title: `${p.title} (copie)`.slice(0, 200), status: p.status === 'acquis' || p.status === 'archive' ? 'repere' : p.status, status_before_archive: null, occupation_status: null, acquired_at: null };
     const np = await create('properties', copy);
     if (!np) return null;
-    const scs = data.scenarios.filter((s) => s.property_id === p.id);
-    if (scs.length) {
-      const created = await createMany('scenarios', scs.map((s) => ({ property_id: np.id, name: s.name, inputs: s.inputs, results: s.results, engine_version: s.engine_version })));
-      const primaryIdx = scs.findIndex((s) => s.id === p.primary_scenario_id);
-      const primary = created?.[primaryIdx >= 0 ? primaryIdx : 0];
-      if (primary) await update('properties', np, { primary_scenario_id: primary.id });
+    // une seule simulation par bien : celle du bien d'origine est copiée
+    const sc = primaryScenario(p, data.scenarios);
+    if (sc) {
+      const created = await createMany('scenarios', [{ property_id: np.id, name: sc.name, inputs: sc.inputs, results: sc.results, engine_version: sc.engine_version }]);
+      if (created?.[0]) await update('properties', np, { primary_scenario_id: created[0].id });
     }
     notify('Bien dupliqué.');
     return np;

@@ -18,7 +18,6 @@ export interface NavItem {
 export const NAV: NavItem[] = [
   { key: 'dashboard', label: 'Tableau de bord', path: '/' },
   { key: 'prospection', label: 'Prospection', path: '/prospection' },
-  { key: 'simulateur', label: 'Simulateur', path: '/simulateur' },
   { key: 'biens', label: 'Mes biens', path: '/biens' },
   { key: 'locataires', label: 'Locataires et baux', path: '/locataires' },
   { key: 'loyers', label: 'Loyers et paiements', path: '/loyers' },
