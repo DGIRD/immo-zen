@@ -15,6 +15,7 @@
     "test": "node --import tsx --test \"tests/**/*.test.ts\"",
     "test:db": "bash supabase/tests/run-local.sh",
     "test:e2e": "node --import tsx tests/e2e/run.ts",
+    "video": "node --import tsx tests/video/prospection.ts",
     "test:recette": "node --import tsx tests/recette/calculs.ts && node --import tsx tests/recette/ui.ts",
     "check": "npm run typecheck && npm test && npm run build"
   },
