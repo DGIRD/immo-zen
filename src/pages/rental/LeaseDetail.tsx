@@ -10,6 +10,9 @@ import { round2 } from '../../domain/simulator.ts';
 import { Button, EmptyState, KeyValue, Modal, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
 import { href, navigate } from '../../ui/router.ts';
 import { DocumentList } from './Documents.tsx';
+import { ReceiptBacklogDialog } from './ReceiptBacklog.tsx';
+import { chargeDuplicates, findDuplicates, sameCharge } from '../../domain/duplicates.ts';
+import { receiptBacklog } from '../../domain/receiptBacklog.ts';
 import { AccessPill, useTenantAccess } from './TenantAccess.tsx';
 import { IRL_VALUES, irlLabel, revisionPlan } from '../../domain/irl.ts';
 import { ChargeActions, ChargeBadge, LeaseBadge, PaymentDialog, paymentAllocated, periodLabel, ReceiptDialog, ReceiptsTable, usePaymentActions, useRental } from './common.tsx';
@@ -26,6 +29,7 @@ export function LeaseDetailPage({ id }: { id: string }) {
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [chargeForm, setChargeForm] = useState(false);
   const [cancelling, setCancelling] = useState<{ v: ChargeView; reason: string } | null>(null);
+  const [backlog, setBacklog] = useState(false);
   const { ask, dialog } = useConfirm();
   const lease = data.leases.find((l) => l.id === id);
   if (!lease) return <EmptyState title="Bail introuvable" action={<Button onClick={() => navigate('/baux')}>Retour aux baux</Button>} />;
@@ -42,6 +46,8 @@ export function LeaseDetailPage({ id }: { id: string }) {
   const titulaires = data.leaseTenants.filter((x) => x.lease_id === lease.id);
   const names = leaseTenants(lease.id, data.leaseTenants, data.tenants).map(tenantName).join(', ');
   const drafts = reminders.filter((r) => r.status === 'brouillon').length;
+  const backlogCount = receiptBacklog(charges, data.receipts, lease.id).items.length;
+  const dupIds = chargeDuplicates(charges.map((v) => v.charge)).ids;
 
   return (
     <>
@@ -69,7 +75,9 @@ export function LeaseDetailPage({ id }: { id: string }) {
         ['relances', `Relances${drafts ? ` (${drafts} à valider)` : ''}`], ['depot', 'Dépôt de garantie'], ['titulaires', `Titulaires (${titulaires.length})`], ['documents', 'Documents']]} value={tab} onChange={setTab} />
 
       {tab === 'echeances' && (
-        <Section title="Échéances" actions={<Button size="sm" onClick={() => setChargeForm(true)}>Ajouter une somme due</Button>}>
+        <Section title="Échéances" actions={<>
+          {backlogCount > 0 && <Button size="sm" onClick={() => setBacklog(true)}>Mettre en cohérence les quittances ({backlogCount})</Button>}
+          <Button size="sm" onClick={() => setChargeForm(true)}>Ajouter une somme due</Button></>}>
           {charges.length === 0 ? <p className="muted">Aucune échéance. Elles sont générées chaque mois à partir du bail ; utilisez « Générer les échéances » pour les créer dès maintenant.</p> : (
             <div className="dt-scroll"><table className="dt-table">
               <thead><tr><th>Période</th><th>Échéance</th><th className="num">Loyer</th><th className="num">Charges</th><th className="num">Total</th><th className="num">Réglé</th><th className="num">Reste</th><th>Statut</th><th><span className="sr-only">Actions</span></th></tr></thead>
@@ -80,7 +88,7 @@ export function LeaseDetailPage({ id }: { id: string }) {
                     <td className="num">{money2(v.charge.rent_amount)}</td><td className="num">{money2(v.charge.charges_amount)}</td>
                     <td className="num">{money2(v.total)}</td><td className="num">{money2(v.paid)}</td>
                     <td className={`num ${v.overdue ? 'neg' : ''}`}>{money2(v.remaining)}</td>
-                    <td><ChargeBadge v={v} /></td>
+                    <td><ChargeBadge v={v} />{dupIds.has(v.charge.id) && <span className="pill pill-warn dup-flag" title="Une autre échéance couvre la même période">doublon possible</span>}</td>
                     <td><div className="row">
                       <ChargeActions v={v} onPay={(x) => setPay({ chargeId: x.charge.id, mode: 'saisie' })} onConfirm={(x) => setPay({ chargeId: x.charge.id, mode: 'confirmation' })} onReceipt={setReceipt} />
                       {!v.charge.cancelled_at && v.paid === 0 && (
@@ -111,6 +119,7 @@ export function LeaseDetailPage({ id }: { id: string }) {
       <PaymentDialog open={!!pay} onClose={() => setPay(null)} leaseId={lease.id} chargeId={pay?.chargeId} mode={pay?.mode} />
       <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} onReplaced={setReceipt} />
       <ChargeDialog open={chargeForm} leaseId={lease.id} onClose={() => setChargeForm(false)} />
+      <ReceiptBacklogDialog open={backlog} onClose={() => setBacklog(false)} leaseId={lease.id} />
       <Modal open={!!cancelling} title="Annuler l’échéance" onClose={() => setCancelling(null)}
         footer={<><Button onClick={() => setCancelling(null)}>Retour</Button>
           <Button variant="danger" disabled={!cancelling?.reason.trim()} onClick={async () => {
@@ -177,8 +186,9 @@ function ChargeDialog({ open, leaseId, onClose }: { open: boolean; leaseId: stri
   const [amount, setAmount] = useState<number | null>(null);
   const [due, setDue] = useState(today);
   const [err, setErr] = useState<string | null>(null);
+  const [dups, setDups] = useState<RentCharge[] | null>(null);
   const chooseKind = (k: 'rappel' | RentCharge['kind']) => {
-    setKind(k);
+    setKind(k); setDups(null);
     setLabel(k === 'rappel' ? `Rappel de charges ${year}` : k === 'regularisation' ? 'Régularisation annuelle des charges' : '');
   };
   async function save() {
@@ -186,11 +196,16 @@ function ChargeDialog({ open, leaseId, onClose }: { open: boolean; leaseId: stri
     if (amount < 0) { setErr('Un trop-perçu de charges en faveur du locataire se gère en avance : enregistrez une restitution ou déduisez-le d’une échéance.'); return; }
     // le rappel couvre l'année concernée (affichée sur la quittance), il est exigible à la date choisie
     const period = kind === 'rappel' ? { period_start: `${year}-01-01`, period_end: `${year}-12-31` } : { period_start: due, period_end: due };
+    if (!dups) {
+      const same = findDuplicates({ lease_id: leaseId, kind: kind === 'rappel' ? 'regularisation' : kind, ...period, due_date: due, rent_amount: 0, charges_amount: round2(amount), label: label.trim() || null, cancelled_at: null },
+        store.data.charges.filter((x) => x.lease_id === leaseId), sameCharge);
+      if (same.length) { setDups(same); return; }
+    }
     const c = await store.create('rent_charges', { lease_id: leaseId, kind: kind === 'rappel' ? 'regularisation' : kind, label: label.trim() || null, ...period, due_date: due, rent_amount: 0, charges_amount: round2(amount) });
     if (c) { store.notify(kind === 'rappel' ? 'Rappel de charges ajouté : une fois réglé, il pourra figurer sur la quittance du mois.' : 'Somme due ajoutée.'); onClose(); }
   }
   return (
-    <Modal open={open} title="Ajouter une somme due" onClose={onClose} footer={<><Button onClick={onClose}>Annuler</Button><Button variant="primary" onClick={() => void save()}>Ajouter</Button></>}>
+    <Modal open={open} title="Ajouter une somme due" onClose={onClose} footer={<><Button onClick={onClose}>Annuler</Button><Button variant="primary" onClick={() => void save()}>{dups ? 'Ajouter quand même' : 'Ajouter'}</Button></>}>
       <div className="grid">
         <Select label="Nature" value={kind} onChange={(v) => chooseKind(v ?? 'autre')} options={[['rappel', 'Rappel de charges d’une année précédente'], ['regularisation', 'Régularisation de charges'], ['autre', 'Autre somme due']] as const} />
         {kind === 'rappel' && (
@@ -198,10 +213,11 @@ function ChargeDialog({ open, leaseId, onClose }: { open: boolean; leaseId: stri
             options={[0, 1, 2, 3, 4].map((i) => String(lastYear - i)).map((y) => [y, y] as const)} hint="Rappel possible sur trois ans (prescription des charges)." />
         )}
         <TextInput label="Libellé" wide value={label} onChange={setLabel} maxLength={200} hint={kind === 'rappel' ? 'Tel qu’il apparaîtra sur la quittance.' : undefined} />
-        <NumberInput label="Montant" suffix="€" value={amount} onChange={setAmount} hint={kind === 'rappel' ? 'Charges réelles de l’année − provisions déjà versées.' : undefined} />
+        <NumberInput label="Montant" suffix="€" value={amount} onChange={(v) => { setAmount(v); setDups(null); }} hint={kind === 'rappel' ? 'Charges réelles de l’année − provisions déjà versées.' : undefined} />
         <TextInput label="Date d’exigibilité" type="date" value={due} onChange={setDue} />
       </div>
       {kind === 'rappel' && <p className="muted small">Une fois le rappel réglé, « Émettre la quittance » d’un loyer proposera de l’y ajouter sur une ligne distincte. Joignez le décompte de charges au locataire (Documents).</p>}
+      {dups && <div className="note note-warn" role="alert"><strong>Doublon probable.</strong> {dups.map((x) => `${periodLabel(x)} : ${money2(x.rent_amount + x.charges_amount)} exigible le ${date(x.due_date)}`).join(' ; ')}. S’il s’agit bien d’une autre somme, ajoutez quand même.</div>}
       {err && <p className="form-error">{err}</p>}
     </Modal>
   );
