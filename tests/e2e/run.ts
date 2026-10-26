@@ -83,7 +83,7 @@ async function main() {
 
   await step('site vitrine : raison d’être, calculateur, contact, lien vers l’espace client', async () => {
     await page.goto(siteUrl);
-    await page.getByRole('heading', { level: 1, name: /L'investissement locatif/ }).waitFor();
+    await page.getByRole('heading', { level: 1, name: /Achetez au bon prix/ }).waitFor();
     const fig = page.locator('#cf');
     const before = await fig.innerText();
     await page.getByLabel('Loyer hors charges').fill('1200');
@@ -91,8 +91,14 @@ async function main() {
     assert.match((await fig.innerText()).replace(/[\u202f\u00a0]/g, ' '), /^[+−]\d[\d ]* €$/);
     await page.getByText('Offre limitée à 30 jours').waitFor();
     await page.getByText('pendant 30 jours, sans carte bancaire', { exact: true }).waitFor();
-    await page.getByRole('heading', { name: 'Du bail à la déclaration, sans rien oublier' }).waitFor();
-    await page.getByRole('heading', { name: 'Un espace pour vos locataires' }).waitFor();
+    await page.getByText(/s’autofinance|Effort d’épargne/).first().waitFor();
+    await page.getByRole('heading', { name: /Investisseur débutant/ }).waitFor();
+    assert.equal(await page.getByRole('heading', { name: /Investisseur expert/ }).isVisible(), false, 'un seul profil affiché');
+    await page.getByRole('tab', { name: /Je pilote un patrimoine/ }).click();
+    await page.getByRole('heading', { name: /Investisseur expert/ }).waitFor();
+    assert.equal(await page.getByRole('heading', { name: /Investisseur débutant/ }).isVisible(), false, 'changement de profil');
+    await page.getByRole('heading', { name: 'Votre déclaration, case par case' }).waitFor();
+    await page.getByText('Un espace pour vos locataires').waitFor();
     await page.screenshot({ path: join(out, '29-site.png'), fullPage: true });
     await page.getByRole('button', { name: 'Envoyer ma demande' }).click();
     await page.getByText('Indiquez votre nom.').waitFor();
