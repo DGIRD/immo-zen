@@ -8,7 +8,7 @@ export const DUPLICATE_DAYS = 3;
 
 const day = (d: string) => Math.round(Date.parse(`${d.slice(0, 10)}T00:00:00Z`) / 86_400_000);
 const near = (a: string, b: string, days = DUPLICATE_DAYS) => Math.abs(day(a) - day(b)) <= days;
-const norm = (s: string | null | undefined) => (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const norm = (s: string | null | undefined) => (s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const cents = (n: number | null | undefined) => Math.round((n ?? 0) * 100);
 /** Deux textes renseignés et différents : ce ne sont pas les mêmes opérations. */
 const distinct = (a: string | null | undefined, b: string | null | undefined) => !!norm(a) && !!norm(b) && norm(a) !== norm(b);

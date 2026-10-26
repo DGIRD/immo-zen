@@ -37,7 +37,7 @@ interface Props<T> {
 }
 
 const parseMoney = (s: string): number | null => {
-  const t = s.replace(/[\s  €]/g, '').replace(',', '.');
+  const t = s.replace(/[\s\u00a0\u202f€]/g, '').replace(',', '.');
   if (t === '') return null;
   const n = Number(t);
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;

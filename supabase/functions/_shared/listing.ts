@@ -58,7 +58,7 @@ export function htmlToText(html: string): string {
     .replace(/<(script|style|noscript|svg|template)\b[\s\S]*?<\/\1>/gi, ' ')
     .replace(/<br\s*\/?>|<\/(p|div|li|h[1-6]|tr|section|article|dd|dt)>/gi, '\n')
     .replace(/<[^>]+>/g, ' '))
-    .replace(/[ \t  ]+/g, ' ')
+    .replace(/[ \t\u00a0\u202f]+/g, ' ')
     .replace(/\n\s*\n+/g, '\n')
     .trim();
 }
@@ -67,7 +67,7 @@ export function htmlToText(html: string): string {
 export function parseAmount(s: string | number | null | undefined): number | null {
   if (s === null || s === undefined) return null;
   if (typeof s === 'number') return Number.isFinite(s) ? s : null;
-  let t = s.replace(/[\s  €]/g, '').replace(/eur(os?)?$/i, '');
+  let t = s.replace(/[\s\u00a0\u202f€]/g, '').replace(/eur(os?)?$/i, '');
   if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(t)) t = t.replace(/\./g, ''); // 245.000 ou 1.250,50
   t = t.replace(',', '.');
   if (!/^\d+(\.\d+)?$/.test(t)) return null;
@@ -75,9 +75,9 @@ export function parseAmount(s: string | number | null | undefined): number | nul
   return Number.isFinite(n) ? n : null;
 }
 
-const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const clean = (s: string | null | undefined, max = 300) => { const t = (s ?? '').replace(/\s+/g, ' ').trim(); return t ? t.slice(0, max) : null; };
-const NUM = String.raw`(\d{1,3}(?:[   .]\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)`;
+const NUM = String.raw`(\d{1,3}(?:[ \u00a0\u202f.]\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)`;
 
 // plages de vraisemblance : une valeur hors plage est ignorée (ex. un numéro de téléphone pris pour un prix)
 const PLAUSIBLE = {
@@ -172,7 +172,7 @@ function fromMeta(html: string, d: ListingData) {
 function fromText(text: string, d: ListingData) {
   const S: ListingSource = 'texte de l’annonce';
   const set = <K extends ListingField>(k: K, v: ListingData[K] | null) => { if (v !== null && v !== undefined && d[k] === null) { d[k] = v; d.sources[k] = S; } };
-  const t = text.replace(/[  ]/g, ' ');
+  const t = text.replace(/[\u00a0\u202f]/g, ' ');
   const first = (re: RegExp) => t.match(re);
 
   // surface : « 45 m² », « 45,5 m2 », « surface habitable : 45 m² » (la surface habitable passe avant le terrain)
