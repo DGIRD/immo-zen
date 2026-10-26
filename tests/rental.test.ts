@@ -143,3 +143,21 @@ test('quittance : PDF valide d’une page, relisible', async () => {
   const recu = await buildReceiptPdf(pdfLib, { ...receipt, kind: 'recu', paid_amount: 500, tenant_names: 'Nom très long '.repeat(20) });
   assert.equal((await pdfLib.PDFDocument.load(recu)).getPageCount(), 1);
 });
+
+test('date de début : contrôle de l’année et échéances à supprimer', async () => {
+  const { leaseStartIssue, pastChargeCount, startChangeImpact } = await import('../src/domain/rental.ts');
+  assert.match(leaseStartIssue('0090-03-01', '2026-10-26')!, /improbable/);
+  assert.match(leaseStartIssue('2031-01-01', '2026-10-26')!, /futur/);
+  assert.equal(leaseStartIssue('2024-03-15', '2026-10-26'), null);
+  assert.equal(pastChargeCount(lease({ start_date: '1990-03-01' }), '2024-06-30'), 412);
+  const l = lease({ start_date: '1990-03-01' });
+  const cs = [charge('a', '1990-03-01', '1990-03-05', 900), charge('b', '2024-03-01', '2024-03-05', 900), charge('c', '2024-04-01', '2024-04-05', 900)];
+  const imp = startChangeImpact(l, '2024-03-15', cs, [], []);
+  assert.deepEqual(imp.remove.map((c) => c.id), ['a', 'b']);
+  assert.equal(imp.blocked.length, 0);
+  const blocked = startChangeImpact(l, '2024-03-15', cs, [{ id: 'x', user_id: 'u', payment_id: 'p', charge_id: 'a', amount: 50, created_at: '' } as Allocation], [{ charge_id: 'b', cancelled_at: null }]);
+  assert.deepEqual(blocked.blocked.map((c) => c.id), ['a', 'b']);
+  // la date recule : le premier mois incomplet est recalculé
+  const l2 = lease({ start_date: '2024-03-15' });
+  assert.deepEqual(startChangeImpact(l2, '2024-03-01', [charge('m', '2024-03-15', '2024-03-15', 493.55), charge('n', '2024-04-01', '2024-04-05', 900)], [], []).remove.map((c) => c.id), ['m']);
+});

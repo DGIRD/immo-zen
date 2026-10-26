@@ -4,7 +4,7 @@ import { usePlan, useStore } from '../../data/store.tsx';
 import { PlanLock } from '../../ui/PlanLock.tsx';
 import type { Insert, Lease, Tenant } from '../../data/types.ts';
 import { date, money, money2, todayParis } from '../../domain/format.ts';
-import { leaseLedger, leaseState, leaseTenants, tenantName } from '../../domain/rental.ts';
+import { LEASE_BACKLOG_WARN, leaseLedger, leaseStartIssue, leaseState, leaseTenants, monthLabel, pastChargeCount, startChangeImpact, tenantName } from '../../domain/rental.ts';
 import { round2 } from '../../domain/simulator.ts';
 import { DataTable, type Column } from '../../ui/DataTable.tsx';
 import { Button, Checkbox, EmptyState, Modal, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
@@ -185,6 +185,7 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
   const [newTenant, setNewTenant] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const { ask, dialog } = useConfirm();
   const set = <K extends keyof Lease>(k: K, v: Lease[K] | null | undefined) => setD((x) => ({ ...x, [k]: v }));
 
   if (id && !existing) return <EmptyState title="Bail introuvable" />;
@@ -194,7 +195,8 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
   function validate() {
     const e: Record<string, string> = {};
     if (!d.property_id) e.property_id = 'Choisissez le bien.';
-    if (!d.start_date) e.start_date = 'Date de début obligatoire.';
+    const startIssue = leaseStartIssue(d.start_date, todayParis());
+    if (startIssue) e.start_date = startIssue;
     if (d.end_date && d.start_date && d.end_date < d.start_date) e.end_date = 'La fin précède le début.';
     for (const k of ['rent_hc', 'charges_amount', 'deposit_amount'] as const) if (!(Number.isFinite(d[k]) && (d[k] as number) >= 0)) e[k] = 'Montant positif attendu.';
     if (!(Number.isInteger(d.payment_day) && d.payment_day! >= 1 && d.payment_day! <= 28)) e.payment_day = 'Jour entre 1 et 28.';
@@ -208,8 +210,45 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
     return !Object.keys(e).length;
   }
 
+  /** Confirmations avant enregistrement : échéances supprimées si la date de début change, échéancier ancien. */
+  async function confirmDates(): Promise<boolean> {
+    const today = todayParis();
+    const start = d.start_date!;
+    if (existing && start !== existing.start_date) {
+      const imp = startChangeImpact(existing, start, data.charges, data.allocations, data.receipts);
+      if (imp.blocked.length) {
+        setErrors({ start_date: `${imp.blocked.length} échéance(s) concernée(s) ont reçu un paiement ou une quittance : retirez-les avant de changer la date.` });
+        return false;
+      }
+      if (imp.remove.length) {
+        const first = imp.remove[0]!, last = imp.remove[imp.remove.length - 1]!;
+        const ok = await ask('Modifier la date de début du bail ?', <>
+          <p>La date de début passe du <strong>{date(existing.start_date)}</strong> au <strong>{date(start)}</strong>.</p>
+          <p>Cela va <strong>supprimer définitivement {imp.remove.length} échéance{imp.remove.length > 1 ? 's' : ''}</strong> de loyer
+            ({imp.remove.length > 1 ? `de ${monthLabel(first.period_start)} à ${monthLabel(last.period_start)}` : monthLabel(first.period_start)}),
+            devenue{imp.remove.length > 1 ? 's' : ''} sans objet avec la nouvelle date. Aucune n’a reçu de paiement ni de quittance.</p>
+          <p>L’échéancier est ensuite recalculé à partir du {date(start)}.</p>
+        </>, `Supprimer ${imp.remove.length} échéance${imp.remove.length > 1 ? 's' : ''} et enregistrer`);
+        if (!ok) return false;
+      }
+    }
+    // échéancier ancien : une erreur d'année (ex. 1990 au lieu de 2024) créerait des centaines d'échéances
+    const before = existing ? pastChargeCount(existing, today) : 0;
+    const after = pastChargeCount({ ...(d as Lease) }, today);
+    if (after > LEASE_BACKLOG_WARN && after > before) {
+      const ok = await ask('Vérifiez la date de début', <>
+        <p>Le bail commence le <strong>{date(start)}</strong> : <strong>{after} échéances mensuelles</strong> seront créées jusqu’à aujourd’hui
+          {existing ? ` (${after - before} de plus qu’actuellement)` : ''}, à régler ou à annuler une par une.</p>
+        <p>Vérifiez l’année saisie avant de continuer.</p>
+      </>, 'La date est correcte, enregistrer', false);
+      if (!ok) return false;
+    }
+    return true;
+  }
+
   async function save() {
     if (!validate()) return;
+    if (!(await confirmDates())) return;
     setBusy(true);
     try {
       const { id: _i, user_id: _u, version: _v, created_at: _c, updated_at: _up, ...rest } = d as Partial<Lease>;
@@ -222,7 +261,7 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
       if (add.length) await store.createMany('lease_tenants', add.map((tenant_id) => ({ lease_id: lease!.id, tenant_id })));
       for (const t of currentTenantIds.filter((x) => !tenantIds.includes(x))) await store.removeWhere('lease_tenants', { lease_id: lease.id, tenant_id: t });
       const n = await store.call((r) => r.generateCharges(lease!.id));
-      store.notify(existing ? 'Bail enregistré.' : `Bail créé${n ? `, ${n} échéance(s) générée(s)` : ''}.`);
+      store.notify(existing ? `Bail enregistré${n ? `, ${n} échéance(s) générée(s)` : ''}.` : `Bail créé${n ? `, ${n} échéance(s) générée(s)` : ''}.`);
       navigate(`/baux/${lease.id}`);
     } finally {
       setBusy(false);
@@ -334,6 +373,7 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
         <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button>
       </div>
       <TenantDialog tenant={newTenant ? 'new' : null} onClose={() => setNewTenant(false)} onCreated={(t) => setTenantIds((x) => [...x, t.id])} />
+      {dialog}
     </form>
   );
 }

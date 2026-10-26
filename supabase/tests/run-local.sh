@@ -42,6 +42,7 @@ psql_run -f "$here/80_espace_locataire.test.sql" 2>&1 | sed -n 's/^.*NOTICE:  //
 psql_run -f "$here/90_corrections.test.sql" 2>&1 | sed -n 's/^.*NOTICE:  //p; /ERROR/p; /ÉCHEC/p; /corrections passés/p'
 psql_run -f "$here/95_factures.test.sql" 2>&1 | sed -n 's/^.*NOTICE:  //p; /ERROR/p; /ÉCHEC/p; /factures passés/p'
 psql_run -f "$here/96_alertes.test.sql" 2>&1 | sed -n 's/^.*NOTICE:  //p; /ERROR/p; /ÉCHEC/p; /alertes passés/p'
+psql_run -f "$here/97_date_debut_bail.test.sql" 2>&1 | sed -n 's/^.*NOTICE:  //p; /ERROR/p; /ÉCHEC/p; /date de début passés/p'
 
 echo "→ annulation (rollback)"
 for r in $(ls "$repo"/supabase/rollback/*.down.sql | sort -r); do PGOPTIONS='-c client_min_messages=warning' psql_run -f "$r" >/dev/null; done

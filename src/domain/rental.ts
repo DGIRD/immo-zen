@@ -4,7 +4,7 @@
  * Le serveur est la source de vérité ; ces fonctions servent à l'affichage, au mode
  * démonstration et aux tests. Les montants sont arrondis au centime.
  */
-import type { Allocation, Expense, Lease, LeaseTenant, Payment, RentCharge, Tenant } from '../data/types.ts';
+import type { Allocation, Expense, Lease, LeaseTenant, Payment, Receipt, RentCharge, Tenant } from '../data/types.ts';
 import { round2 } from './simulator.ts';
 
 // ---------- Dates (AAAA-MM-JJ, sans fuseau) ----------
@@ -65,6 +65,49 @@ export function planCharges(lease: Pick<Lease, 'start_date' | 'end_date' | 'rent
     if (m > 12) { m = 1; y += 1; }
   }
   return out;
+}
+
+// ---------- Date de début du bail ----------
+/** Bornes de saisie : une date hors de ces bornes est une erreur de frappe (ex. 0090 au lieu de 2024). */
+export const LEASE_START_MIN = '1950-01-01';
+/** Au-delà de ce nombre d'échéances passées créées d'un coup, une confirmation est demandée. */
+export const LEASE_BACKLOG_WARN = 24;
+
+/** Contrôle bloquant de la date de début (année plausible, pas plus de 3 ans dans le futur). */
+export function leaseStartIssue(start: string | null | undefined, today: string): string | null {
+  if (!start || !/^\d{4}-\d{2}-\d{2}$/.test(start)) return 'Date de début obligatoire.';
+  if (start < LEASE_START_MIN) return `Date improbable (avant ${LEASE_START_MIN.slice(0, 4)}) : vérifiez l’année.`;
+  const [y, m, d] = parts(today);
+  if (start > iso(y + 3, m, Math.min(d, 28))) return 'Date improbable (plus de 3 ans dans le futur) : vérifiez l’année.';
+  return null;
+}
+
+/** Nombre d'échéances mensuelles qu'un bail aura de sa date de début jusqu'à aujourd'hui. */
+export function pastChargeCount(lease: Pick<Lease, 'start_date' | 'end_date' | 'rent_hc' | 'charges_amount' | 'payment_day'>, today: string): number {
+  return lease.start_date && lease.start_date <= today ? planCharges(lease, today).length : 0;
+}
+
+export interface StartChangeImpact {
+  /** Échéances de loyer devenues fausses, supprimées puis régénérées. */
+  remove: RentCharge[];
+  /** Parmi elles, celles qui ont reçu un paiement ou une quittance / un reçu non annulé : modification refusée. */
+  blocked: RentCharge[];
+}
+
+/**
+ * Échéances touchées par un changement de date de début (même règle que iz_lease_rules) :
+ * toutes les échéances de loyer antérieures à la nouvelle date, et, si la date recule,
+ * l'échéance du premier mois incomplet (prorata à recalculer).
+ */
+export function startChangeImpact(lease: Pick<Lease, 'id' | 'start_date'>, newStart: string, charges: RentCharge[], allocations: Allocation[], receipts: Pick<Receipt, 'charge_id' | 'cancelled_at'>[]): StartChangeImpact {
+  if (!newStart || newStart === lease.start_date) return { remove: [], blocked: [] };
+  const partialFirst = newStart < lease.start_date && !lease.start_date.endsWith('-01');
+  const remove = charges.filter((c) => c.lease_id === lease.id && c.kind === 'loyer'
+    && (c.period_start < newStart || (partialFirst && c.period_start === lease.start_date)))
+    .sort((a, b) => a.period_start.localeCompare(b.period_start));
+  const paid = new Set(allocations.filter((a) => a.amount > 0).map((a) => a.charge_id));
+  const issued = new Set(receipts.filter((r) => !r.cancelled_at).map((r) => r.charge_id));
+  return { remove, blocked: remove.filter((c) => paid.has(c.id) || issued.has(c.id)) };
 }
 
 export type LeaseState = 'a_venir' | 'actif' | 'termine';

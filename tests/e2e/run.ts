@@ -1104,6 +1104,33 @@ async function main() {
     await panel.waitFor({ state: 'detached' });
   });
 
+  await step('bail : date de début erronée (1990) signalée, puis corrigée avec suppression confirmée des échéances', async () => {
+    await page.goto(url + '#/locataires');
+    await page.getByRole('button', { name: 'Nouveau bail' }).click();
+    await page.getByLabel('Bien', { exact: true }).selectOption({ label: 'Parking détenu' });
+    await page.locator('.chip', { hasText: 'Léa Martin' }).click();
+    await page.getByLabel('Début du bail *').fill('0090-03-01');
+    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    await page.getByText(/Date improbable/).waitFor();
+    await page.getByLabel('Début du bail *').fill('1990-03-01');
+    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    let dlg = page.locator('dialog[open]');
+    await dlg.getByRole('heading', { name: 'Vérifiez la date de début' }).waitFor();
+    await dlg.getByRole('button', { name: 'La date est correcte, enregistrer' }).click();
+    await page.getByRole('tab', { name: /Échéances \(\d{3}\)/ }).waitFor();
+    await page.getByRole('button', { name: 'Modifier', exact: true }).first().click();
+    const today = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()));
+    const [y, m] = today.split('-').map(Number) as [number, number];
+    const d = new Date(Date.UTC(y, m - 2, 1));
+    await page.getByLabel('Début du bail *').fill(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`);
+    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByRole('heading', { name: 'Modifier la date de début du bail ?' }).waitFor();
+    await dlg.getByText(/supprimer définitivement \d+ échéances/).waitFor();
+    await dlg.getByRole('button', { name: /^Supprimer \d+ échéances et enregistrer$/ }).click();
+    await page.getByRole('tab', { name: 'Échéances (2)' }).waitFor();
+  });
+
   await step('rendu mobile (390 px) sans défilement horizontal', async () => {
     const m = await browser.newContext({ locale: 'fr-FR', timezoneId: 'Europe/Paris', viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     const mp = await m.newPage();

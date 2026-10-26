@@ -7,7 +7,7 @@ import { createDemoPlatform } from './platform.ts';
  * Les e-mails sont placés en file mais ne partent jamais.
  */
 import { applyStatusRules, statusEventSummary } from '../domain/property.ts';
-import { allocatedByCharge, chargeTotal, leaseTenants, planCharges, tenantName } from '../domain/rental.ts';
+import { allocatedByCharge, chargeTotal, LEASE_START_MIN, leaseTenants, planCharges, startChangeImpact, tenantName } from '../domain/rental.ts';
 import { round2 } from '../domain/simulator.ts';
 import { todayParis } from '../domain/format.ts';
 import { EMPTY_SNAPSHOT, RepoError, type Repo, type SessionInfo, type Snapshot, type UpdateResult } from './repo.ts';
@@ -309,6 +309,17 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
         const l1 = next as unknown as Lease;
         if (l1.property_id !== l0.property_id && db.rent_charges.some((c) => c.lease_id === id)) fail('Le bien d’un bail ayant des échéances ne peut pas être changé.');
         if (l1.end_date && l1.end_date < l1.start_date) fail('La date de fin précède la date de début.');
+        if (l1.start_date < LEASE_START_MIN) fail('Date de début improbable : vérifiez l’année.');
+        if (l1.start_date !== l0.start_date) {
+          // échéances antérieures à la nouvelle date (et premier mois à reproratiser) : supprimées, régénérées ensuite
+          const imp = startChangeImpact(l0, l1.start_date, db.rent_charges, db.payment_allocations, db.receipts);
+          if (imp.blocked.length) fail(`${imp.blocked.length} échéance(s) concernée(s) par la nouvelle date de début ont reçu un paiement ou une quittance : retirez-les avant de modifier la date.`);
+          const gone = new Set(imp.remove.map((c) => c.id));
+          db.rent_charges = db.rent_charges.filter((c) => !gone.has(c.id));
+          db.payment_allocations = db.payment_allocations.filter((a) => !gone.has(a.charge_id));
+          db.receipts = db.receipts.filter((r) => !gone.has(r.charge_id));
+          db.reminders.forEach((r) => { r.charge_ids = r.charge_ids.filter((x) => !gone.has(x)); });
+        }
         if (l1.end_date && (!l0.end_date || l1.end_date < l0.end_date)) {
           db.rent_charges.forEach((c) => {
             if (c.lease_id === id && c.kind === 'loyer' && c.period_start > l1.end_date! && !c.cancelled_at && allocated(db, c.id) === 0) c.cancelled_at = now();
