@@ -62,7 +62,7 @@ export function DashboardPage() {
       <PageHeader title="Tableau de bord" subtitle={new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' })} />
       {empty ? (
         <EmptyState title="Commencez par un premier bien"
-          action={<div className="row"><Button variant="primary" onClick={() => navigate('/simulateur')}>Ajouter un bien en prospection</Button></div>}>
+          action={<div className="row"><Button variant="primary" onClick={() => navigate('/bien/nouveau')}>Ajouter un bien en prospection</Button></div>}>
           Repérez une annonce, lancez une simulation, puis suivez vos échanges jusqu’à l’acquisition. Vous aviez des simulations dans l’ancienne version ? Voir Paramètres.
         </EmptyState>
       ) : (

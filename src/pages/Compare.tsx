@@ -20,7 +20,7 @@ const LINES: Line[] = [
   ['Cash-flow / mois', (r) => money(r.m.result?.cashflowMonthlyYear1), (r) => r.m.result?.cashflowMonthlyYear1 ?? null, 'high'],
   ['Statut', (r) => STATUS_LABELS[r.p.status]],
   ['Relance', (r) => date(r.p.follow_up_date)],
-  ['Scénario utilisé', (r) => r.m.scenario?.name ?? 'Aucune simulation'],
+  ['Simulation', (r) => (r.m.scenario ? 'Oui' : 'Aucune simulation')],
 ];
 
 export function CompareDialog({ rows, onClose }: { rows: PropertyRow[] | null; onClose: () => void }) {
@@ -44,7 +44,7 @@ export function CompareDialog({ rows, onClose }: { rows: PropertyRow[] | null; o
               })}
             </tbody>
           </table>
-          <p className="muted small">La meilleure valeur de chaque critère chiffré est mise en évidence. Les calculs utilisent le scénario principal de chaque bien.</p>
+          <p className="muted small">La meilleure valeur de chaque critère chiffré est mise en évidence. Les calculs utilisent la simulation de chaque bien.</p>
         </div>
       )}
     </Modal>

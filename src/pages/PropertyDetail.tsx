@@ -3,7 +3,7 @@ import { useStore } from '../data/store.tsx';
 import type { Channel, Insert, PropertyStatus, PropertyTask, Scenario, TimelineEvent } from '../data/types.ts';
 import { date, dateTime, money, money2, number, pct, todayParis } from '../domain/format.ts';
 import { CHANNEL_LABELS, EVENT_LABELS, OCCUPATION_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, STATUS_ORDER, TAX_REGIME_LABELS, TYPE_LABELS } from '../domain/labels.ts';
-import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, dpeAlerts, isOwned, loanInfo, metrics, ownedCashflow, rentWithCharges, scenarioResult } from '../domain/property.ts';
+import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, dpeAlerts, isOwned, loanInfo, metrics, ownedCashflow, rentWithCharges, scenarioResult, primaryScenario } from '../domain/property.ts';
 import { cfTitle } from './propertyShared.tsx';
 import { EstimatePanel } from '../ui/EstimatePanel.tsx';
 import { normalizeInputs, simulate } from '../domain/simulator.ts';
@@ -41,7 +41,7 @@ export function PropertyDetailPage({ id }: { id: string }) {
 
   const tabs: [Tab, string][] = [
     ['synthese', 'Synthèse'],
-    ...(owned ? [] : [['simulations', `Simulations (${scenarios.length})`] as [Tab, string]]),
+    ...(owned ? [] : [['simulations', 'Simulation'] as [Tab, string]]),
     ['historique', `Historique et échanges (${events.length})`],
     ['taches', `Tâches (${openTasks})`],
     ['documents', 'Photos et documents'],
@@ -57,7 +57,7 @@ export function PropertyDetailPage({ id }: { id: string }) {
         actions={<>
           {owned
             ? <Button onClick={() => navigate(`/bien/${p.id}/modifier`)}>Modifier</Button>
-            : <Button onClick={() => navigate(m.scenario ? `/simulateur/${m.scenario.id}` : `/simulateur?bien=${p.id}`)}>Modifier la fiche et la simulation</Button>}
+            : <Button onClick={() => navigate(`/bien/${p.id}/modifier`)}>Modifier la fiche et la simulation</Button>}
           {!owned && p.status !== 'archive' && <Button variant="primary" onClick={() => void actions.setStatus(p, 'acquis')}>Marquer comme acquis</Button>}
           <details className="menu menu-right">
             <summary className="btn btn-secondary">Plus</summary>
@@ -167,10 +167,9 @@ export function PropertyDetailPage({ id }: { id: string }) {
         </div>
       )}
 
-      {tab === 'simulations' && <ScenarioList propertyId={p.id} primaryId={p.primary_scenario_id} scenarios={scenarios}
-        onPrimary={async (s) => { await update('properties', p, { primary_scenario_id: s.id }, `Le bien « ${p.title} »`); notify('Scénario principal défini.'); }}
-        onDelete={async (s) => { if (await ask('Supprimer le scénario', `« ${s.name} » sera supprimé.`, 'Supprimer')) await remove('scenarios', s.id); }}
-        onDuplicate={async (s) => { await create('scenarios', { property_id: p.id, name: `${s.name} (copie)`.slice(0, 120), inputs: s.inputs, results: s.results, engine_version: s.engine_version }); }}
+      {tab === 'simulations' && <SimulationPanel propertyId={p.id} main={primaryScenario(p, scenarios) ?? undefined} scenarios={scenarios}
+        onUse={async (s) => { await update('properties', p, { primary_scenario_id: s.id }, `Le bien « ${p.title} »`); notify('Simulation du bien remplacée.'); }}
+        onDelete={async (s) => { if (await ask('Supprimer l’ancienne simulation', `« ${s.name} » sera supprimée. La simulation du bien n’est pas modifiée.`, 'Supprimer')) await remove('scenarios', s.id); }}
       />}
 
       {tab === 'historique' && <Timeline propertyId={p.id} events={events} />}
@@ -202,34 +201,46 @@ function SnapshotFigures({ inputs }: { inputs: Scenario['inputs'] }) {
   ]} />;
 }
 
-function ScenarioList({ propertyId, primaryId, scenarios, onPrimary, onDelete, onDuplicate }: {
-  propertyId: string; primaryId: string | null; scenarios: Scenario[];
-  onPrimary: (s: Scenario) => void; onDelete: (s: Scenario) => void; onDuplicate: (s: Scenario) => void;
+/** Simulation unique du bien ; les simulations enregistrées avant ce fonctionnement restent consultables. */
+function SimulationPanel({ propertyId, main, scenarios, onUse, onDelete }: {
+  propertyId: string; main: Scenario | undefined; scenarios: Scenario[]; onUse: (s: Scenario) => void; onDelete: (s: Scenario) => void;
 }) {
+  const others = scenarios.filter((s) => s.id !== main?.id && !s.archived_at);
+  const r = main ? scenarioResult(main) : null;
   return (
-    <Section title="Simulations" actions={<Button variant="primary" size="sm" onClick={() => navigate(`/simulateur?bien=${propertyId}`)}>Nouvelle simulation</Button>}>
-      {scenarios.length === 0 ? <EmptyState title="Aucune simulation">Lancez le simulateur pour estimer le coût, le crédit, le rendement et le cash-flow de ce bien.</EmptyState> : (
-        <ul className="scenario-list">
-          {scenarios.map((s) => {
-            const r = scenarioResult(s);
-            return (
-              <li key={s.id}>
-                <div>
-                  <a href={href(`/simulateur/${s.id}`)} className="strong">{s.name}</a>
-                  {s.id === primaryId && <span className="pill pill-ok">Principal</span>}
-                  <p className="muted small">{r ? `Coût ${money(r.totalCost)}, mensualité ${money(r.monthlyPaymentWithInsurance)}, rendement ${pct(r.grossYield)}, cash-flow ${money(r.cashflowMonthlyYear1)}/mois` : 'Hypothèses invalides : ouvrez le scénario pour les corriger.'}</p>
-                </div>
-                <div className="row">
-                  {s.id !== primaryId && <Button size="sm" onClick={() => onPrimary(s)}>Définir comme principal</Button>}
-                  <Button size="sm" onClick={() => onDuplicate(s)}>Dupliquer</Button>
-                  <Button size="sm" variant="ghost" onClick={() => onDelete(s)}>Supprimer</Button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+    <>
+      <Section title="Simulation" actions={<Button variant="primary" size="sm" onClick={() => navigate(`/bien/${propertyId}/modifier`)}>{main ? 'Modifier la simulation' : 'Créer la simulation'}</Button>}>
+        {!main ? <EmptyState title="Aucune simulation">Renseignez prix, financement, loyer et charges pour estimer le coût, le crédit, le rendement et le cash-flow de ce bien.</EmptyState>
+          : r ? <KeyValue items={[
+            ['Coût total', money(r.totalCost)], ['Emprunt', money(r.loanAmount)], ['Mensualité', money(r.monthlyPaymentWithInsurance)],
+            ['Rendement brut', pct(r.grossYield)], ['Cash-flow / mois', money(r.cashflowMonthlyYear1)], ['Mise à jour', date(main.updated_at)],
+          ]} />
+          : <p className="muted">Hypothèses invalides : ouvrez la simulation pour les corriger.</p>}
+        <p className="muted small">Une seule simulation par bien : modifiez-la autant que vous le souhaitez, elle met à jour la fiche (prix, surface, travaux, loyer).</p>
+      </Section>
+      {others.length > 0 && (
+        <Section title={`Anciennes simulations (${others.length})`}>
+          <p className="muted small">Enregistrées quand plusieurs simulations par bien étaient possibles. Elles ne sont plus utilisées : reprenez-en une comme simulation du bien, ou supprimez-les.</p>
+          <ul className="scenario-list">
+            {others.map((s) => {
+              const x = scenarioResult(s);
+              return (
+                <li key={s.id}>
+                  <div>
+                    <strong>{s.name}</strong>
+                    <p className="muted small">{x ? `Coût ${money(x.totalCost)}, mensualité ${money(x.monthlyPaymentWithInsurance)}, rendement ${pct(x.grossYield)}, cash-flow ${money(x.cashflowMonthlyYear1)}/mois` : 'Hypothèses invalides.'}</p>
+                  </div>
+                  <div className="row">
+                    <Button size="sm" onClick={() => onUse(s)}>Utiliser comme simulation du bien</Button>
+                    <Button size="sm" variant="ghost" onClick={() => onDelete(s)}>Supprimer</Button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </Section>
       )}
-    </Section>
+    </>
   );
 }
 

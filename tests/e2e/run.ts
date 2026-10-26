@@ -129,9 +129,10 @@ async function main() {
 
   await step('menu complet, sans états des lieux', async () => {
     const labels = await page.locator('#main-nav a').allInnerTexts();
-    for (const l of ['Tableau de bord', 'Prospection', 'Simulateur', 'Mes biens', 'Locataires et baux', 'Loyers et paiements', 'Dépenses', 'Contacts', 'Documents', 'Déclaration fiscale', 'Mon abonnement', 'Paramètres']) {
+    for (const l of ['Tableau de bord', 'Prospection', 'Mes biens', 'Locataires et baux', 'Loyers et paiements', 'Dépenses', 'Contacts', 'Documents', 'Déclaration fiscale', 'Mon abonnement', 'Paramètres']) {
       assert.ok(labels.some((x) => x.includes(l)), `menu : ${l}`);
     }
+    assert.ok(!labels.some((x) => x.includes('Simulateur')), 'plus de menu Simulateur : la simulation est celle de chaque bien');
     const js = await page.evaluate(async () => {
       const src = (document.querySelector('script[type=module]') as HTMLScriptElement).src;
       return (await fetch(src)).text();
@@ -198,7 +199,7 @@ async function main() {
   });
 
   await step('annonce : surface dans la fiche, caractéristiques reprises depuis le texte de l’annonce', async () => {
-    await page.goto(url + '#/simulateur');
+    await page.goto(url + '#/bien/nouveau');
     await page.getByRole('heading', { name: 'Le bien' }).waitFor();
     const bien = page.locator('section', { has: page.getByRole('heading', { name: 'Le bien' }) });
     await bien.getByLabel('Surface du logement').waitFor();
@@ -227,7 +228,7 @@ async function main() {
     await page.screenshot({ path: join(out, '37-annonce.png'), fullPage: true });
   });
 
-  await step('simulation liée au bien, enregistrée comme scénario principal', async () => {
+  await step('une seule simulation par bien, modifiable depuis la fiche', async () => {
     await page.goto(url + '#/prospection');
     await page.getByRole('button', { name: 'T3 test balcon' }).first().click();
     await page.getByRole('button', { name: 'Modifier la fiche et la simulation' }).click();
@@ -238,8 +239,19 @@ async function main() {
     await page.screenshot({ path: join(out, '02-simulateur.png'), fullPage: true });
     await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
     await page.getByText('Bien et simulation enregistrés.').waitFor();
+    assert.equal(await page.getByRole('button', { name: /nouveau scénario/i }).count(), 0, 'pas de second scénario');
+    assert.equal(await page.getByLabel('Nom du scénario').count(), 0);
+    const d = await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!));
+    const t3 = d.properties.find((p: { title: string }) => p.title === 'T3 test balcon');
+    assert.equal(d.scenarios.filter((x: { property_id: string }) => x.property_id === t3.id).length, 1, 'une seule simulation enregistrée pour le bien');
     await page.getByRole('button', { name: 'Par année' }).click();
     assert.ok(await page.locator('table.compact tbody tr').count() === 20, '20 lignes annuelles');
+    await page.getByRole('button', { name: 'Voir la fiche' }).click();
+    await page.getByRole('tab', { name: 'Simulation', exact: true }).click();
+    await page.getByRole('button', { name: 'Modifier la simulation' }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Nouvelle simulation' }).count(), 0, 'pas de nouvelle simulation possible');
+    await page.getByRole('button', { name: 'Modifier la simulation' }).click();
+    await page.getByRole('heading', { name: 'Modifier « T3 test balcon »' }).waitFor();
   });
 
   await step('valeurs invalides bloquent l’enregistrement', async () => {
@@ -249,8 +261,8 @@ async function main() {
     await page.getByLabel('Durée').fill('20');
   });
 
-  await step('simulateur : négociation, loyer au m² bas/haut, charges de copropriété à 80 %', async () => {
-    await page.goto(url + '#/simulateur');
+  await step('simulation : négociation, loyer au m² bas/haut, charges de copropriété à 80 %', async () => {
+    await page.goto(url + '#/bien/nouveau');
     const val = async (label: string, expected?: string) => {
       // attend que la valeur proposée soit affichée (machines lentes)
       const field = page.getByLabel(label, { exact: true });
@@ -278,7 +290,7 @@ async function main() {
     assert.equal(await val('dont récupérables', '960'), '960', 'part récupérable recalculée');
     assert.equal(await val('Provision sur charges', '50'), '50', 'valeur modifiée à la main conservée');
     await page.screenshot({ path: join(out, '19-simulateur-loyer-m2.png'), fullPage: true });
-    // le simulateur alimente la prospection
+    // la simulation alimente la prospection
     await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
     await page.getByText('Donnez un titre au bien').last().waitFor();
     await page.getByLabel('Titre du bien *').fill('Studio simulé');
@@ -379,10 +391,10 @@ async function main() {
     const ownedRow = page.locator('tbody tr', { hasText: 'T3 test balcon' });
     assert.match((await ownedRow.innerText()).replace(/[\u202f\u00a0]/g, ' '), /\d[\d ]* € – \d[\d ]* €/, 'fourchette dans le tableau Mes biens');
     assert.equal(await page.locator('thead').getByText(/Prix affiché|Prix proposé|Prix de présentation/).count(), 0);
-    // les biens détenus ne sont plus proposés dans le simulateur
+    // un ancien lien vers le simulateur ouvre la simulation du bien, sans liste de biens à choisir
     await page.goto(url + '#/simulateur');
-    const options = await page.getByLabel('Bien', { exact: true }).locator('option').allInnerTexts();
-    assert.ok(!options.includes('T3 test balcon'), `bien détenu absent du simulateur : ${options.join(', ')}`);
+    await page.getByRole('heading', { name: 'Ajouter un bien en prospection' }).waitFor();
+    assert.equal(await page.getByLabel('Bien', { exact: true }).count(), 0, 'plus de choix du bien dans la simulation');
   });
 
   await step('ajout direct d’un bien déjà détenu', async () => {
@@ -1098,12 +1110,12 @@ async function main() {
     await mp.goto(url);
     await mp.evaluate((s) => localStorage.setItem('immozen:demo:v1', s), await page.evaluate(() => localStorage.getItem('immozen:demo:v1')!));
     const leasePath = leaseUrl ? '#' + leaseUrl.split('#')[1] : '#/locataires';
-    for (const [path, shot] of [['', '07-mobile-tableau-de-bord'], ['#/prospection', '08-mobile-prospection'], ['#/simulateur', '09-mobile-simulateur'], [`#/bien/${propertyId}`, '10-mobile-fiche'], [leasePath, '17-mobile-bail'], ['#/loyers', '18-mobile-loyers']] as const) {
+    for (const [path, shot] of [['', '07-mobile-tableau-de-bord'], ['#/prospection', '08-mobile-prospection'], ['#/bien/nouveau', '09-mobile-simulateur'], [`#/bien/${propertyId}`, '10-mobile-fiche'], [leasePath, '17-mobile-bail'], ['#/loyers', '18-mobile-loyers']] as const) {
       await mp.goto(url + path);
       await mp.reload();
       await mp.locator('main h1').first().waitFor();
       await noHorizontalScroll(mp);
-      await mp.screenshot({ path: join(out, `${shot}.png`), fullPage: path === '#/simulateur' ? false : true });
+      await mp.screenshot({ path: join(out, `${shot}.png`), fullPage: path === '#/bien/nouveau' ? false : true });
     }
     await mp.goto(url + '#/prospection');
     assert.ok(await mp.locator('.dt-card').count() > 0, 'cartes affichées sur mobile');

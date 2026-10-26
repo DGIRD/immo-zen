@@ -59,13 +59,19 @@ export function App() {
     const p = data.properties.find((x) => x.id === b);
     active = p?.status === 'acquis' ? 'biens' : 'prospection';
     if (!p && sync.state === 'loading') page = <p className="muted">Chargement…</p>;
-    // bien en prospection : sa fiche se modifie dans le simulateur (une seule saisie)
-    else if (c === 'modifier' && p && p.status !== 'acquis') { active = 'prospection'; page = <SimulatorPage key={key} propertyId={b} scenarioId={p.primary_scenario_id ?? undefined} />; }
+    // bien en prospection : sa fiche et sa simulation se modifient dans un seul écran
+    else if (c === 'modifier' && p && p.status !== 'acquis') { active = 'prospection'; page = <SimulatorPage key={key} propertyId={b} />; }
+    // simulation d'un bien détenu (hypothèses d'achat)
+    else if (c === 'simulation' && p) page = <SimulatorPage key={key} propertyId={b} />;
     else page = c === 'modifier' ? <PropertyFormPage key={key} id={b} mode="owned" /> : <PropertyDetailPage id={b} />;
   } else if (a === 'simulateur') {
-    active = 'simulateur';
-    if (b && !data.scenarios.some((s) => s.id === b) && sync.state === 'loading') page = <p className="muted">Chargement…</p>;
-    else page = <SimulatorPage key={key} scenarioId={b} propertyId={route.query.get('bien') ?? undefined} />;
+    // ancien menu Simulateur (liens enregistrés) : la simulation est désormais celle du bien
+    const sc = b ? data.scenarios.find((s) => s.id === b) : undefined;
+    const pid = sc?.property_id ?? route.query.get('bien') ?? undefined;
+    const p = pid ? data.properties.find((x) => x.id === pid) : undefined;
+    active = p?.status === 'acquis' ? 'biens' : 'prospection';
+    if (b && !sc && sync.state === 'loading') page = <p className="muted">Chargement…</p>;
+    else page = <SimulatorPage key={key} propertyId={p?.id} />;
   } else if (a === 'contacts') { active = 'contacts'; page = b ? <ContactDetailPage key={b} id={b} /> : <ContactsPage />; }
   else if (a === 'parametres') { active = 'parametres'; page = <SettingsPage />; }
   else if (a === 'locataires') { active = 'locataires'; page = <LeasesPage key={key} tab={route.query.get('onglet') === 'locataires' ? 'locataires' : 'baux'} />; }
