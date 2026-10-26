@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Immo-Zen — l'investissement locatif, de l'annonce à la déclaration</title>
-  <meta name="description" content="Immo-Zen réunit la prospection, les simulations de rentabilité, la gestion des locations et la préparation de la déclaration fiscale dans un seul espace.">
+  <title>Immo-Zen — investir dans le locatif avec des chiffres justes, et gérer sans tableur</title>
+  <meta name="description" content="Premier achat, petit parc ou patrimoine en SCI et LMNP : Immo-Zen vous aide à acheter au bon prix, à vérifier le cash-flow avant l'offre, puis à gérer loyers, baux, quittances et déclaration fiscale au même endroit.">
   <meta name="theme-color" content="#1F4A45">
   <link rel="icon" href="icon-192.png">
   <link rel="stylesheet" href="site.css">
@@ -19,12 +19,12 @@
       </a>
       <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav">Menu</button>
       <nav id="nav" aria-label="Navigation du site">
-        <a href="#solution">La solution</a>
-        <a href="#nouveautes">Bail et impôts</a>
-        <a href="#accompagnement">Accompagnement</a>
-        <a href="#guides">Guides</a>
+        <a href="#profils">Pour qui</a>
+        <a href="#decider">Acheter</a>
+        <a href="#gerer">Gérer</a>
+        <a href="#declarer">Déclarer</a>
         <a href="#tarifs">Tarifs</a>
-        <a href="#questions">Questions</a>
+        <a href="#guides">Guides</a>
         <a class="btn btn-espace" href="app/">Espace client</a>
       </nav>
     </div>
@@ -34,17 +34,22 @@
     <section class="hero">
       <div class="wrap hero-in">
         <div class="hero-text">
-          <h1>L'investissement locatif, de la première annonce à la déclaration d'impôts.</h1>
-          <p class="lead">Immo-Zen réunit dans un seul espace la recherche de biens, les simulations de rentabilité, la gestion des locations (baux, quittances, espace locataire) et la préparation de la déclaration. Pour décider avec des chiffres justes, et gérer sans tableur.</p>
+          <p class="eyebrow">Pour les investisseurs en immobilier locatif</p>
+          <h1>Achetez au bon prix, vérifiez le cash-flow avant l'offre, gérez sans tableur.</h1>
+          <p class="lead">Que vous prépariez votre premier achat ou que vous pilotiez dix logements, Immo-Zen répond aux trois questions qui comptent : <strong>ce bien vaut-il ce prix ?</strong> <strong>Va-t-il s'autofinancer ?</strong> <strong>Combien me rapporte vraiment mon parc ?</strong></p>
           <div class="actions">
-            <a class="btn btn-main" href="app/">Ouvrir mon espace</a>
-            <a class="btn btn-ghost" href="#solution">Voir comment ça marche</a>
+            <a class="btn btn-main" href="app/">Essayer gratuitement 30 jours</a>
+            <a class="btn btn-ghost" href="#profils">Trouver mon profil</a>
           </div>
-          <p class="small">Offre Découverte gratuite pendant 30 jours, sans carte bancaire ; toutes les fonctions sont ouvertes pendant la phase de lancement. Fonctionne sur ordinateur et sur téléphone.</p>
+          <ul class="proof" aria-label="En bref">
+            <li>Sans carte bancaire</li>
+            <li>Prix comparés aux ventes réelles (DVF)</li>
+            <li>Vos données exportables à tout moment</li>
+          </ul>
         </div>
 
         <form class="calc" id="calc" aria-labelledby="calc-title" onsubmit="return false">
-          <h2 id="calc-title">Un premier calcul, tout de suite</h2>
+          <h2 id="calc-title">Votre prochain bien s'autofinance-t-il ?</h2>
           <div class="calc-grid">
             <label>Prix du bien<span class="in"><input inputmode="numeric" name="prix" value="120000"><i>€</i></span></label>
             <label>Loyer hors charges<span class="in"><input inputmode="numeric" name="loyer" value="750"><i>€ / mois</i></span></label>
@@ -55,141 +60,166 @@
           <div class="calc-out" aria-live="polite">
             <p class="calc-label">Cash-flow mensuel estimé, avant impôts</p>
             <p class="calc-figure" id="cf">—</p>
+            <p class="calc-verdict" id="cf-verdict"></p>
             <p class="calc-detail" id="cf-detail"></p>
           </div>
-          <p class="small">Estimation simplifiée : frais de notaire de 7,5 %, assurance emprunteur de 0,3 %. Dans Immo-Zen, le calcul complet tient compte des frais d'agence, de la négociation, des charges récupérables, du différé et de la vacance.</p>
+          <p class="small">Estimation simplifiée : frais de notaire de 7,5 %, assurance emprunteur de 0,3 %. Le simulateur d'Immo-Zen ajoute frais d'agence, négociation, travaux, différé, vacance et charges récupérables, et compare jusqu'à quatre biens.</p>
         </form>
       </div>
     </section>
 
-    <section class="why" aria-labelledby="why-title">
-      <div class="wrap narrow">
-        <h2 id="why-title">Pourquoi Immo-Zen</h2>
-        <p class="big">Investir dans un logement locatif, c'est une suite de décisions qui se jouent sur des chiffres : le bon prix, le bon crédit, le bon loyer, le bon régime fiscal. Pourtant, tout est éparpillé. Les annonces dans un onglet, les simulations dans un tableur, le bail dans un dossier, les loyers sur le relevé bancaire, les quittances à rédiger chaque mois, et la déclaration au printemps.</p>
-        <p>Immo-Zen est né de ce constat. Un seul espace suit chaque bien du repérage à la gestion, garde l'historique de chaque décision et fait les calculs à votre place, pour que les débutants avancent avec méthode et que les propriétaires expérimentés gagnent du temps. L'objectif : des décisions plus éclairées, des investissements mieux organisés, et un patrimoine géré avec davantage de sérénité.</p>
+    <section class="pains" aria-labelledby="pains-title">
+      <div class="wrap">
+        <h2 id="pains-title">Ce qui coûte cher aux investisseurs, ce n'est pas le taux</h2>
+        <p class="intro">C'est l'offre faite trop vite sur un bien surévalué, le loyer qui n'est pas révisé, la quittance oubliée, la charge déductible qui manque à la déclaration. Immo-Zen est conçu pour éviter ces erreurs-là.</p>
+        <ul class="pain-grid" role="list">
+          <li><p class="pain">« Je ne sais pas si le prix affiché est le bon. »</p><p>Chaque fiche estime une fourchette de prix à partir des ventes publiques des trois dernières années autour du bien, avec les ventes comparables consultables.</p></li>
+          <li><p class="pain">« Mes simulations sont dans trois tableurs différents. »</p><p>Une fiche par bien repéré, plusieurs scénarios de financement, et la comparaison côte à côte avant de faire une offre.</p></li>
+          <li><p class="pain">« Je passe mes soirées sur les loyers et les quittances. »</p><p>Les échéances se créent seules, les paiements se rapprochent, les quittances partent quand la période est réglée.</p></li>
+          <li><p class="pain">« Au printemps, je ne sais plus quoi déclarer ni où. »</p><p>Les montants à reporter selon le régime de chaque bien, case par case, avec le chemin sur impots.gouv.fr.</p></li>
+        </ul>
       </div>
     </section>
 
-    <section class="solution" id="solution" aria-labelledby="sol-title">
+    <section class="profils" id="profils" aria-labelledby="profils-title">
       <div class="wrap">
-        <h2 id="sol-title">Une solution tout compris, étape par étape</h2>
-        <p class="intro">Chaque étape alimente la suivante : ce que vous saisissez en prospectant sert à la simulation, puis à la gestion, puis à la déclaration. Rien n'est ressaisi.</p>
-        <ol class="path">
-          <li>
-            <h3>Prospecter</h3>
-            <p>Chaque bien repéré a sa fiche : adresse complétée automatiquement, surface, DPE, lien de l'annonce, agence et agent, visites, relances et points de vigilance. Quinze statuts suivent le parcours jusqu'au compromis.</p>
-          </li>
-          <li>
-            <h3>Simuler et décider</h3>
-            <p>Négociation, frais de notaire et d'agence, crédit avec ou sans différé, loyer au m², charges de copropriété, cash-flow et rendement. Plusieurs scénarios par bien, et la comparaison de deux à quatre biens côte à côte.</p>
-          </li>
-          <li>
-            <h3>Acquérir</h3>
-            <p>Un clic fait passer le bien dans votre patrimoine, avec son historique et une photographie des hypothèses retenues. Le crédit réel, les charges annuelles et le cash-flow prévisionnel sont suivis bien par bien.</p>
-          </li>
-          <li>
-            <h3>Gérer au quotidien</h3>
-            <p>Contrat de bail vide, meublé ou civil prêt à signer, colocations, échéances générées chaque mois, paiements et loyers importés depuis Excel, quittances PDF, relances amiables, révision annuelle selon l'IRL, dépôt de garantie, dépenses et relevés bancaires importés, documents rangés par bien, et un espace en ligne pour chaque locataire.</p>
-          </li>
-          <li>
-            <h3>Déclarer</h3>
-            <p>Chaque printemps, les montants à reporter selon le régime de chaque bien, et où les saisir sur impots.gouv.fr : formulaire 2044 ligne par ligne, cases 4BA à 4BE, micro-BIC, liasse 2031 et 2033 des meublés au réel avec leurs amortissements, dans votre espace particulier ou professionnel.</p>
-          </li>
-        </ol>
-      </div>
-    </section>
+        <h2 id="profils-title">Où en êtes-vous de votre parcours d'investisseur ?</h2>
+        <p class="intro">Les attentes ne sont pas les mêmes au premier achat et au dixième. Choisissez votre profil : voici ce qu'Immo-Zen fait pour vous.</p>
 
-    <section class="detail" aria-labelledby="detail-title">
-      <div class="wrap">
-        <h2 id="detail-title">Ce qui vous change la vie</h2>
-        <dl class="facts">
-          <div><dt>Une seule saisie</dt><dd>La fiche du bien et sa simulation se remplissent dans le même écran ; les prix et le loyer suivent le bien jusqu'à la gestion.</dd></div>
-          <div><dt>Des loyers suivis sans effort</dt><dd>Les échéances se créent seules, chaque paiement est réparti sur ce qui est dû, et l'absence de réponse ne vaut jamais paiement.</dd></div>
-          <div><dt>Des quittances justes</dt><dd>Émises seulement pour une période intégralement réglée, jamais en double, avec le rappel de charges des années précédentes si besoin.</dd></div>
-          <div><dt>Vos relevés, importés</dt><dd>Collez les lignes de votre tableau ou déposez un fichier Excel : catégories et logements sont reconnus, les doublons écartés.</dd></div>
-          <div><dt>Un tableau de bord qui priorise</dt><dd>Impayés, quittances à émettre, relances, visites et révisions de loyer possibles, au même endroit.</dd></div>
-          <div><dt>Un assistant intégré</dt><dd>Une question sur l'application ? L'assistant explique où cliquer, rubrique par rubrique.</dd></div>
-        </dl>
-      </div>
-    </section>
-
-    <section class="features" id="nouveautes" aria-labelledby="feat-title">
-      <div class="wrap">
-        <h2 id="feat-title">Du bail à la déclaration, sans rien oublier</h2>
-        <div class="feature-grid">
-          <article>
-            <h3>Des baux prêts à signer</h3>
-            <p>Location vide ou meublée : le contrat suit les contrats types officiels (décret du 29 mai 2015), avec toutes les mentions obligatoires et les annexes à joindre. Bail civil pour une résidence secondaire ou un logement loué à une société, et location de parking.</p>
-            <p class="small">Loyer, charges, dépôt de garantie et révision sont repris du bail ; les erreurs bloquantes sont signalées avant l'édition : dépôt trop élevé, durée trop courte, logement classé G, loyer au-dessus du plafond.</p>
-          </article>
-          <article>
-            <h3>Un espace pour vos locataires</h3>
-            <p>Invitez chaque locataire à son espace en ligne : il y retrouve ses quittances de loyer en PDF et les documents que vous choisissez de partager, comme le bail signé ou l'état des lieux.</p>
-            <p class="small">Accès en lecture seule, lié à son adresse e-mail et révocable à tout moment. Il ne voit jamais vos autres biens ni vos dépenses.</p>
-          </article>
-          <article>
-            <h3>Votre déclaration, case par case</h3>
-            <p>Selon le régime de chaque bien, Immo-Zen indique quoi déclarer et où : espace particulier pour la déclaration de revenus (2042, 2044, 2042-C-PRO), espace professionnel pour la liasse des meublés au réel ou des SCI, avec les dates limites.</p>
-            <p class="small">Micro-foncier, réel foncier, micro-BIC (meublé classique, de tourisme classé ou non), LMNP au réel, SCI à l'IR ou à l'IS. Un dossier PDF récapitule tout.</p>
-          </article>
+        <div class="profile-tabs" role="tablist" aria-label="Profil d'investisseur">
+          <button role="tab" type="button" id="tab-junior" aria-controls="p-junior" aria-selected="true"><span class="tab-name">Je me lance</span><span class="tab-sub">0 ou 1 bien</span></button>
+          <button role="tab" type="button" id="tab-confirme" aria-controls="p-confirme" aria-selected="false" tabindex="-1"><span class="tab-name">Je développe mon parc</span><span class="tab-sub">2 à 10 biens</span></button>
+          <button role="tab" type="button" id="tab-expert" aria-controls="p-expert" aria-selected="false" tabindex="-1"><span class="tab-name">Je pilote un patrimoine</span><span class="tab-sub">SCI, LMNP réel, 10 biens et plus</span></button>
         </div>
+
+        <article class="profile" id="p-junior" role="tabpanel" aria-labelledby="tab-junior">
+          <div class="profile-main">
+            <h3>Investisseur débutant : sécuriser son premier achat</h3>
+            <p class="profile-want"><strong>Vos questions :</strong> combien acheter, où, quel loyer espérer, nu ou meublé, et comment ne pas se tromper sur le prix ou le financement.</p>
+            <ul class="ticks">
+              <li><strong>Une méthode pas à pas</strong> : de la définition du projet à la signature, avec onze guides chiffrés et à jour des règles 2026.</li>
+              <li><strong>Le bon prix</strong> : estimation d'après les ventes réelles du quartier, pour négocier avec des arguments.</li>
+              <li><strong>Un simulateur complet</strong> : frais de notaire et d'agence, travaux, crédit avec ou sans différé, rendement et cash-flow, plusieurs scénarios par bien.</li>
+              <li><strong>Les pièges signalés</strong> : alertes sur les logements classés E, F et G, points de vigilance notés à chaque visite.</li>
+              <li><strong>Une gestion juste dès le premier locataire</strong> : bail conforme aux contrats types, dépôt de garantie plafonné, quittances et révision de loyer encadrées.</li>
+            </ul>
+          </div>
+          <aside class="profile-side">
+            <p class="side-title">Pour commencer</p>
+            <p>Offre <strong>Découverte</strong>, gratuite 30 jours, puis <strong>Essentiel</strong> dès l'achat (jusqu'à 3 biens).</p>
+            <p class="side-title">À lire d'abord</p>
+            <ul class="side-links">
+              <li><a href="guides/premier-investissement-locatif.html">Réussir son premier investissement</a></li>
+              <li><a href="guides/financer-investissement-locatif.html">Financer son investissement</a></li>
+              <li><a href="guides/calculer-rentabilite-locative.html">Calculer la rentabilité</a></li>
+            </ul>
+            <a class="btn btn-main" href="app/">Simuler mon premier bien</a>
+            <a class="side-more" href="#accompagnement">Besoin d'un regard extérieur ?</a>
+          </aside>
+        </article>
+
+        <article class="profile" id="p-confirme" role="tabpanel" aria-labelledby="tab-confirme">
+          <div class="profile-main">
+            <h3>Investisseur confirmé : gagner du temps et ne rien laisser filer</h3>
+            <p class="profile-want"><strong>Vos attentes :</strong> une gestion qui tient en quelques minutes par mois, des impayés repérés tôt, des loyers révisés à temps, et une vision claire de ce que chaque bien rapporte vraiment.</p>
+            <ul class="ticks">
+              <li><strong>Les loyers en pilote automatique</strong> : échéances générées chaque mois, paiements partiels et trop-perçus gérés, quittances envoyées quand la période est réglée.</li>
+              <li><strong>Les impayés traités tôt</strong> : relances amiables préparées en brouillon, envoyées seulement après votre validation.</li>
+              <li><strong>Des loyers qui suivent l'IRL</strong> : révision proposée chaque année de bail, sans rétroactivité, avec le gel des logements F et G appliqué.</li>
+              <li><strong>Le réel face au prévisionnel</strong> : cash-flow réel de l'année par bien, à comparer avec la simulation d'achat.</li>
+              <li><strong>Vos fichiers repris</strong> : dépenses, relevés et loyers importés depuis Excel ou par copier-coller, sans doublon.</li>
+              <li><strong>La prospection continue</strong> : contacts d'agences et d'agents, relances, visites et comparaison des prochains biens.</li>
+            </ul>
+          </div>
+          <aside class="profile-side">
+            <p class="side-title">Formule conseillée</p>
+            <p><strong>Essentiel</strong> jusqu'à 3 biens, <strong>Patrimoine</strong> jusqu'à 10 biens avec le cash-flow consolidé. Ajoutez le pack fiscal pour la déclaration.</p>
+            <p class="side-title">À lire</p>
+            <ul class="side-links">
+              <li><a href="guides/revision-loyer-irl.html">Réviser son loyer avec l'IRL</a></li>
+              <li><a href="guides/regularisation-charges-locatives.html">Régulariser les charges</a></li>
+              <li><a href="guides/gerer-soi-meme-ou-agence.html">Gérer soi-même ou passer par une agence</a></li>
+            </ul>
+            <a class="btn btn-main" href="app/">Importer mes biens</a>
+          </aside>
+        </article>
+
+        <article class="profile" id="p-expert" role="tabpanel" aria-labelledby="tab-expert">
+          <div class="profile-main">
+            <h3>Investisseur expert : piloter un patrimoine et optimiser la fiscalité</h3>
+            <p class="profile-want"><strong>Vos exigences :</strong> une vue consolidée de tout le parc, des régimes fiscaux mélangés (foncier, LMNP, SCI) traités proprement, des amortissements justes, et des données qui vous appartiennent.</p>
+            <ul class="ticks">
+              <li><strong>Le parc consolidé</strong> : cash-flow de tous vos biens, capital restant dû, estimation actuelle et plus-value latente bien par bien.</li>
+              <li><strong>Chaque régime au bon endroit</strong> : réel foncier et 2044 ligne par ligne, micro-BIC, LMNP au réel avec liasse 2031 et 2033, SCI à l'IR (2072) ou à l'IS (2065).</li>
+              <li><strong>Des amortissements maîtrisés</strong> : durée personnalisée par dépense, dotation, cumul et report suivis d'une année sur l'autre, sans double déduction.</li>
+              <li><strong>Les montages complexes</strong> : colocations à plusieurs titulaires ou à baux multiples, baux civils, résidences secondaires, logements loués à une société, parkings.</li>
+              <li><strong>Des arbitrages chiffrés</strong> : scénarios illimités, comparaison de deux à quatre biens, historique des hypothèses retenues à l'achat.</li>
+              <li><strong>Vos données, sans enfermement</strong> : export Excel, CSV ou sauvegarde complète, à remettre à votre expert-comptable.</li>
+            </ul>
+          </div>
+          <aside class="profile-side">
+            <p class="side-title">Formule conseillée</p>
+            <p><strong>Pro</strong> : biens illimités, déclaration incluse et rendez-vous de démarrage. Plusieurs SCI et accès partagé arrivent bientôt.</p>
+            <p class="side-title">À lire</p>
+            <ul class="side-links">
+              <li><a href="guides/location-nue-ou-meublee-lmnp.html">Nu ou meublé : quel régime ?</a></li>
+              <li><a href="guides/declaration-2044-pas-a-pas.html">La 2044 pas à pas</a></li>
+              <li><a href="guides/rentabilite-patrimoine-projet-de-vie.html">Rentabilité et patrimoine</a></li>
+            </ul>
+            <a class="btn btn-main" href="app/">Centraliser mon patrimoine</a>
+          </aside>
+        </article>
       </div>
     </section>
 
-    <section class="coach" id="accompagnement" aria-labelledby="coach-title">
+    <section class="moment" id="decider" aria-labelledby="decider-title">
       <div class="wrap two">
         <div>
-          <h2 id="coach-title">Un accompagnement, si vous le souhaitez</h2>
-          <p>L'application suffit pour avancer seul. Pour ceux qui veulent un regard extérieur, Immo-Zen prépare un accompagnement humain, à la carte :</p>
-          <ul class="ticks">
-            <li>définir votre projet : budget, secteur, type de bien, stratégie de location ;</li>
-            <li>relire une simulation avant de faire une offre ;</li>
-            <li>mettre en place la gestion : bail, quittances, révision du loyer, suivi des dépenses ;</li>
-            <li>préparer votre première déclaration avec les bons documents.</li>
-          </ul>
-          <p class="small">Ces accompagnements sont en préparation : dites-nous ce qui vous serait utile, nous vous recontactons.</p>
+          <p class="eyebrow">Avant d'acheter</p>
+          <h2 id="decider-title">Décidez sur des chiffres, pas sur une annonce</h2>
+          <p>Chaque bien repéré a sa fiche : adresse complétée automatiquement, surface, DPE, annonce, agence, visites, relances et points de vigilance. La simulation est dans le même écran, sans double saisie.</p>
         </div>
-        <form class="contact" id="contact" novalidate>
-          <h3>Être recontacté</h3>
-          <label>Votre nom<input name="name" autocomplete="name" required maxlength="200"></label>
-          <label>E-mail<input name="email" type="email" autocomplete="email" required maxlength="200"></label>
-          <label>Téléphone (facultatif)<input name="phone" type="tel" autocomplete="tel" maxlength="40"></label>
-          <label>Sujet
-            <select name="topic">
-              <option>Accompagnement</option>
-              <option>Question sur l'application</option>
-              <option>Partenariat</option>
-              <option>Autre</option>
-            </select>
-          </label>
-          <label>Votre message<textarea name="message" rows="4" maxlength="4000"></textarea></label>
-          <label class="hp" aria-hidden="true">Site web<input name="website" tabindex="-1" autocomplete="off"></label>
-          <p class="small">Vos coordonnées servent uniquement à vous répondre. Voir <a href="mentions-legales.html#confidentialite">confidentialité</a>.</p>
-          <button class="btn btn-main" type="submit">Envoyer ma demande</button>
-          <p class="form-msg" id="contact-msg" role="status"></p>
-        </form>
+        <ul class="answers" role="list">
+          <li><p class="q">Le prix est-il cohérent ?</p><p>Fourchette estimée à partir des ventes publiques comparables (DVF) des trois dernières années.</p></li>
+          <li><p class="q">Le bien s'autofinance-t-il ?</p><p>Cash-flow et rendement après crédit, assurance, charges, travaux et vacance, scénario par scénario.</p></li>
+          <li><p class="q">Lequel choisir ?</p><p>Deux à quatre biens comparés côte à côte, avec un scénario principal par bien.</p></li>
+          <li><p class="q">Et une fois acheté ?</p><p>Un clic fait passer le bien dans votre patrimoine, avec l'historique et les hypothèses retenues.</p></li>
+        </ul>
       </div>
     </section>
 
-    <section class="guides" id="guides" aria-labelledby="guides-title">
-      <div class="wrap narrow">
-        <h2 id="guides-title">Guides pratiques</h2>
-        <p class="intro">Onze guides complets pour investir, financer, déclarer et gérer un bien locatif, avec des exemples chiffrés et les règles en vigueur en 2026.</p>
-        <ul class="guides-links">
-          <li><a href="guides/premier-investissement-locatif.html">Réussir son premier investissement locatif<span>Définir son projet, choisir la ville et le bien, chiffrer, négocier et acheter, étape par étape.</span></a></li>
-          <li><a href="guides/calculer-rentabilite-locative.html">Calculer la rentabilité locative<span>Brute, nette et nette-nette : les formules et un exemple complet sur un T2.</span></a></li>
-          <li><a href="guides/cash-flow-investissement-locatif.html">Calculer son cash-flow<span>La formule, trois financements comparés, et quand accepter un cash-flow négatif.</span></a></li>
-          <li><a href="guides/financer-investissement-locatif.html">Financer son investissement locatif<span>35 % d'endettement, 25 ans, loyers retenus, apport, différé et assurance emprunteur.</span></a></li>
-          <li><a href="guides/location-nue-ou-meublee-lmnp.html">Location nue ou meublée : quel régime ?<span>Micro-foncier, réel, micro-BIC et LMNP au réel comparés sur un même bien.</span></a></li>
-          <li><a href="guides/declaration-2044-pas-a-pas.html">Remplir sa déclaration 2044<span>Ligne par ligne, avec le déficit foncier et le report sur la 2042.</span></a></li>
-          <li><a href="guides/quittance-de-loyer.html">Quittance de loyer<span>Mentions obligatoires, reçu de paiement partiel, envoi et modèle.</span></a></li>
-          <li><a href="guides/revision-loyer-irl.html">Réviser son loyer avec l'IRL<span>Formule, délais, gel des logements F et G et lettre type.</span></a></li>
-          <li><a href="guides/regularisation-charges-locatives.html">Régulariser les charges locatives<span>Charges récupérables, méthode, délais et exemple chiffré.</span></a></li>
-          <li><a href="guides/gerer-soi-meme-ou-agence.html">Gérer soi-même ou passer par une agence<span>Coûts, temps passé, garanties contre les impayés et méthode pour décider.</span></a></li>
-          <li><a href="guides/rentabilite-patrimoine-projet-de-vie.html">Rentabilité, patrimoine et projet de vie<span>Pourquoi le bien le plus rentable n'est pas toujours le meilleur, chiffres à l'appui.</span></a></li>
+    <section class="moment alt" id="gerer" aria-labelledby="gerer-title">
+      <div class="wrap two">
+        <div>
+          <p class="eyebrow">Pendant la location</p>
+          <h2 id="gerer-title">Une gestion qui tient en quelques minutes par mois</h2>
+          <p>Le tableau de bord vous dit quoi faire : impayés, quittances à émettre, relances à valider, visites et révisions de loyer possibles. Rien n'est envoyé à un locataire sans votre accord.</p>
+        </div>
+        <ul class="answers" role="list">
+          <li><p class="q">Des baux prêts à signer</p><p>Vide ou meublé d'après les contrats types officiels, bail civil et parking ; les erreurs bloquantes sont signalées avant l'édition.</p></li>
+          <li><p class="q">Des quittances justes</p><p>Émises seulement pour une période intégralement réglée, jamais en double ; reçu distinct pour un paiement partiel.</p></li>
+          <li><p class="q">Un espace pour vos locataires</p><p>Quittances et documents partagés en lecture seule, accès révocable. Gratuit pour eux.</p></li>
+          <li><p class="q">Dépenses et documents rangés</p><p>Par bien, par catégorie, avec justificatifs privés et part récupérable.</p></li>
         </ul>
-        <p><a class="btn btn-ghost" href="guides/">Tous les guides</a></p>
-        <p class="small">Ces guides donnent des repères généraux ; ils ne remplacent pas un conseil fiscal ou juridique personnalisé.</p>
+      </div>
+    </section>
+
+    <section class="moment" id="declarer" aria-labelledby="declarer-title">
+      <div class="wrap two">
+        <div>
+          <p class="eyebrow">Au printemps</p>
+          <h2 id="declarer-title">Votre déclaration, case par case</h2>
+          <p>Les loyers et dépenses enregistrés toute l'année deviennent les montants à reporter, selon le régime de chaque bien, avec le chemin dans votre espace particulier ou professionnel et les dates limites. Un dossier PDF récapitule tout.</p>
+          <p class="small">Aide au remplissage, à vérifier avec les notices ou un professionnel ; Immo-Zen ne dépose rien à votre place.</p>
+        </div>
+        <ul class="regimes" role="list">
+          <li>Micro-foncier <span>case 4BE</span></li>
+          <li>Réel foncier <span>2044, 4BA à 4BD</span></li>
+          <li>Micro-BIC <span>5NI, 5NG, 5NH</span></li>
+          <li>LMNP au réel <span>2031, 2033, amortissements</span></li>
+          <li>SCI à l'IR <span>2072</span></li>
+          <li>SCI à l'IS <span>2065</span></li>
+        </ul>
       </div>
     </section>
 
@@ -208,17 +238,18 @@
 
     <section class="price" id="tarifs" aria-labelledby="price-title">
       <div class="wrap">
-        <h2 id="price-title">Tarifs</h2>
-        <p class="intro">Une offre Découverte gratuite pendant 30 jours pour commencer, puis trois formules selon le nombre de biens que vous détenez. Les biens en prospection ne sont jamais comptés. Prix TTC, sans engagement : l'abonnement annuel coûte dix mois.</p>
+        <h2 id="price-title">Une formule à la taille de votre parc</h2>
+        <p class="intro">Vous payez selon le nombre de biens que vous détenez ; les biens en prospection ne sont jamais comptés. Prix TTC, sans engagement : l'abonnement annuel coûte dix mois.</p>
         <p class="launch" role="note"><strong>Phase de lancement :</strong> toutes les fonctions sont ouvertes gratuitement. Vous serez prévenu avant l'ouverture des abonnements, et rien ne sera prélevé sans votre accord.</p>
 
         <ul class="tiers" role="list">
           <li class="tier">
             <p class="tier-flag tier-flag-limit">Offre limitée à 30 jours</p>
+            <p class="tier-who">Pour se lancer</p>
             <h3>Découverte</h3>
             <p class="tier-price">Gratuit</p>
             <p class="tier-alt">pendant 30 jours, sans carte bancaire</p>
-            <p class="tier-for">Pour découvrir Immo-Zen avec un premier bien. Au-delà de 30 jours, choisissez une formule pour continuer à saisir ; vos données restent consultables et exportables.</p>
+            <p class="tier-for">Tester vos premières simulations et gérer un premier bien. Ensuite, vos données restent consultables et exportables.</p>
             <ul class="ticks">
               <li>1 bien détenu, 5 biens en prospection</li>
               <li>Simulateur : 2 scénarios par bien</li>
@@ -229,10 +260,11 @@
             <a class="btn btn-ghost" href="app/">Essayer gratuitement 30 jours</a>
           </li>
           <li class="tier">
+            <p class="tier-who">Débutant et premier parc</p>
             <h3>Essentiel</h3>
             <p class="tier-price">99&nbsp;€<span> / an</span></p>
             <p class="tier-alt">ou 9,90&nbsp;€ par mois</p>
-            <p class="tier-for">Pour l'investisseur qui prospecte et gère jusqu'à 3 biens.</p>
+            <p class="tier-for">Prospecter sans limite et gérer jusqu'à 3 biens, sans y passer ses soirées.</p>
             <ul class="ticks">
               <li>Jusqu'à 3 biens détenus</li>
               <li>Prospection et scénarios illimités</li>
@@ -244,10 +276,11 @@
           </li>
           <li class="tier tier-main">
             <p class="tier-flag">Recommandée</p>
+            <p class="tier-who">Investisseur confirmé</p>
             <h3>Patrimoine</h3>
             <p class="tier-price">199&nbsp;€<span> / an</span></p>
             <p class="tier-alt">ou 19,90&nbsp;€ par mois</p>
-            <p class="tier-for">Pour piloter un patrimoine jusqu'à 10 biens.</p>
+            <p class="tier-for">Piloter un parc qui grandit et savoir ce qu'il rapporte vraiment.</p>
             <ul class="ticks">
               <li>Tout Essentiel, jusqu'à 10 biens détenus</li>
               <li>Cash-flow consolidé de tous vos biens</li>
@@ -256,10 +289,11 @@
             <a class="btn btn-main" href="app/">Commencer</a>
           </li>
           <li class="tier">
+            <p class="tier-who">Investisseur expert</p>
             <h3>Pro</h3>
             <p class="tier-price">399&nbsp;€<span> / an</span></p>
             <p class="tier-alt">ou 39,90&nbsp;€ par mois</p>
-            <p class="tier-for">Pour les grands patrimoines, avec la déclaration incluse.</p>
+            <p class="tier-for">Les grands patrimoines, plusieurs régimes fiscaux, la déclaration incluse.</p>
             <ul class="ticks">
               <li>Biens détenus illimités</li>
               <li>Déclaration fiscale incluse : 2044, micro-BIC, liasse LMNP, parcours impots.gouv</li>
@@ -278,27 +312,110 @@
       </div>
     </section>
 
+    <section class="coach" id="accompagnement" aria-labelledby="coach-title">
+      <div class="wrap two">
+        <div>
+          <h2 id="coach-title">Un accompagnement, si vous le souhaitez</h2>
+          <p>L'application suffit pour avancer seul. Pour ceux qui veulent un regard extérieur, Immo-Zen prépare un accompagnement humain, à la carte, selon votre étape :</p>
+          <ul class="ticks">
+            <li><strong>Je me lance</strong> : définir budget, secteur, type de bien et stratégie de location ; relire une simulation avant l'offre.</li>
+            <li><strong>Je développe</strong> : mettre en place la gestion (bail, quittances, révision, dépenses) et reprendre vos fichiers existants.</li>
+            <li><strong>Je pilote</strong> : organiser un parc multi-régimes et préparer le dossier pour votre expert-comptable.</li>
+          </ul>
+          <p class="small">Ces accompagnements sont en préparation : dites-nous ce qui vous serait utile, nous vous recontactons.</p>
+        </div>
+        <form class="contact" id="contact" novalidate>
+          <h3>Être recontacté</h3>
+          <label>Votre nom<input name="name" autocomplete="name" required maxlength="200"></label>
+          <label>E-mail<input name="email" type="email" autocomplete="email" required maxlength="200"></label>
+          <label>Téléphone (facultatif)<input name="phone" type="tel" autocomplete="tel" maxlength="40"></label>
+          <label>Votre profil
+            <select name="profile">
+              <option value="">Je préfère ne pas préciser</option>
+              <option>Premier investissement</option>
+              <option>2 à 10 biens</option>
+              <option>Plus de 10 biens, SCI ou LMNP réel</option>
+            </select>
+          </label>
+          <label>Sujet
+            <select name="topic">
+              <option>Accompagnement</option>
+              <option>Question sur l'application</option>
+              <option>Partenariat</option>
+              <option>Autre</option>
+            </select>
+          </label>
+          <label>Votre message<textarea name="message" rows="4" maxlength="4000"></textarea></label>
+          <label class="hp" aria-hidden="true">Site web<input name="website" tabindex="-1" autocomplete="off"></label>
+          <p class="small">Vos coordonnées servent uniquement à vous répondre. Voir <a href="mentions-legales.html#confidentialite">confidentialité</a>.</p>
+          <button class="btn btn-main" type="submit">Envoyer ma demande</button>
+          <p class="form-msg" id="contact-msg" role="status"></p>
+        </form>
+      </div>
+    </section>
+
+    <section class="guides" id="guides" aria-labelledby="guides-title">
+      <div class="wrap">
+        <h2 id="guides-title">Guides pratiques</h2>
+        <p class="intro">Onze guides complets avec des exemples chiffrés et les règles en vigueur en 2026, classés selon votre étape.</p>
+        <div class="guide-cols">
+          <div>
+            <h3>Préparer et acheter</h3>
+            <ul class="guides-links">
+              <li><a href="guides/premier-investissement-locatif.html">Réussir son premier investissement locatif<span>Projet, ville, bien, chiffrage, négociation et achat.</span></a></li>
+              <li><a href="guides/calculer-rentabilite-locative.html">Calculer la rentabilité locative<span>Brute, nette et nette-nette, sur un exemple de T2.</span></a></li>
+              <li><a href="guides/cash-flow-investissement-locatif.html">Calculer son cash-flow<span>Trois financements comparés, et quand accepter un cash-flow négatif.</span></a></li>
+              <li><a href="guides/financer-investissement-locatif.html">Financer son investissement<span>Endettement, durée, loyers retenus, apport, différé, assurance.</span></a></li>
+            </ul>
+          </div>
+          <div>
+            <h3>Gérer ses locations</h3>
+            <ul class="guides-links">
+              <li><a href="guides/quittance-de-loyer.html">Quittance de loyer<span>Mentions obligatoires, reçu partiel, envoi et modèle.</span></a></li>
+              <li><a href="guides/revision-loyer-irl.html">Réviser son loyer avec l'IRL<span>Formule, délais, gel des logements F et G, lettre type.</span></a></li>
+              <li><a href="guides/regularisation-charges-locatives.html">Régulariser les charges locatives<span>Charges récupérables, méthode, délais, exemple.</span></a></li>
+              <li><a href="guides/gerer-soi-meme-ou-agence.html">Gérer soi-même ou passer par une agence<span>Coûts, temps passé, garanties contre les impayés.</span></a></li>
+            </ul>
+          </div>
+          <div>
+            <h3>Optimiser et déclarer</h3>
+            <ul class="guides-links">
+              <li><a href="guides/location-nue-ou-meublee-lmnp.html">Location nue ou meublée : quel régime ?<span>Micro-foncier, réel, micro-BIC et LMNP au réel comparés.</span></a></li>
+              <li><a href="guides/declaration-2044-pas-a-pas.html">Remplir sa déclaration 2044<span>Ligne par ligne, déficit foncier et report sur la 2042.</span></a></li>
+              <li><a href="guides/rentabilite-patrimoine-projet-de-vie.html">Rentabilité, patrimoine et projet de vie<span>Pourquoi le plus rentable n'est pas toujours le meilleur.</span></a></li>
+            </ul>
+          </div>
+        </div>
+        <p><a class="btn btn-ghost" href="guides/">Tous les guides</a></p>
+        <p class="small">Ces guides donnent des repères généraux ; ils ne remplacent pas un conseil fiscal ou juridique personnalisé.</p>
+      </div>
+    </section>
+
     <section class="faq" id="questions" aria-labelledby="faq-title">
       <div class="wrap narrow">
         <h2 id="faq-title">Questions fréquentes</h2>
-        <details><summary>Faut-il installer quelque chose ?</summary><p>Non. Immo-Zen s'ouvre dans le navigateur, sur ordinateur, tablette ou téléphone. Le navigateur propose aussi de l'ajouter à l'écran d'accueil, comme une application.</p></details>
-        <details><summary>Je n'ai pas encore de bien. Immo-Zen m'est-il utile ?</summary><p>Oui : la prospection et le simulateur servent justement à comparer des biens et à vérifier qu'un projet tient la route avant de faire une offre.</p></details>
+        <details><summary>Je n'ai pas encore de bien. Immo-Zen m'est-il utile ?</summary><p>Oui : la prospection, l'estimation du prix et le simulateur servent justement à comparer des biens et à vérifier qu'un projet tient la route avant de faire une offre. Les biens en prospection ne sont jamais comptés dans les limites des formules.</p></details>
+        <details><summary>J'ai déjà tout dans des tableaux Excel. Faut-il tout ressaisir ?</summary><p>Non : dépenses, relevés bancaires et loyers s'importent depuis un fichier Excel ou CSV, ou par simple copier-coller. Les colonnes, catégories et logements sont reconnus, et un fichier importé deux fois ne crée pas de doublon.</p></details>
+        <details><summary>Je détiens des biens en nom propre et en SCI, en nu et en meublé. Est-ce géré ?</summary><p>Oui : chaque bien a son régime (micro-foncier, réel foncier, micro-BIC, LMNP au réel, SCI à l'IR ou à l'IS) et la déclaration est préparée régime par régime. La gestion de plusieurs SCI séparées et l'accès partagé avec un associé ou un comptable arrivent dans la formule Pro.</p></details>
         <details><summary>Immo-Zen calcule-t-il mes impôts ?</summary><p>Il prépare les montants à reporter sur votre déclaration à partir des loyers et dépenses enregistrés, selon le régime de chaque bien, et vous indique où les saisir sur impots.gouv.fr (espace particulier ou professionnel). C'est une aide au remplissage, à vérifier avec les notices ou un professionnel, pas un conseil fiscal ; Immo-Zen ne dépose rien à votre place.</p></details>
+        <details><summary>D'où vient l'estimation du prix ?</summary><p>Des données publiques de demandes de valeurs foncières (DVF) : les ventes des trois dernières années proches du bien et comparables en type et en surface. Vous voyez la fourchette et les ventes retenues, et pouvez saisir votre propre estimation.</p></details>
         <details><summary>Les baux générés sont-ils conformes ?</summary><p>Les baux vides et meublés reprennent la structure et les mentions des contrats types fixés par le décret du 29 mai 2015, mis à jour (décence énergétique, dépenses d'énergie, clause résolutoire). Ils se complètent avec vos informations et doivent être relus avant signature ; le bail civil et le bail de parking, sans modèle officiel, suivent le Code civil.</p></details>
-        <details><summary>Puis-je reprendre mes tableaux Excel ?</summary><p>Oui : dépenses, relevés bancaires et loyers s'importent depuis un fichier Excel ou CSV, ou par simple copier-coller. Un fichier importé deux fois ne crée pas de doublon.</p></details>
         <details><summary>Les quittances et relances partent-elles toutes seules ?</summary><p>Une quittance ne part automatiquement que si vous l'avez activé et qu'un paiement que vous avez enregistré règle exactement la période. Une relance est toujours préparée en brouillon : rien n'est envoyé au locataire sans votre validation.</p></details>
+        <details><summary>Faut-il installer quelque chose ?</summary><p>Non. Immo-Zen s'ouvre dans le navigateur, sur ordinateur, tablette ou téléphone. Le navigateur propose aussi de l'ajouter à l'écran d'accueil, comme une application.</p></details>
         <details><summary>Puis-je changer de formule ou résilier ?</summary><p>Oui, à tout moment depuis « Mon abonnement ». Un passage à une formule supérieure s'applique tout de suite, au prorata. Une résiliation prend effet à la fin de la période payée ; votre compte passe alors en consultation seule.</p></details>
         <details><summary>Que deviennent mes données si je dépasse les limites de ma formule ?</summary><p>Rien n'est supprimé ni bloqué en lecture. Vous pouvez toujours consulter, modifier et exporter vos biens, loyers et documents ; seuls les ajouts au-delà des limites demandent une formule supérieure.</p></details>
         <details><summary>Que se passe-t-il à la fin des 30 jours de l'offre Découverte ?</summary><p>Sans abonnement, votre compte passe en consultation seule : vous retrouvez et exportez toutes vos données, mais vous ne pouvez plus en ajouter ni en modifier. Il suffit de choisir une formule dans « Mon abonnement » pour reprendre là où vous en étiez.</p></details>
         <details><summary>Mes locataires doivent-ils payer pour leur espace ?</summary><p>Non. L'espace locataire est gratuit pour vos locataires : ils créent un compte avec l'adresse e-mail à laquelle vous les avez invités et consultent leurs quittances et les documents partagés.</p></details>
-        <details><summary>Comment me connecter ?</summary><p>Par le bouton « Espace client » en haut de chaque page, avec votre e-mail et votre mot de passe. « Mot de passe oublié » vous envoie un lien de réinitialisation.</p></details>
       </div>
     </section>
 
     <section class="end">
       <div class="wrap end-in">
-        <p>Prospectez, investissez et gérez vos locations sereinement.</p>
-        <a class="btn btn-light" href="app/">Ouvrir mon espace</a>
+        <p>Votre prochain investissement mérite mieux qu'un tableur.</p>
+        <div class="end-actions">
+          <a class="btn btn-light" href="app/">Essayer gratuitement 30 jours</a>
+          <a class="end-link" href="#accompagnement">Ou être recontacté</a>
+        </div>
       </div>
     </section>
   </main>
