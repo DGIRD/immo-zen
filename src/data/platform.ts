@@ -5,6 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { RepoError } from './repo.ts';
 import type { DvfEstimate, DvfType } from '../../supabase/functions/_shared/dvf.ts';
+import type { ListingData } from '../../supabase/functions/_shared/listing.ts';
 import { demoPlan, type PlanInfo, type TierCode } from '../domain/plans.ts';
 
 export type SubscriptionStatus = 'none' | 'trialing' | 'active' | 'past_due' | 'unpaid' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'paused';
@@ -60,6 +61,8 @@ export interface PlatformApi {
   ask(messages: ChatMessage[], page: string): Promise<string>;
   /** Estimation DVF calculée par la fonction serveur « dvf » (repli). */
   dvf(payload: { citycode: string; type: DvfType; surface: number; lat: number | null; lon: number | null }): Promise<DvfEstimate | null>;
+  /** Lecture d'une annonce par la fonction serveur « annonce » : lien de la page, ou texte collé (lecture assistée). */
+  readListing(payload: { url: string } | { text: string }): Promise<{ listing: ListingData; url: string | null; assisted: boolean }>;
   /** null : tables du lot 3 absentes (migration non exécutée). */
   state(): Promise<PlatformState | null>;
   checkout(plan: Plan['code']): Promise<string>;
@@ -139,6 +142,17 @@ export function createSupabasePlatform(sb: SupabaseClient): PlatformApi {
         throw new RepoError(msg);
       }
       return (data as { estimate: DvfEstimate | null }).estimate;
+    },
+    async readListing(payload) {
+      const { data, error } = await sb.functions.invoke('annonce', { body: payload });
+      if (error) {
+        const ctx = (error as { context?: Response }).context;
+        if (!ctx || ctx.status === 404 || ctx.status === 503) throw new FunctionUnavailable('La lecture des annonces n’est pas encore activée : collez le texte de l’annonce.');
+        let msg = 'Lecture de l’annonce impossible pour le moment : collez le texte de l’annonce.';
+        try { const j = await ctx.json(); if (j?.error) msg = j.error; } catch { /* corps illisible */ }
+        throw new RepoError(msg);
+      }
+      return data as { listing: ListingData; url: string | null; assisted: boolean };
     },
     async state() {
       const acc = await sb.rpc('iz_my_access').maybeSingle();
@@ -230,6 +244,7 @@ export function createDemoPlatform(storage: Storage, userId: () => string | null
   return {
     async ask() { throw new AssistantUnavailable('Mode démonstration : aide intégrée seulement.'); },
     async dvf() { throw new FunctionUnavailable('Mode démonstration.'); },
+    async readListing() { throw new FunctionUnavailable('Mode démonstration : la page de l’annonce n’est pas téléchargée. Collez le texte de l’annonce.'); },
     async state() {
       const d = read();
       return { access: { has_access: true, reason: 'administrateur', until: null, is_admin: true, enforce: d.config.enforce_subscription }, config: d.config, plans: d.plans, subscription: null, supportUntil: d.supportUntil,

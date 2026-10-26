@@ -106,7 +106,7 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
           <Select label="Statut d’acquisition" value={draft.status ?? 'repere'} onChange={(v) => set('status', (v ?? 'repere') as PropertyStatus)} options={statusOptions}
             hint={!owned && existing ? '« Acquis » transfère le bien dans Mes biens.' : undefined} />
           <AddressFields value={draft} onChange={(a) => setDraft((d) => ({ ...d, ...a }))} />
-          {owned && <NumberInput label="Surface" suffix="m²" value={draft.surface} onChange={(v) => set('surface', v)} error={errors.surface} />}
+          <NumberInput label="Surface" suffix="m²" value={draft.surface} onChange={(v) => set('surface', v)} error={errors.surface} />
           <NumberInput label="Pièces" value={draft.rooms} onChange={(v) => set('rooms', v === null ? null : Math.round(v))} error={errors.rooms} />
           <Select label="DPE renseigné" value={draft.dpe ?? null} onChange={(v) => set('dpe', v)} allowEmpty="Non renseigné" options={DPE_VALUES.map((d) => [d, d] as const)} />
           {!owned && <TextInput label="Lien de l’annonce" type="url" wide value={draft.listing_url} onChange={(v) => set('listing_url', v || null)} error={errors.listing_url} placeholder="https://" />}

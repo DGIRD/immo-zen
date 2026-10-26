@@ -197,6 +197,33 @@ async function main() {
     await page.getByText('Bien ajouté à la prospection').first().waitFor();
   });
 
+  await step('annonce : surface dans la fiche, caractéristiques reprises depuis le texte de l’annonce', async () => {
+    await page.goto(url + '#/simulateur');
+    await page.getByRole('heading', { name: 'Le bien' }).waitFor();
+    const bien = page.locator('section', { has: page.getByRole('heading', { name: 'Le bien' }) });
+    await bien.getByLabel('Surface du logement').waitFor();
+    await page.getByLabel('Lien de l’annonce').fill('https://www.exemple-annonces.fr/annonce/123');
+    await page.getByRole('button', { name: 'Remplir depuis l’annonce' }).click();
+    await page.getByText(/Collez le texte de l’annonce/).first().waitFor();
+    await page.getByLabel('Texte de l’annonce').fill(['Appartement 3 pièces 62 m²', 'Lyon 7e (69007)', '285 000 €', '2 chambres, 3e étage.',
+      'Charges de copropriété : 150 € par mois', 'Taxe foncière : 1 100 €', 'DPE : C'].join('\n'));
+    await page.getByRole('button', { name: 'Analyser le texte' }).click();
+    const box = page.getByRole('region', { name: 'Remplir depuis l’annonce' });
+    await box.getByText('Dans l’annonce').waitFor();
+    assert.match((await box.innerText()).replace(/[\u202f\u00a0]/g, ' '), /1 800/, 'charges mensuelles converties en annuel');
+    await box.getByRole('button', { name: /^Reprendre dans la fiche \(\d+\)$/ }).click();
+    await page.getByText(/reprises? de l’annonce/).first().waitFor();
+    assert.equal(await page.getByLabel('Titre du bien *').inputValue(), 'Appartement 3 pièces 62 m²');
+    assert.equal(await bien.getByLabel('Surface du logement').inputValue(), '62');
+    assert.equal(await page.getByLabel('Pièces').inputValue(), '3');
+    assert.equal(await page.getByLabel('Code postal').inputValue(), '69007');
+    assert.equal(await page.getByLabel('DPE').inputValue(), 'C');
+    assert.match((await page.getByLabel('Prix de présentation FAI').inputValue()).replace(/\s/g, ''), /^285000/);
+    assert.match((await page.getByLabel('Taxe foncière', { exact: true }).inputValue()).replace(/\s/g, ''), /^1100/);
+    assert.match(await page.getByLabel('Commentaires').inputValue(), /2 chambres, 3e étage/);
+    await page.screenshot({ path: join(out, '37-annonce.png'), fullPage: true });
+  });
+
   await step('simulation liée au bien, enregistrée comme scénario principal', async () => {
     await page.goto(url + '#/prospection');
     await page.getByRole('button', { name: 'T3 test balcon' }).first().click();
