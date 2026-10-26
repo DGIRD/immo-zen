@@ -9,6 +9,8 @@ import { inputsFromProperty, isProspect, prospectFieldsFromSimulation } from '..
 import { autoProvisionMonthly, autoRecoverableAnnual, ENGINE_VERSION, normalizeInputs, simulate, summarize, type FieldError, type SimulationInputs } from '../domain/simulator.ts';
 import { Button, Checkbox, NumberInput, PageHeader, Section, Select, TextArea, TextInput } from '../ui/components.tsx';
 import { EstimatePanel, type EstimateFields } from '../ui/EstimatePanel.tsx';
+import { ListingImport } from '../ui/ListingImport.tsx';
+import type { ListingData, ListingField } from '../../supabase/functions/_shared/listing.ts';
 import { href, navigate } from '../ui/router.ts';
 
 export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string; propertyId?: string }) {
@@ -72,6 +74,44 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
     return next;
   });
   const live = outcome.ok ? outcome.result : null;
+
+  /** Reprend dans la fiche et la simulation les caractéristiques retenues de l'annonce. */
+  function applyListing(l: ListingData, fields: ListingField[], finalUrl: string | null) {
+    const has = (k: ListingField) => fields.includes(k) && l[k] !== null;
+    setBien((b) => {
+      const n = { ...b };
+      if (has('title')) n.title = l.title!.slice(0, 200);
+      if (has('property_type')) n.property_type = l.property_type!;
+      if (has('rooms')) n.rooms = Math.round(l.rooms!);
+      if (has('address')) n.address = l.address;
+      if (has('zip')) n.zip = l.zip;
+      if (has('city')) n.city = l.city;
+      if (has('dpe')) n.dpe = l.dpe;
+      if (finalUrl && !n.listing_url) n.listing_url = finalUrl;
+      // détails sans champ dédié : notés dans les commentaires
+      const notes = [has('bedrooms') ? `${l.bedrooms} chambre${l.bedrooms! > 1 ? 's' : ''}` : null, has('floor') ? (l.floor === 0 ? 'rez-de-chaussée' : `${l.floor}e étage`) : null,
+        has('furnished') && l.furnished ? 'vendu meublé' : null].filter(Boolean).join(', ');
+      if (notes && !(n.comments ?? '').includes('D’après l’annonce')) n.comments = [n.comments, `D’après l’annonce : ${notes}.`].filter(Boolean).join('\n');
+      if (has('dpe') && (l.dpe === 'F' || l.dpe === 'G') && !n.vigilance.some((x) => /DPE/.test(x))) n.vigilance = [...n.vigilance, `DPE ${l.dpe} : location interdite ou loyer gelé, travaux à prévoir`];
+      return n;
+    });
+    setInputs((i) => {
+      const n = { ...i };
+      // prix proposé vide : il part du prix affiché, honoraires inclus (montant des honoraires connu ou à saisir)
+      if (has('price')) { n.askingPrice = l.price!; if (!i.price) { n.price = l.price!; n.priceMode = 'honoraires_inclus'; n.agencyFees = 0; } }
+      if (has('agency_fees') && (n.priceMode === 'honoraires_inclus')) n.agencyFees = l.agency_fees!;
+      if (has('surface')) n.surface = l.surface!;
+      if (has('property_tax_annual')) n.propertyTaxAnnual = l.property_tax_annual!;
+      if (has('copro_charges_annual')) {
+        const c = l.copro_charges_annual!;
+        if (!i.coproRecoverableAnnual || i.coproRecoverableAnnual === autoRecoverableAnnual(i.coproChargesAnnual)) n.coproRecoverableAnnual = autoRecoverableAnnual(c);
+        if (!i.chargesProvisionMonthly || i.chargesProvisionMonthly === autoProvisionMonthly(i.coproChargesAnnual)) n.chargesProvisionMonthly = autoProvisionMonthly(c);
+        n.coproChargesAnnual = c;
+      }
+      return n;
+    });
+    notify(`${fields.length} caractéristique${fields.length > 1 ? 's' : ''} reprise${fields.length > 1 ? 's' : ''} de l’annonce : vérifiez-les avant d’enregistrer.`);
+  }
   const dirty = JSON.stringify(inputs) !== JSON.stringify(initial) || name !== (scenario?.name ?? name) || linked !== initialProperty || JSON.stringify(bien) !== JSON.stringify(bienBase);
 
   const linkedProp = linked ? data.properties.find((p) => p.id === linked) : undefined;
@@ -174,9 +214,17 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
                     options={STATUS_ORDER.filter((x) => x !== 'acquis' && x !== 'archive').map((x) => [x, STATUS_LABELS[x]] as const)} />
                   <AddressFields value={bien} onChange={(a) => setBien((b) => ({ ...b, ...a }))} />
                   <Select label="Type" value={bien.property_type} onChange={(v) => setB('property_type', (v ?? 'appartement') as PropertyType)} options={Object.entries(TYPE_LABELS) as [PropertyType, string][]} />
+                  {num('surface', 'Surface du logement', 'm²', 'Surface habitable (loi Carrez en copropriété)')}
                   <NumberInput label="Pièces" value={bien.rooms} onChange={(v) => setB('rooms', v === null ? null : Math.round(v))} />
                   <Select label="DPE" value={bien.dpe} onChange={(v) => setB('dpe', v)} allowEmpty="Non renseigné" options={DPE_VALUES.map((d) => [d, d] as const)} />
                   <TextInput label="Lien de l’annonce" type="url" wide value={bien.listing_url} onChange={(v) => setB('listing_url', v || null)} placeholder="https://" />
+                  <div className="field field-full">
+                    <ListingImport url={bien.listing_url}
+                      current={{ title: bien.title, property_type: bien.property_type, price: inputs.askingPrice, surface: inputs.surface, rooms: bien.rooms, address: bien.address,
+                        zip: bien.zip, city: bien.city, dpe: bien.dpe, copro_charges_annual: inputs.coproChargesAnnual, property_tax_annual: inputs.propertyTaxAnnual,
+                        agency_fees: inputs.priceMode === 'honoraires_inclus' ? inputs.agencyFees : null }}
+                      onApply={applyListing} />
+                  </div>
                 </>
               ) : <p className="muted small field-full">Bien détenu : sa fiche se modifie dans Mes biens. La simulation ne la change pas.</p>}
               <TextInput label="Nom du scénario" value={name} onChange={setName} maxLength={120} />
@@ -211,7 +259,7 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
           <Section title="Acquisition">
             <div className="grid">
               {num('askingPrice', 'Prix de présentation FAI', '€', 'Prix affiché, frais d’agence inclus')}
-              {num('surface', 'Surface du logement', 'm²')}
+              {linkedProperty && !isProspect(linkedProperty) && num('surface', 'Surface du logement', 'm²')}
               <Select label="Le prix proposé est" value={inputs.priceMode} onChange={(v) => set('priceMode', v ?? 'hors_honoraires')}
                 options={[['hors_honoraires', 'Hors honoraires'], ['honoraires_inclus', 'Honoraires inclus']] as const} />
               {num('price', 'Prix proposé', '€')}

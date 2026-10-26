@@ -539,3 +539,10 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 @media (max-width: 760px) { .grid-edit-actions { margin-left: 0; width: 100%; } }
 .note-warn { background: var(--ocre-tint); border-left: 4px solid var(--ocre); }
 .note-warn ul { margin: .4rem 0; padding-left: 1.2rem; }
+
+/* remplissage depuis une annonce */
+.listing-import { background: var(--paper); border: 1px dashed var(--line); border-radius: var(--radius); padding: .75rem 1rem; }
+.listing-import .row { align-items: center; gap: .6rem 1rem; flex-wrap: wrap; }
+.listing-import textarea { width: 100%; font: inherit; }
+.listing-found { margin-top: .6rem; }
+.listing-found .pill { margin-left: .35rem; }
