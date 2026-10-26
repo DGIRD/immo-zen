@@ -202,6 +202,9 @@ async function main() {
     await page.getByRole('heading', { name: 'Le bien' }).waitFor();
     const bien = page.locator('section', { has: page.getByRole('heading', { name: 'Le bien' }) });
     await bien.getByLabel('Surface du logement').waitFor();
+    await bien.getByLabel('Prix de présentation FAI').waitFor();
+    const order = await page.locator('h2').allInnerTexts();
+    assert.ok(order.indexOf('Suivi des actions') > order.indexOf('Loyers et charges'), `suivi après la simulation : ${order.join(' > ')}`);
     await page.getByLabel('Lien de l’annonce').fill('https://www.exemple-annonces.fr/annonce/123');
     await page.getByRole('button', { name: 'Remplir depuis l’annonce' }).click();
     await page.getByText(/Collez le texte de l’annonce/).first().waitFor();

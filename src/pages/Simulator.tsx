@@ -214,6 +214,7 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
                     options={STATUS_ORDER.filter((x) => x !== 'acquis' && x !== 'archive').map((x) => [x, STATUS_LABELS[x]] as const)} />
                   <AddressFields value={bien} onChange={(a) => setBien((b) => ({ ...b, ...a }))} />
                   <Select label="Type" value={bien.property_type} onChange={(v) => setB('property_type', (v ?? 'appartement') as PropertyType)} options={Object.entries(TYPE_LABELS) as [PropertyType, string][]} />
+                  {num('askingPrice', 'Prix de présentation FAI', '€', 'Prix affiché, frais d’agence inclus')}
                   {num('surface', 'Surface du logement', 'm²', 'Surface habitable (loi Carrez en copropriété)')}
                   <NumberInput label="Pièces" value={bien.rooms} onChange={(v) => setB('rooms', v === null ? null : Math.round(v))} />
                   <Select label="DPE" value={bien.dpe} onChange={(v) => setB('dpe', v)} allowEmpty="Non renseigné" options={DPE_VALUES.map((d) => [d, d] as const)} />
@@ -229,7 +230,7 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
               ) : <p className="muted small field-full">Bien détenu : sa fiche se modifie dans Mes biens. La simulation ne la change pas.</p>}
               <TextInput label="Nom du scénario" value={name} onChange={setName} maxLength={120} />
             </div>
-            {(!linkedProperty || isProspect(linkedProperty)) && <p className="muted small">Une seule fiche : tout ce qui est saisi ici (bien, suivi, estimation, simulation) est enregistré ensemble et repris tel quel dans la prospection.</p>}
+            {(!linkedProperty || isProspect(linkedProperty)) && <p className="muted small">Une seule fiche : tout ce qui est saisi ici (bien, estimation, simulation, suivi des actions) est enregistré ensemble et repris tel quel dans la prospection.</p>}
           </Section>
 
           {(!linkedProperty || isProspect(linkedProperty)) && (
@@ -238,27 +239,12 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
                 <EstimatePanel value={bien} input={{ ...bien, surface: inputs.surface }} onChange={(p) => setBien((b) => ({ ...b, ...p }))}
                   compareTo={live?.offerFai || null} compareLabel="Prix proposé (frais d’agence inclus)" />
               </Section>
-              <Section title="Suivi">
-                <div className="grid">
-                  <Select label="Agence" value={bien.agency_id} onChange={(v) => setB('agency_id', v)} allowEmpty="Aucune"
-                    options={[...data.contacts.filter((c) => c.kind === 'agence' && !c.archived_at).map((c) => [c.id, c.name] as const), [NEW, '+ Nouvelle agence…'] as const]} />
-                  {bien.agency_id === NEW && <TextInput label="Nom de la nouvelle agence" value={newAgency} onChange={setNewAgency} maxLength={200} />}
-                  <Select label="Agent" value={bien.agent_id} onChange={(v) => setB('agent_id', v)} allowEmpty="Aucun"
-                    options={[...data.contacts.filter((c) => c.kind === 'agent' && !c.archived_at && (!bien.agency_id || bien.agency_id === NEW || !c.organization_id || c.organization_id === bien.agency_id)).map((c) => [c.id, c.name] as const), [NEW, '+ Nouvel agent…'] as const]} />
-                  {bien.agent_id === NEW && <TextInput label="Nom du nouvel agent" value={newAgent} onChange={setNewAgent} maxLength={200} />}
-                  <TextInput label="Prochaine action" wide value={bien.next_action} onChange={(v) => setB('next_action', v || null)} maxLength={300} placeholder="Ex. Demander les PV d’AG" />
-                  <TextInput label="Date de relance" type="date" value={bien.follow_up_date} onChange={(v) => setB('follow_up_date', v || null)} />
-                  <TextInput label="Date et heure de visite" type="datetime-local" value={bien.visit_at ? toLocalInput(bien.visit_at) : ''} onChange={(v) => setB('visit_at', v ? new Date(v).toISOString() : null)} />
-                  <TextArea label="Commentaires" value={bien.comments} onChange={(v) => setB('comments', v || null)} rows={3} />
-                  <TextArea label="Points de vigilance (un par ligne)" value={bien.vigilance.join('\n')} onChange={(v) => setB('vigilance', v.split('\n').map((x) => x.trim()).filter(Boolean))} rows={3} />
-                </div>
-              </Section>
             </>
           )}
 
           <Section title="Acquisition">
             <div className="grid">
-              {num('askingPrice', 'Prix de présentation FAI', '€', 'Prix affiché, frais d’agence inclus')}
+              {linkedProperty && !isProspect(linkedProperty) && num('askingPrice', 'Prix de présentation FAI', '€', 'Prix affiché, frais d’agence inclus')}
               {linkedProperty && !isProspect(linkedProperty) && num('surface', 'Surface du logement', 'm²')}
               <Select label="Le prix proposé est" value={inputs.priceMode} onChange={(v) => set('priceMode', v ?? 'hors_honoraires')}
                 options={[['hors_honoraires', 'Hors honoraires'], ['honoraires_inclus', 'Honoraires inclus']] as const} />
@@ -401,6 +387,24 @@ export function SimulatorPage({ scenarioId, propertyId }: { scenarioId?: string;
           )}
           {!detail && <p className="muted">{r.months} mensualités. Choisissez une vue par année ou par mois.</p>}
         </Section>
+      )}
+
+      {(!linkedProperty || isProspect(linkedProperty)) && (
+      <Section title="Suivi des actions">
+        <div className="grid">
+          <Select label="Agence" value={bien.agency_id} onChange={(v) => setB('agency_id', v)} allowEmpty="Aucune"
+            options={[...data.contacts.filter((c) => c.kind === 'agence' && !c.archived_at).map((c) => [c.id, c.name] as const), [NEW, '+ Nouvelle agence…'] as const]} />
+          {bien.agency_id === NEW && <TextInput label="Nom de la nouvelle agence" value={newAgency} onChange={setNewAgency} maxLength={200} />}
+          <Select label="Agent" value={bien.agent_id} onChange={(v) => setB('agent_id', v)} allowEmpty="Aucun"
+            options={[...data.contacts.filter((c) => c.kind === 'agent' && !c.archived_at && (!bien.agency_id || bien.agency_id === NEW || !c.organization_id || c.organization_id === bien.agency_id)).map((c) => [c.id, c.name] as const), [NEW, '+ Nouvel agent…'] as const]} />
+          {bien.agent_id === NEW && <TextInput label="Nom du nouvel agent" value={newAgent} onChange={setNewAgent} maxLength={200} />}
+          <TextInput label="Prochaine action" wide value={bien.next_action} onChange={(v) => setB('next_action', v || null)} maxLength={300} placeholder="Ex. Demander les PV d’AG" />
+          <TextInput label="Date de relance" type="date" value={bien.follow_up_date} onChange={(v) => setB('follow_up_date', v || null)} />
+          <TextInput label="Date et heure de visite" type="datetime-local" value={bien.visit_at ? toLocalInput(bien.visit_at) : ''} onChange={(v) => setB('visit_at', v ? new Date(v).toISOString() : null)} />
+          <TextArea label="Commentaires" value={bien.comments} onChange={(v) => setB('comments', v || null)} rows={3} />
+          <TextArea label="Points de vigilance (un par ligne)" value={bien.vigilance.join('\n')} onChange={(v) => setB('vigilance', v.split('\n').map((x) => x.trim()).filter(Boolean))} rows={3} />
+        </div>
+      </Section>
       )}
 
       <details className="method">
