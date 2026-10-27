@@ -6,7 +6,7 @@ import { CHANNEL_LABELS, EVENT_LABELS, OCCUPATION_LABELS, OWNERSHIP_LABELS, STAT
 import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, dpeAlerts, isOwned, loanInfo, metrics, ownedCashflow, rentWithCharges, scenarioResult, primaryScenario } from '../domain/property.ts';
 import { cfTitle } from './propertyShared.tsx';
 import { EstimatePanel } from '../ui/EstimatePanel.tsx';
-import { normalizeInputs, simulate } from '../domain/simulator.ts';
+import { normalizeInputs, simulate, simulatedCashflow } from '../domain/simulator.ts';
 import { Button, EmptyState, KeyValue, PageHeader, Section, StatusBadge, Tabs, TextInput, useConfirm } from '../ui/components.tsx';
 import { href, navigate } from '../ui/router.ts';
 import { usePropertyActions } from './useActions.tsx';
@@ -98,7 +98,7 @@ export function PropertyDetailPage({ id }: { id: string }) {
         <Figure label="Rendement brut" value={pct(r?.grossYield)} />
         {owned
           ? <Figure label="Cash-flow / mois" value={money(cf?.monthly)} tone={cf ? (cf.monthly >= 0 ? 'pos' : 'neg') : undefined} hint={cfTitle(cf)} />
-          : <Figure label="Cash-flow / mois" value={money(r?.cashflowMonthlyYear1)} tone={r ? (r.cashflowMonthlyYear1 >= 0 ? 'pos' : 'neg') : undefined} hint="avant fiscalité, année 1" />}
+          : <Figure label="Cash-flow / mois" value={money(simulatedCashflow(r))} tone={simulatedCashflow(r) === null ? undefined : simulatedCashflow(r)! >= 0 ? 'pos' : 'neg'} hint={r && simulatedCashflow(r) === null ? 'renseignez le loyer au m²' : 'avant fiscalité, année 1'} />}
       </div>
 
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
@@ -197,7 +197,7 @@ function SnapshotFigures({ inputs }: { inputs: Scenario['inputs'] }) {
   const r = out.result;
   return <KeyValue items={[
     ['Coût total', money(r.totalCost)], ['Emprunt', money(r.loanAmount)], ['Mensualité', money(r.monthlyPaymentWithInsurance)],
-    ['Loyer mensuel', money(r.annualRent / 12)], ['Rendement brut', pct(r.grossYield)], ['Cash-flow / mois', money(r.cashflowMonthlyYear1)],
+    ['Loyer mensuel', money(r.annualRent / 12)], ['Rendement brut', pct(r.grossYield)], ['Cash-flow / mois', money(simulatedCashflow(r))],
   ]} />;
 }
 
@@ -213,7 +213,7 @@ function SimulationPanel({ propertyId, main, scenarios, onUse, onDelete }: {
         {!main ? <EmptyState title="Aucune simulation">Renseignez prix, financement, loyer et charges pour estimer le coût, le crédit, le rendement et le cash-flow de ce bien.</EmptyState>
           : r ? <KeyValue items={[
             ['Coût total', money(r.totalCost)], ['Emprunt', money(r.loanAmount)], ['Mensualité', money(r.monthlyPaymentWithInsurance)],
-            ['Rendement brut', pct(r.grossYield)], ['Cash-flow / mois', money(r.cashflowMonthlyYear1)], ['Mise à jour', date(main.updated_at)],
+            ['Rendement brut', pct(r.grossYield)], ['Cash-flow / mois', money(simulatedCashflow(r))], ['Mise à jour', date(main.updated_at)],
           ]} />
           : <p className="muted">Hypothèses invalides : ouvrez la simulation pour les corriger.</p>}
         <p className="muted small">Une seule simulation par bien : modifiez-la autant que vous le souhaitez, elle met à jour la fiche (prix, surface, travaux, loyer).</p>
@@ -228,7 +228,7 @@ function SimulationPanel({ propertyId, main, scenarios, onUse, onDelete }: {
                 <li key={s.id}>
                   <div>
                     <strong>{s.name}</strong>
-                    <p className="muted small">{x ? `Coût ${money(x.totalCost)}, mensualité ${money(x.monthlyPaymentWithInsurance)}, rendement ${pct(x.grossYield)}, cash-flow ${money(x.cashflowMonthlyYear1)}/mois` : 'Hypothèses invalides.'}</p>
+                    <p className="muted small">{x ? `Coût ${money(x.totalCost)}, mensualité ${money(x.monthlyPaymentWithInsurance)}, rendement ${pct(x.grossYield)}, cash-flow ${money(simulatedCashflow(x))}/mois` : 'Hypothèses invalides.'}</p>
                   </div>
                   <div className="row">
                     <Button size="sm" onClick={() => onUse(s)}>Utiliser comme simulation du bien</Button>

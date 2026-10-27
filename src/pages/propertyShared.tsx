@@ -7,7 +7,7 @@ import { OCCUPATION_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, TYPE_LABELS } from 
 import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, isOwned, loanInfo, metrics, ownedCashflow, rentWithCharges, summarize, type CashflowEstimate, type PropertyMetrics, primaryScenario } from '../domain/property.ts';
 import { propertyRentalSummary, type PropertyRentalSummary } from '../domain/rental.ts';
 
-import { normalizeInputs, simulate } from '../domain/simulator.ts';
+import { normalizeInputs, simulate, simulatedCashflow } from '../domain/simulator.ts';
 import type { Column } from '../ui/DataTable.tsx';
 import { StatusBadge } from '../ui/components.tsx';
 
@@ -80,8 +80,8 @@ export function prospectColumns(): Column<PropertyRow>[] {
     { id: 'works', label: 'Travaux', value: (r) => r.p.works_budget, kind: 'money', align: 'right', render: (r) => money(r.p.works_budget), defaultHidden: true },
     { id: 'rent', label: 'Loyer hors charges', value: (r) => r.p.estimated_rent, kind: 'money', align: 'right', render: (r) => money(r.p.estimated_rent), defaultHidden: true },
     { id: 'yield', label: 'Rendement brut', value: (r) => r.m.result?.grossYield ?? null, kind: 'percent', align: 'right', render: (r) => pct(r.m.result?.grossYield), mobile: true },
-    { id: 'cashflow', label: 'Cash-flow / mois', value: (r) => r.m.result?.cashflowMonthlyYear1 ?? null, kind: 'money', align: 'right',
-      render: (r) => <span className={tone(r.m.result?.cashflowMonthlyYear1)}>{money(r.m.result?.cashflowMonthlyYear1)}</span>, mobile: true },
+    { id: 'cashflow', label: 'Cash-flow / mois', value: (r) => simulatedCashflow(r.m.result), kind: 'money', align: 'right',
+      render: (r) => { const cf = simulatedCashflow(r.m.result); return cf === null ? <span className="muted" title="Renseignez le loyer au m² pour lancer la simulation">—</span> : <span className={tone(cf)}>{money(cf)}</span>; }, mobile: true },
     { id: 'agency', label: 'Agence', value: (r) => r.agency?.name, defaultHidden: true },
     { id: 'agent', label: 'Agent', value: (r) => r.agent?.name, defaultHidden: true },
     { id: 'status', label: 'Statut', value: (r) => STATUS_LABELS[r.p.status], render: (r) => <StatusBadge status={r.p.status} />, mobile: true },

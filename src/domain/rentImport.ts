@@ -142,12 +142,20 @@ export function planAllocations(payments: { key: string; amount: number; paid_on
   return out;
 }
 
-export type MonthReceiptAction = 'quittance' | 'recu' | 'deja' | 'aucune';
+/**
+ * quittance : mois intégralement réglé ;
+ * aligner : mois réglé pour moins que l'échéance — le paiement fait foi, l'échéance est ramenée
+ * au montant payé puis quittancée (ou, au choix, reçu partiel) ;
+ * deja : quittance déjà émise ; aucune : rien à émettre.
+ */
+export type MonthReceiptAction = 'quittance' | 'aligner' | 'deja' | 'aucune';
 export interface MonthProposal extends MonthSummary {
   /** Total réglé sur l'échéance du mois après l'import. */
   paidAfter: number;
   /** Document proposé pour le mois. */
   action: MonthReceiptAction;
+  /** Pour « aligner » : mois échu (quittance au montant payé proposée par défaut) ; sinon reçu partiel. */
+  past: boolean;
   message: string;
 }
 
@@ -155,7 +163,7 @@ export interface MonthProposal extends MonthSummary {
  * Après import : paiements additionnés par bail et par mois de paiement, avec la quittance
  * (période intégralement réglée) ou le reçu partiel proposé pour ce mois.
  */
-export function monthProposals(rows: RentImportRow[], views: ChargeView[], receipts: Pick<Receipt, 'charge_id' | 'kind' | 'cancelled_at' | 'extra_lines'>[], leases: Pick<Lease, 'id' | 'start_date'>[]): MonthProposal[] {
+export function monthProposals(rows: RentImportRow[], views: ChargeView[], receipts: Pick<Receipt, 'charge_id' | 'kind' | 'cancelled_at' | 'extra_lines'>[], leases: Pick<Lease, 'id' | 'start_date'>[], today = new Date().toISOString().slice(0, 10)): MonthProposal[] {
   const ok = rows.filter((r) => r.leaseId && r.date && r.amount !== null && r.amount > 0);
   const after = new Map<string, ChargeView[]>();
   for (const l of leases) {
@@ -168,10 +176,11 @@ export function monthProposals(rows: RentImportRow[], views: ChargeView[], recei
   const quittanced = (id: string) => receipts.some((r) => r.kind === 'quittance' && !r.cancelled_at && (r.charge_id === id || (r.extra_lines ?? []).some((x) => x.charge_id === id)));
   return monthlyTotals(ok.map((r) => ({ lease_id: r.leaseId!, paid_on: r.date!, amount: r.amount! })), views).map((m) => {
     const v = m.charge ? (after.get(m.lease_id) ?? []).find((x) => x.charge.id === m.charge!.charge.id) ?? m.charge : null;
-    if (!v) return { ...m, paidAfter: 0, action: 'aucune' as const, message: 'Aucune échéance ce mois-là : montant gardé en avance ou affecté aux arriérés' };
-    if (quittanced(v.charge.id)) return { ...m, paidAfter: v.paid, action: 'deja' as const, message: 'Quittance déjà émise' };
-    if (v.remaining <= 0) return { ...m, paidAfter: v.paid, action: 'quittance' as const, message: 'Mois intégralement réglé' };
-    if (v.paid > 0) return { ...m, paidAfter: v.paid, action: 'recu' as const, message: `Il manque ${eur(v.remaining)} € : reçu partiel seulement` };
-    return { ...m, paidAfter: 0, action: 'aucune' as const, message: 'Échéance du mois non réglée' };
+    const past = m.month < today.slice(0, 7);
+    if (!v) return { ...m, past, paidAfter: 0, action: 'aucune' as const, message: 'Aucune échéance ce mois-là : montant gardé en avance ou affecté aux arriérés' };
+    if (quittanced(v.charge.id)) return { ...m, past, paidAfter: v.paid, action: 'deja' as const, message: 'Quittance déjà émise' };
+    if (v.remaining <= 0) return { ...m, past, paidAfter: v.paid, action: 'quittance' as const, message: 'Mois intégralement réglé' };
+    if (v.paid > 0) return { ...m, past, paidAfter: v.paid, action: 'aligner' as const, message: `Payé ${eur(v.paid)} € pour ${eur(v.total)} € dus` };
+    return { ...m, past, paidAfter: 0, action: 'aucune' as const, message: 'Échéance du mois non réglée' };
   });
 }

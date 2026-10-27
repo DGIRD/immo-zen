@@ -337,6 +337,60 @@ export function restorableCharges(lease: Pick<Lease, 'id' | 'start_date' | 'end_
     .sort((a, b) => a.period_start.localeCompare(b.period_start));
 }
 
+// ---------- Le paiement fait foi ----------
+/**
+ * Montants d'une échéance ramenée (ou portée) à `paid` : les charges du mois sont conservées
+ * et le loyer prend la différence ; si le montant payé est inférieur aux charges, tout va aux charges.
+ */
+export function alignToPaid(c: Pick<RentCharge, 'rent_amount' | 'charges_amount'>, paid: number): { rent_amount: number; charges_amount: number } {
+  const p = round2(Math.max(0, paid));
+  if (p >= c.charges_amount) return { rent_amount: round2(p - c.charges_amount), charges_amount: c.charges_amount };
+  return { rent_amount: 0, charges_amount: p };
+}
+
+export interface PaidAlignment {
+  view: ChargeView;
+  /** Montant réellement payé sur l'échéance, qui devient le montant dû. */
+  paid: number;
+  /** Écart abandonné (montant dû − payé). */
+  gap: number;
+  /** Proposé coché : mois échus (avant le mois en cours). */
+  suggested: boolean;
+}
+
+/**
+ * Échéances de loyer partiellement réglées, sans quittance, dont le montant dû peut être aligné sur
+ * le montant payé (« le paiement fait foi ») : cas d'un historique importé alors que le loyer
+ * du bail a été saisi à sa valeur actuelle. Le mois en cours n'est pas proposé par défaut.
+ */
+export function paidAlignments(views: ChargeView[], receipts: Pick<Receipt, 'charge_id' | 'kind' | 'cancelled_at' | 'extra_lines'>[], today: string, leaseId?: string): PaidAlignment[] {
+  const covered = new Set<string>();
+  for (const r of receipts) if (!r.cancelled_at && r.kind === 'quittance') { covered.add(r.charge_id); for (const x of r.extra_lines ?? []) covered.add(x.charge_id); }
+  const cur = monthOf(today);
+  return views.filter((v) => v.charge.kind === 'loyer' && !v.charge.cancelled_at && v.paid > 0 && v.remaining > 0
+      && !covered.has(v.charge.id) && (!leaseId || v.charge.lease_id === leaseId) && monthOf(v.charge.period_start) <= cur)
+    .sort((a, b) => a.charge.period_start.localeCompare(b.charge.period_start))
+    .map((view) => ({ view, paid: view.paid, gap: view.remaining, suggested: monthOf(view.charge.period_start) < cur }));
+}
+
+/**
+ * « Annuler le paiement » d'une échéance : les paiements entièrement affectés à cette échéance sont
+ * supprimés ; ceux qui règlent aussi d'autres échéances sont seulement détachés de celle-ci
+ * (la part libérée reste en avance au crédit du locataire).
+ */
+export function chargePaymentRemoval(chargeId: string, payments: Payment[], allocations: Allocation[]): { remove: Payment[]; detach: Allocation[] } {
+  const mine = allocations.filter((a) => a.charge_id === chargeId);
+  const remove: Payment[] = [];
+  const detach: Allocation[] = [];
+  for (const a of mine) {
+    const p = payments.find((x) => x.id === a.payment_id);
+    if (!p) continue;
+    const others = allocations.some((x) => x.payment_id === p.id && x.charge_id !== chargeId);
+    if (!others && round2(a.amount) >= round2(p.amount)) { if (!remove.includes(p)) remove.push(p); } else detach.push(a);
+  }
+  return { remove, detach };
+}
+
 export interface MonthSummary {
   lease_id: string;
   /** AAAA-MM */

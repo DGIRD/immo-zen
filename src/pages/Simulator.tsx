@@ -6,7 +6,7 @@ import { AddressFields } from '../ui/AddressFields.tsx';
 import { downloadBlob, stamp, toXlsx } from '../domain/exporting.ts';
 import { money, money2, pct } from '../domain/format.ts';
 import { inputsFromProperty, isProspect, primaryScenario, prospectFieldsFromSimulation } from '../domain/property.ts';
-import { autoProvisionMonthly, autoRecoverableAnnual, ENGINE_VERSION, normalizeInputs, simulate, summarize, type FieldError, type SimulationInputs } from '../domain/simulator.ts';
+import { autoProvisionMonthly, autoRecoverableAnnual, ENGINE_VERSION, normalizeInputs, simulate, simulatedCashflow, summarize, type FieldError, type SimulationInputs } from '../domain/simulator.ts';
 import { Button, Checkbox, NumberInput, PageHeader, Section, Select, TextArea, TextInput } from '../ui/components.tsx';
 import { EstimatePanel, type EstimateFields } from '../ui/EstimatePanel.tsx';
 import { ListingImport } from '../ui/ListingImport.tsx';
@@ -324,12 +324,20 @@ export function SimulatorPage({ propertyId }: { propertyId?: string }) {
             </div>
           ) : r && (
             <>
-              <div className={`cashflow ${r.cashflowMonthlyYear1 >= 0 ? 'pos' : 'neg'}`}>
-                <span>Cash-flow avant fiscalité</span>
-                <strong>{money(r.cashflowMonthlyYear1)}<small> / mois</small></strong>
-                <span className="muted small">moyenne de l’année 1, soit {money(r.cashflowAnnualYear1)} / an</span>
-                {inputs.useLoan && inputs.deferralType !== 'aucun' && <span className="muted small">après le différé : {money(r.cashflowMonthlySteady)} / mois</span>}
-              </div>
+              {simulatedCashflow(r) === null ? (
+                <div className="cashflow pending" role="status">
+                  <span>Cash-flow avant fiscalité</span>
+                  <strong>—</strong>
+                  <span className="muted small">{inputs.rentMode === 'manuel' ? 'Saisissez le loyer hors charges pour lancer la simulation du cash-flow.' : !inputs.surface ? 'Renseignez la surface et le loyer au m² pour lancer la simulation du cash-flow.' : `Renseignez le loyer au m² ${inputs.rentMode} pour lancer la simulation du cash-flow.`}</span>
+                </div>
+              ) : (
+                <div className={`cashflow ${r.cashflowMonthlyYear1 >= 0 ? 'pos' : 'neg'}`}>
+                  <span>Cash-flow avant fiscalité</span>
+                  <strong>{money(r.cashflowMonthlyYear1)}<small> / mois</small></strong>
+                  <span className="muted small">moyenne de l’année 1, soit {money(r.cashflowAnnualYear1)} / an</span>
+                  {inputs.useLoan && inputs.deferralType !== 'aucun' && <span className="muted small">après le différé : {money(r.cashflowMonthlySteady)} / mois</span>}
+                </div>
+              )}
               <dl className="results">
                 {r.negotiationAmount !== null && <div><dt>Négociation</dt><dd>{money(r.negotiationAmount)} ({pct(r.negotiationPct)})</dd></div>}
                 {r.pricePerM2 !== null && <div><dt>Prix au m² (FAI)</dt><dd>{money(r.pricePerM2)}</dd></div>}
@@ -351,9 +359,11 @@ export function SimulatorPage({ propertyId }: { propertyId?: string }) {
                 <div><dt>Loyers annuels</dt><dd>{money(r.annualRent)}</dd></div>
                 <div><dt>Charges non récupérables</dt><dd>{money(r.annualOwnerCharges)}</dd></div>
                 <div><dt>Vacance</dt><dd>{money(r.annualVacancy)}</dd></div>
-                <div><dt>Revenu net avant crédit</dt><dd>{money(r.annualNetOperatingIncome)}</dd></div>
-                <div><dt>Rendement brut</dt><dd>{pct(r.grossYield)}</dd></div>
-                <div><dt>Rendement après charges</dt><dd>{pct(r.netYield)}</dd></div>
+                {r.monthlyRent > 0 && <>
+                  <div><dt>Revenu net avant crédit</dt><dd>{money(r.annualNetOperatingIncome)}</dd></div>
+                  <div><dt>Rendement brut</dt><dd>{pct(r.grossYield)}</dd></div>
+                  <div><dt>Rendement après charges</dt><dd>{pct(r.netYield)}</dd></div>
+                </>}
                 <div><dt>Capital remboursé année 1</dt><dd>{money(r.year1PrincipalRepaid)}</dd></div>
               </dl>
               <p className="muted small">Le capital remboursé n’est pas une charge : il diminue la trésorerie mais constitue votre patrimoine. Aucune fiscalité n’est calculée.</p>

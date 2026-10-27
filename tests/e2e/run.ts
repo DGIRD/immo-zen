@@ -32,6 +32,8 @@ async function serve(): Promise<{ url: string; close: () => void }> {
 }
 
 const results: { name: string; ok: boolean; error?: string }[] = [];
+/** Capture d'écran prise à l'échec d'une étape (diagnostic). */
+let failShot: (n: number) => Promise<void> = async () => undefined;
 async function step(name: string, fn: () => Promise<void>) {
   try {
     await fn();
@@ -39,6 +41,7 @@ async function step(name: string, fn: () => Promise<void>) {
     console.log(`OK   ${name}`);
   } catch (e) {
     results.push({ name, ok: false, error: String(e) });
+    await failShot(results.length);
     console.log(`ÉCHEC ${name}\n     ${String(e).split('\n').slice(0, 4).join('\n     ')}`);
     if (process.env.GITHUB_ACTIONS) console.log(`::error title=Test navigateur::${name} – ${String(e).split('\n').slice(0, 3).join(' ').replace(/\s+/g, ' ').slice(0, 400)}`);
   }
@@ -77,6 +80,7 @@ async function main() {
     return r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(list) });
   });
   const page = await ctx.newPage();
+  failShot = (n) => page.screenshot({ path: join(out, `echec-${n}.png`), fullPage: true }).then(() => undefined).catch(() => undefined);
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -276,9 +280,13 @@ async function main() {
     await page.getByLabel('Prix proposé', { exact: true }).fill('220000');
     const nego = await shown('nego');
     assert.match(nego, /20 000 €\s*soit 8,00 %/, `négociation en montant et en % : ${nego}`);
+    // pas de cash-flow négatif « charges seules » tant que le loyer au m² n'est pas saisi
+    await page.locator('.cashflow.pending').getByText(/Renseignez le loyer au m² bas/).waitFor();
+    assert.equal(await page.locator('.sim-results').getByText('Rendement brut').count(), 0, 'rendements masqués sans loyer');
     await page.getByLabel('Loyer au m² bas').fill('20');
     await page.getByLabel('Loyer au m² haut').fill('25');
     assert.match(await shown('rent-hc'), /800,00 €/);
+    assert.equal(await page.locator('.cashflow.pending').count(), 0, 'simulation du cash-flow lancée dès le loyer au m²');
     await page.getByRole('radio', { name: 'Haut' }).click();
     assert.match(await shown('rent-hc'), /1 000,00 €/);
     await page.getByLabel('Charges de copropriété').fill('1000');
@@ -874,12 +882,13 @@ async function main() {
     await dlg.getByRole('button', { name: 'Supprimer le document' }).click();
     await page.getByText('Document supprimé (annulé).').first().waitFor();
     await page.getByRole('tab', { name: /^Échéances/ }).click();
-    await page.getByRole('button', { name: /^Mettre en cohérence les quittances \(\d+\)/ }).click();
+    await page.getByRole('button', { name: /^Mettre en cohérence paiements et quittances \(\d+\)/ }).click();
     dlg = page.locator('dialog[open]');
-    await dlg.getByRole('heading', { name: 'Mettre en cohérence les quittances' }).waitFor();
+    await dlg.getByRole('heading', { name: 'Mettre en cohérence paiements et quittances' }).waitFor();
+    await dlg.getByText('Le paiement fait foi').first().waitFor();
     await dlg.getByRole('button', { name: /^Émettre \d+ quittances?$/ }).click();
-    await page.getByText(/quittances? émises? : quittances et paiements sont en cohérence/).first().waitFor();
-    assert.equal(await page.getByRole('button', { name: /^Mettre en cohérence les quittances \(/ }).count(), 0, 'plus rien à quittancer');
+    await page.getByText(/quittances? émises? : paiements et quittances sont en cohérence/).first().waitFor();
+    assert.equal(await page.getByRole('button', { name: /^Mettre en cohérence paiements et quittances \(/ }).count(), 0, 'plus rien à quittancer');
     // échéances en grille : une échéance quittancée est verrouillée
     await page.getByLabel('Afficher').selectOption('toutes');
     await page.getByRole('button', { name: 'Modifier en grille' }).click();
@@ -920,6 +929,98 @@ async function main() {
     await page.getByLabel('Rechercher dans le tableau').fill('portail (grille)');
     await page.locator('table.dt-table tbody tr', { hasText: '45,00' }).waitFor();
     await page.getByLabel('Rechercher dans le tableau').fill('');
+  });
+
+  await step('échéances : modifier le montant, aligner sur le payé, annuler le paiement, annuler puis réactiver', async () => {
+    await page.goto(leaseUrl);
+    await page.getByRole('tab', { name: /Échéances/ }).click();
+    const rows = page.locator('table.dt-table tbody tr');
+    const paidRow = rows.filter({ has: page.locator('.status', { hasText: /^Payée$/ }) }).filter({ hasNotText: 'Rappel' }).first();
+    const period = (await paidRow.locator('td').first().innerText()).split('\n')[0]!.trim();
+    const row = () => rows.filter({ hasText: period }).first();
+    // montant relevé : la quittance est annulée, l'échéance devient partiellement payée
+    await row().getByRole('button', { name: 'Modifier', exact: true }).click();
+    let dlg = page.locator('dialog[open]');
+    await dlg.getByRole('heading', { name: `Modifier l’échéance de ${period}` }).waitFor();
+    const charges = dlg.getByLabel('Charges', { exact: true });
+    const before = Number((await charges.inputValue()).replace(/\s/g, '').replace(',', '.'));
+    await charges.fill(String(before + 10).replace('.', ','));
+    await dlg.getByRole('button', { name: 'Enregistrer' }).click();
+    await page.getByText(new RegExp(`Échéance de ${period} modifiée`)).first().waitFor();
+    await row().locator('.status', { hasText: /^Partiel/ }).waitFor();
+    // le paiement fait foi : l'échéance est ramenée au montant payé
+    await row().getByRole('button', { name: 'Modifier', exact: true }).click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByRole('button', { name: /^Aligner sur le montant payé/ }).click();
+    await dlg.getByRole('button', { name: 'Enregistrer' }).click();
+    await row().locator('.status', { hasText: /^Payée$/ }).waitFor();
+    // annuler le paiement : l'échéance redevient due
+    await row().getByRole('button', { name: 'Annuler le paiement' }).click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByText(/L’échéance redevient due/).waitFor();
+    await dlg.getByRole('button', { name: 'Annuler le paiement' }).click();
+    await page.getByText(/L’échéance est de nouveau due/).first().waitFor();
+    assert.equal(await row().getByRole('button', { name: 'Annuler le paiement' }).count(), 0);
+    // annuler l'échéance, puis la réactiver
+    await row().getByRole('button', { name: 'Annuler', exact: true }).click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByLabel('Motif d’annulation').fill('Test réactivation');
+    await dlg.getByRole('button', { name: 'Annuler l’échéance' }).click();
+    await page.getByText('Annulée : Test réactivation').waitFor();
+    await row().getByRole('button', { name: 'Réactiver' }).click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByRole('heading', { name: 'Réactiver l’échéance' }).waitFor();
+    await dlg.getByRole('button', { name: 'Réactiver' }).click();
+    await page.getByText(/réactivée : elle est de nouveau due/).first().waitFor();
+    assert.equal(await page.getByText('Annulée : Test réactivation').count(), 0);
+    // paiement de nouveau confirmé, quittance au montant payé
+    await row().getByRole('button', { name: /Confirmer le paiement|Paiement anticipé/ }).click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByRole('button', { name: /^(Confirmer le paiement|Enregistrer le paiement)$/ }).click();
+    // même montant que le paiement annulé de ce mois : doublon signalé, enregistré quand même
+    await dlg.getByRole('button', { name: 'Enregistrer quand même' }).click({ timeout: 3000 }).catch(() => undefined);
+    await row().locator('.status', { hasText: /^Payée$/ }).waitFor();
+    // depuis Loyers et paiements : menu d'actions de la ligne et filtre « Annulées »
+    await page.goto(url + '#/loyers');
+    await page.getByLabel('Afficher').selectOption('toutes');
+    await page.locator('table.dt-table tbody tr').first().getByLabel('Actions').click();
+    await page.getByRole('menuitem', { name: 'Modifier l’échéance' }).first().waitFor();
+    await page.keyboard.press('Escape');
+    await page.getByLabel('Afficher').selectOption('annulee');
+    await page.screenshot({ path: join(out, '38-echeances-actions.png'), fullPage: true });
+  });
+
+  await step('paiements historiques inférieurs au loyer : le paiement fait foi dans les quittances', async () => {
+    // paiement du mois le plus ancien saisi pour moins que l'échéance (ancien loyer)
+    await page.goto(leaseUrl);
+    await page.getByRole('tab', { name: /Échéances/ }).click();
+    const rows = page.locator('table.dt-table tbody tr');
+    const last = rows.filter({ hasNotText: 'Rappel' }).last();
+    const period = (await last.locator('td').first().innerText()).split('\n')[0]!.trim();
+    const row = () => rows.filter({ hasText: period }).first();
+    if (await row().getByRole('button', { name: 'Annuler le paiement' }).count()) {
+      await row().getByRole('button', { name: 'Annuler le paiement' }).click();
+      await page.locator('dialog[open]').getByRole('button', { name: 'Annuler le paiement' }).click();
+      await page.getByText(/L’échéance est de nouveau due/).first().waitFor();
+    }
+    await row().getByRole('button', { name: /Confirmer le paiement|Paiement anticipé/ }).click();
+    let dlg = page.locator('dialog[open]');
+    await dlg.getByLabel('Montant reçu').fill('500');
+    await dlg.getByRole('button', { name: /^(Confirmer le paiement|Enregistrer le paiement)$/ }).click();
+    await dlg.getByRole('button', { name: 'Enregistrer quand même' }).click({ timeout: 3000 }).catch(() => undefined);
+    await row().locator('.status', { hasText: /^Partiel/ }).waitFor();
+    await page.getByRole('button', { name: /^Mettre en cohérence paiements et quittances \(\d+\)/ }).click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByText('Mois payés pour un montant inférieur à l’échéance').waitFor();
+    assert.ok(await dlg.getByRole('checkbox', { name: `Aligner ${period} sur le montant payé` }).isChecked(), 'mois échu proposé à l’alignement');
+    await page.screenshot({ path: join(out, '39-coherence-paiement-source.png'), fullPage: true });
+    await dlg.getByRole('button', { name: /^Émettre \d+ quittances?$/ }).click();
+    await page.getByText(/alignée.? sur le montant payé/).first().waitFor();
+    await row().locator('.status', { hasText: /^Payée$/ }).waitFor();
+    assert.match((await row().innerText()).replace(/[\u202f\u00a0]/g, ' '), /500,00 €/, 'échéance ramenée au montant payé');
+    await row().getByRole('button', { name: /^Quittance Q-/ }).click();
+    await page.locator('dialog[open]').getByRole('heading', { name: /Quittance Q-/ }).waitFor();
+    await page.locator('dialog[open]').getByRole('button', { name: 'Fermer' }).last().click();
   });
 
   await step('déclaration fiscale : 2044 au réel et cases de la 2042', async () => {

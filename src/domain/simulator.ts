@@ -161,6 +161,14 @@ export function normalizeInputs(partial: Partial<Record<keyof SimulationInputs, 
   return out;
 }
 
+/**
+ * Cash-flow mensuel affiché : seulement une fois le loyer connu (prix au m² et surface, ou loyer saisi).
+ * Avant, la simulation ne montrerait que les charges (ex. −69 €) : elle n'est pas encore lancée.
+ */
+export function simulatedCashflow(r: { monthlyRent: number; cashflowMonthlyYear1: number } | null | undefined): number | null {
+  return r && r.monthlyRent > 0 ? r.cashflowMonthlyYear1 : null;
+}
+
 /** Loyer hors charges mensuel retenu (surface × prix au m², ou montant saisi). */
 export function effectiveRent(i: Pick<SimulationInputs, 'rentMode' | 'surface' | 'rentM2Low' | 'rentM2High' | 'monthlyRent'>): number {
   if (i.rentMode === 'bas') return round2(i.surface * i.rentM2Low);
