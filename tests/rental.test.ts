@@ -174,14 +174,14 @@ test('réaffectation des paiements après correction de la date de début', asyn
   assert.deepEqual(plan, [{ payment_id: 'p1', charge_id: 's', amount: 960 }, { payment_id: 'p2', charge_id: 'o', amount: 960 }]);
 });
 
-test('paiement : échéance du mois d\'abord, puis arriérés, jamais une échéance future ni antérieure au bail', async () => {
+test('paiement : échéance du mois seulement (le paiement fait foi), rappels exigibles, jamais le loyer d\'un autre mois', async () => {
   const { allocateByMonth } = await import('../src/domain/rental.ts');
   const cs = [charge('old', '1990-04-01', '1990-04-05', 500), charge('a', '2026-08-01', '2026-08-05', 500), charge('s', '2026-09-01', '2026-09-05', 500),
     charge('o', '2026-10-01', '2026-10-05', 500), charge('r', '2026-10-01', '2026-10-01', 80, 0, { kind: 'regularisation' }), charge('n', '2026-11-01', '2026-11-05', 500)];
   const views = chargeViews(cs, [], '2026-10-27');
   assert.deepEqual(allocateByMonth(500, '2026-10-06', views, '2024-09-01').allocations, [{ charge_id: 'o', amount: 500 }], 'octobre payé, pas 1990');
   assert.deepEqual(allocateByMonth(1200, '2026-10-06', views, '2024-09-01'), {
-    allocations: [{ charge_id: 'o', amount: 500 }, { charge_id: 'r', amount: 80 }, { charge_id: 'a', amount: 500 }, { charge_id: 's', amount: 120 }], remainder: 0,
+    allocations: [{ charge_id: 'o', amount: 500 }, { charge_id: 'r', amount: 80 }], remainder: 620,
   });
   assert.equal(allocateByMonth(800, '2026-11-02', chargeViews([charge('n', '2026-11-01', '2026-11-05', 500)], [], '2026-11-02')).remainder, 300, 'excédent en avance');
 });
@@ -190,7 +190,7 @@ test('remise en ordre par mois : affectations recalculées, quittances respecté
   const { monthRepairPlan } = await import('../src/domain/rental.ts');
   const l = lease({ start_date: '2026-08-01' });
   const cs = [charge('x', '1990-01-01', '1990-01-05', 500), charge('a', '2026-08-01', '2026-08-05', 500), charge('s', '2026-09-01', '2026-09-05', 500), charge('o', '2026-10-01', '2026-10-05', 500)];
-  const pays = [pay('p8', 500, '2026-08-04'), pay('p9', 500, '2026-09-04'), pay('p10', 500, '2026-10-04')];
+  const pays = [pay('p8', 500, '2026-08-04'), pay('p9', 500, '2026-09-04'), pay('p10', 500, '2026-10-04')].map((p) => ({ ...p, source: 'import' as const }));
   // import ancien : tout réparti sur les plus anciennes, dont 1990
   const wrong = [alloc('p8', 'x', 500), alloc('p9', 'a', 500), alloc('p10', 's', 500)];
   const plan = monthRepairPlan(l, cs, pays, wrong, [], '2026-10-27');
@@ -222,4 +222,38 @@ test('le paiement fait foi : échéance alignée sur le montant payé, mois éch
   const r = chargePaymentRemoval('c8', pays, shared);
   assert.deepEqual(r.remove.map((p) => p.id), ['p8']);
   assert.deepEqual(r.detach.map((a) => a.id), ['pp-c8']);
+});
+
+test('mise en cohérence : un paiement ne règle que son mois, la quittance reprend la somme du mois', async () => {
+  const { coherence } = await import('../src/domain/coherence.ts');
+  // cas réel : bail depuis 09/2024 à 965,18 €, paiements importés à partir de 09/2025 à 958,81 €,
+  // avril réduit par erreur à 32,17 € et son paiement envoyé sur septembre 2024
+  const months = ['2024-09', '2024-10', '2025-09', '2026-03', '2026-04', '2026-05', '2026-06'];
+  const cs = months.map((m) => charge(`c${m}`, `${m}-01`, `${m}-05`, m === '2026-04' ? 32.17 : 815.18, m === '2026-04' ? 0 : 150));
+  const ps = [pay('p1', 958.81, '2025-09-08'), pay('p2', 958.81, '2026-03-06'), pay('p3', 958.81, '2026-04-09'), pay('p4', 958.81, '2026-05-06'), pay('p5', 12.74, '2026-05-21'), pay('p6', 965.18, '2026-06-05')].map((p) => ({ ...p, source: 'import' as const }));
+  const al = [alloc('p3', 'c2026-04', 32.17), alloc('p3', 'c2024-09', 926.64), alloc('p5', 'c2026-05', 6.37), alloc('p5', 'c2024-09', 6.37), alloc('p4', 'c2026-05', 958.81),
+    alloc('p1', 'c2025-09', 958.81), alloc('p2', 'c2026-03', 958.81), alloc('p6', 'c2026-06', 965.18)];
+  const L = { id: 'L1', rent_hc: 815.18, charges_amount: 150 };
+  const r = coherence(L, { charges: cs, payments: ps, allocations: al, receipts: [] }, '2026-10-27');
+  const row = (m: string) => r.rows.find((x) => x.m.month === m)!;
+  assert.equal(row('2024-09').kind, 'vide', 'aucun paiement en septembre 2024');
+  assert.equal(row('2024-09').paidAfter, 0, 'plus rien ne règle septembre 2024');
+  assert.deepEqual([row('2025-09').kind, row('2025-09').target, row('2025-09').issue], ['baisse', 958.81, true]);
+  assert.deepEqual([row('2026-04').kind, row('2026-04').target, row('2026-04').paidAfter, row('2026-04').issue], ['hausse', 958.81, 958.81, true], 'avril : quittance des 958,81 € reçus');
+  // mai : 971,55 € reçus > loyer du bail : rattrapage ou doublon possible, non coché par défaut
+  assert.deepEqual([row('2026-05').kind, row('2026-05').align, row('2026-05').target, row('2026-05').paidAfter], ['hausse', false, 965.18, 965.18]);
+  assert.equal(r.advance, 6.37, 'l’excédent de mai reste en avance');
+  const may = coherence(L, { charges: cs, payments: ps, allocations: al, receipts: [] }, '2026-10-27', { 'c2026-05': { align: true } });
+  assert.equal(may.rows.find((x) => x.m.month === '2026-05')!.target, 971.55, 'au choix : quittance de mai à 971,55 €');
+  assert.equal(may.advance, 0);
+  assert.ok(!r.plan.add.some((a) => a.charge_id === 'c2024-09'), 'jamais le loyer d’un autre mois');
+  assert.deepEqual(r.issues.slice(0, 2), ['c2025-09', 'c2026-03'], 'quittances dans l’ordre chronologique');
+  // annulation proposée (non cochée) des mois échus sans paiement
+  assert.equal(r.cancels.length, 0);
+  assert.equal(coherence(L, { charges: cs, payments: ps, allocations: al, receipts: [] }, '2026-10-27', { 'c2024-10': { cancel: true } }).cancels.length, 1);
+  // un paiement confirmé aujourd'hui sur l'échéance d'octobre 2024 reste sur octobre 2024
+  const conf = { ...pay('pc', 965.18, '2026-10-27'), source: 'confirmation' as const };
+  const r2 = coherence(L, { charges: cs, payments: [...ps, conf], allocations: [...al, alloc('pc', 'c2024-10', 965.18)], receipts: [] }, '2026-10-27');
+  assert.deepEqual([r2.rows.find((x) => x.m.month === '2024-10')!.kind, r2.rows.find((x) => x.m.month === '2024-10')!.paidAfter], ['egal', 965.18]);
+  assert.ok(!r2.plan.remove.some((a) => a.payment_id === 'pc'), 'répartition d’un paiement confirmé conservée');
 });
