@@ -38,8 +38,11 @@ test('import de loyers : chaque paiement règle le mois de sa date, quittance pr
   assert.deepEqual(plans.get('a'), [{ charge_id: 'c9', amount: 900 }]);
   assert.deepEqual(plans.get('b'), [{ charge_id: 'c10', amount: 900 }], 'pas de répartition sur 1990');
   const row = (ref: string, date: string, amount: number) => ({ line: 2, date, amount, rawTenant: null, rawProperty: null, leaseId: 'l1', method: 'virement', reference: null, comment: null, ref, errors: [] }) as never;
-  const props = monthProposals([row('1', '2026-09-04', 600), row('2', '2026-09-20', 300), row('3', '2026-10-06', 850)], views, [], [{ id: 'l1', start_date: '2024-09-01' }]);
-  assert.deepEqual(props.map((m) => [m.month, m.received, m.paidAfter, m.action]), [['2026-09', 900, 900, 'quittance'], ['2026-10', 850, 850, 'recu']]);
+  const props = monthProposals([row('1', '2026-09-04', 600), row('2', '2026-09-20', 300), row('3', '2026-10-06', 850)], views, [], [{ id: 'l1', start_date: '2024-09-01' }], '2026-10-27');
+  assert.deepEqual(props.map((m) => [m.month, m.received, m.paidAfter, m.action, m.past]), [['2026-09', 900, 900, 'quittance', true], ['2026-10', 850, 850, 'aligner', false]]);
+  // le paiement fait foi : un mois passé payé moins que l'échéance est proposé à l'alignement (quittance du payé)
+  const old = monthProposals([row('4', '2026-09-05', 800)], views, [], [{ id: 'l1', start_date: '2024-09-01' }], '2026-10-27');
+  assert.deepEqual([old[0]!.action, old[0]!.past, old[0]!.paidAfter], ['aligner', true, 800]);
   const done = monthProposals([row('1', '2026-09-04', 900)], views, [{ charge_id: 'c9', kind: 'quittance', cancelled_at: null, extra_lines: [] }], [{ id: 'l1', start_date: '2024-09-01' }]);
   assert.equal(done[0]!.action, 'deja');
 });

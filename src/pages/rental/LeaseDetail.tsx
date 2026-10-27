@@ -10,13 +10,13 @@ import { round2 } from '../../domain/simulator.ts';
 import { Button, EmptyState, KeyValue, Modal, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
 import { href, navigate } from '../../ui/router.ts';
 import { DocumentList } from './Documents.tsx';
-import { ReceiptBacklogDialog } from './ReceiptBacklog.tsx';
+import { ReceiptBacklogDialog, useCoherenceCount } from './ReceiptBacklog.tsx';
 import { chargeDuplicates, findDuplicates, sameCharge } from '../../domain/duplicates.ts';
-import { receiptBacklog } from '../../domain/receiptBacklog.ts';
 import { AccessPill, useTenantAccess } from './TenantAccess.tsx';
 import { IRL_VALUES, irlLabel, revisionPlan } from '../../domain/irl.ts';
 import { reallocateLease, StartChangeMessage } from './Leases.tsx';
 import { MonthRepairDialog, useLeaseRepair } from './MonthRepair.tsx';
+import { useChargeEditing } from './ChargeEdit.tsx';
 import { ChargeActions, ChargeBadge, LeaseBadge, PaymentDialog, paymentAllocated, periodLabel, ReceiptDialog, ReceiptsTable, usePaymentActions, useRental } from './common.tsx';
 
 type Tab = 'echeances' | 'paiements' | 'quittances' | 'relances' | 'depot' | 'titulaires' | 'documents';
@@ -30,9 +30,10 @@ export function LeaseDetailPage({ id }: { id: string }) {
   const [pay, setPay] = useState<{ chargeId?: string; mode: 'saisie' | 'confirmation' } | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [chargeForm, setChargeForm] = useState(false);
-  const [cancelling, setCancelling] = useState<{ v: ChargeView; reason: string } | null>(null);
+  const chargeEdit = useChargeEditing();
   const [backlog, setBacklog] = useState(false);
   const { ask, dialog } = useConfirm();
+  const backlogCount = useCoherenceCount(id);
   const lease = data.leases.find((l) => l.id === id);
   if (!lease) return <EmptyState title="Bail introuvable" action={<Button onClick={() => navigate('/baux')}>Retour aux baux</Button>} />;
 
@@ -48,7 +49,6 @@ export function LeaseDetailPage({ id }: { id: string }) {
   const titulaires = data.leaseTenants.filter((x) => x.lease_id === lease.id);
   const names = leaseTenants(lease.id, data.leaseTenants, data.tenants).map(tenantName).join(', ');
   const drafts = reminders.filter((r) => r.status === 'brouillon').length;
-  const backlogCount = receiptBacklog(charges, data.receipts, lease.id).items.length;
   const dupIds = chargeDuplicates(charges.map((v) => v.charge)).ids;
   // échéances restées d'une date de début erronée (antérieures au début du bail)
   const stale = startChangeImpact(lease, lease.start_date, data.charges, data.allocations, data.receipts);
@@ -99,7 +99,7 @@ export function LeaseDetailPage({ id }: { id: string }) {
 
       {tab === 'echeances' && (
         <Section title="Échéances" actions={<>
-          {backlogCount > 0 && <Button size="sm" onClick={() => setBacklog(true)}>Mettre en cohérence les quittances ({backlogCount})</Button>}
+          {backlogCount > 0 && <Button size="sm" onClick={() => setBacklog(true)}>Mettre en cohérence paiements et quittances ({backlogCount})</Button>}
           <Button size="sm" onClick={() => setChargeForm(true)}>Ajouter une somme due</Button></>}>
           {charges.length === 0 ? <p className="muted">Aucune échéance. Elles sont générées chaque mois à partir du bail ; utilisez « Générer les échéances » pour les créer dès maintenant.</p> : (
             <div className="dt-scroll"><table className="dt-table">
@@ -114,9 +114,13 @@ export function LeaseDetailPage({ id }: { id: string }) {
                     <td><ChargeBadge v={v} />{dupIds.has(v.charge.id) && <span className="pill pill-warn dup-flag" title="Une autre échéance couvre la même période">doublon possible</span>}</td>
                     <td><div className="row">
                       <ChargeActions v={v} onPay={(x) => setPay({ chargeId: x.charge.id, mode: 'saisie' })} onConfirm={(x) => setPay({ chargeId: x.charge.id, mode: 'confirmation' })} onReceipt={setReceipt} />
-                      {!v.charge.cancelled_at && v.paid === 0 && (
-                        <Button size="sm" variant="ghost" onClick={() => setCancelling({ v, reason: '' })}>Annuler</Button>
-                      )}
+                      {v.charge.cancelled_at
+                        ? <Button size="sm" onClick={() => chargeEdit.restore(v)}>Réactiver</Button>
+                        : <>
+                          <Button size="sm" variant="ghost" onClick={() => chargeEdit.edit(v)}>Modifier</Button>
+                          {v.paid > 0 && <Button size="sm" variant="ghost" onClick={() => chargeEdit.unpay(v)}>Annuler le paiement</Button>}
+                          {v.paid === 0 && <Button size="sm" variant="ghost" onClick={() => chargeEdit.cancel(v)}>Annuler</Button>}
+                        </>}
                     </div></td>
                   </tr>
                 ))}
@@ -143,18 +147,7 @@ export function LeaseDetailPage({ id }: { id: string }) {
       <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} onReplaced={setReceipt} />
       <ChargeDialog open={chargeForm} leaseId={lease.id} onClose={() => setChargeForm(false)} />
       <ReceiptBacklogDialog open={backlog} onClose={() => setBacklog(false)} leaseId={lease.id} />
-      <Modal open={!!cancelling} title="Annuler l’échéance" onClose={() => setCancelling(null)}
-        footer={<><Button onClick={() => setCancelling(null)}>Retour</Button>
-          <Button variant="danger" disabled={!cancelling?.reason.trim()} onClick={async () => {
-            if (!cancelling) return;
-            const ok = await store.update('rent_charges', cancelling.v.charge, { cancelled_at: new Date().toISOString(), cancel_reason: cancelling.reason.trim().slice(0, 500) }, 'L’échéance');
-            if (ok) setCancelling(null);
-          }}>Annuler l’échéance</Button></>}>
-        {cancelling && <>
-          <p>L’échéance de {periodLabel(cancelling.v.charge)} ({money2(cancelling.v.total)}) sera annulée et ne sera plus due. Le motif est conservé dans l’historique du bail.</p>
-          <TextInput label="Motif d’annulation" value={cancelling.reason} onChange={(r) => setCancelling({ ...cancelling, reason: r })} maxLength={500} placeholder="Ex. mois offert pendant les travaux" />
-        </>}
-      </Modal>
+      {chargeEdit.ui}
       {dialog}
     </>
   );

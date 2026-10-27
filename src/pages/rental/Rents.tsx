@@ -12,11 +12,12 @@ import { GridEditor, type GridColumn } from '../../ui/GridEditor.tsx';
 import { Button, Checkbox, EmptyState, PageHeader, Section, Tabs, useConfirm } from '../../ui/components.tsx';
 import { navigate } from '../../ui/router.ts';
 import { RentImportDialog } from './RentImport.tsx';
-import { ReceiptBacklogDialog } from './ReceiptBacklog.tsx';
+import { ReceiptBacklogDialog, useCoherenceCount } from './ReceiptBacklog.tsx';
 import { MonthRepairDialog } from './MonthRepair.tsx';
+import { useChargeEditing } from './ChargeEdit.tsx';
 import { applyPaymentEdit, ChargeActions, ChargeBadge, METHODS, PaymentDialog, paymentAllocated, periodLabel, ReceiptDialog, ReceiptsTable, usePaymentActions, useRental } from './common.tsx';
 
-type Filter = 'a_traiter' | 'impayee' | 'partielle' | 'payee' | 'a_venir' | 'doublons' | 'toutes';
+type Filter = 'a_traiter' | 'impayee' | 'partielle' | 'payee' | 'a_venir' | 'annulee' | 'doublons' | 'toutes';
 
 export const DupPill = ({ title }: { title: string }) => <span className="pill pill-warn dup-flag" title={title}>doublon possible</span>;
 
@@ -34,6 +35,7 @@ export function RentsPage() {
   const [repairOpen, setRepairOpen] = useState(false);
   const store = useStore();
   const { ask, dialog } = useConfirm();
+  const chargeEdit = useChargeEditing();
 
   // Une échéance par mois : si la tâche quotidienne n'a pas encore créé celle du mois en cours, on la crée ici.
   const today = todayParis();
@@ -55,6 +57,8 @@ export function RentsPage() {
   const data = store.data;
   const dupCharges = useMemo(() => chargeDuplicates(data.charges), [data.charges]);
   const backlog = useMemo(() => receiptBacklog(views, data.receipts, leaseFilter || undefined), [views, data.receipts, leaseFilter]);
+  const coherence = useCoherenceCount(leaseFilter || undefined);
+  const toAlign = coherence - backlog.items.length;
   const rows = views.filter((v) => {
     if (leaseFilter && v.charge.lease_id !== leaseFilter) return false;
     if (month && !v.charge.period_start.startsWith(month)) return false;
@@ -83,7 +87,9 @@ export function RentsPage() {
     { id: 'rest', label: 'Reste', value: (v) => v.remaining, kind: 'money', align: 'right', render: (v) => <span className={v.overdue ? 'neg' : ''}>{money2(v.remaining)}</span>, mobile: true },
     { id: 'status', label: 'Statut', value: (v) => CHARGE_STATUS_LABELS[v.status], render: (v) => <><ChargeBadge v={v} />{dupCharges.ids.has(v.charge.id) && <DupPill title="Une autre échéance du même bail couvre la même période (ou le même montant à la même date)" />}</>, mobile: true },
     { id: 'actions', label: 'Actions', value: () => null, sortable: false, searchable: false,
-      render: (v) => <ChargeActions v={v} onPay={(x) => setPay({ chargeId: x.charge.id, leaseId: x.charge.lease_id, mode: 'saisie' })} onConfirm={(x) => setPay({ chargeId: x.charge.id, leaseId: x.charge.lease_id, mode: 'confirmation' })} onReceipt={setReceipt} />, mobile: true },
+      render: (v) => (v.charge.cancelled_at
+        ? <Button size="sm" onClick={() => chargeEdit.restore(v)} title={v.charge.cancel_reason ? `Annulée : ${v.charge.cancel_reason}` : 'Annulée'}>Réactiver</Button>
+        : <ChargeActions v={v} onPay={(x) => setPay({ chargeId: x.charge.id, leaseId: x.charge.lease_id, mode: 'saisie' })} onConfirm={(x) => setPay({ chargeId: x.charge.id, leaseId: x.charge.lease_id, mode: 'confirmation' })} onReceipt={setReceipt} />), mobile: true },
   ];
 
   const chargeGrid: GridColumn<ChargeView>[] = [
@@ -135,8 +141,8 @@ export function RentsPage() {
     <>
       <PageHeader title="Loyers et paiements" subtitle="Échéances de tous vos baux. Le solde découle uniquement des échéances et des paiements enregistrés."
         actions={<>
-          <Button disabled={!data.leases.length} onClick={() => setBacklogOpen(true)} title="Émettre les quittances manquantes des périodes déjà réglées">
-            Mettre en cohérence les quittances{backlog.items.length ? ` (${backlog.items.length})` : ''}</Button>
+          <Button disabled={!data.leases.length} onClick={() => setBacklogOpen(true)} title="Le paiement fait foi : quittances au montant réellement payé, émises pour les périodes déjà réglées">
+            Mettre en cohérence paiements et quittances{coherence ? ` (${coherence})` : ''}</Button>
           {toRepair.length > 0 && <Button onClick={() => setRepairOpen(true)} title="Affecter chaque paiement à l’échéance de son mois">Répartir les paiements par mois ({toRepair.length})</Button>}
           <Button disabled={!data.leases.length} onClick={() => setImporting(true)}>Importer des loyers (Excel)</Button>
           <Button variant="primary" disabled={!data.leases.length} onClick={() => setPay({ mode: 'saisie' })}>Enregistrer un paiement</Button>
@@ -145,6 +151,7 @@ export function RentsPage() {
       <MonthRepairDialog open={repairOpen} onClose={() => setRepairOpen(false)} leaseIds={leaseFilter ? toRepair.filter((id) => id === leaseFilter) : toRepair} />
       <ReceiptBacklogDialog open={backlogOpen} onClose={() => setBacklogOpen(false)} leaseId={leaseFilter || undefined} />
       {dialog}
+      {chargeEdit.ui}
       {!data.leases.length ? (
         <EmptyState title="Aucun bail" action={<Button variant="primary" onClick={() => navigate('/baux/nouveau')}>Créer un bail</Button>}>Les échéances de loyer sont générées à partir des baux.</EmptyState>
       ) : (
@@ -173,9 +180,10 @@ export function RentsPage() {
           </div>
           <Tabs tabs={[['echeances', 'Échéances'], ['paiements', `Paiements (${data.payments.filter((p) => !leaseFilter || p.lease_id === leaseFilter).length})`],
             ['quittances', `Quittances et reçus (${data.receipts.filter((r) => !r.cancelled_at && (!leaseFilter || r.lease_id === leaseFilter)).length})`]]} value={tab} onChange={(t) => { setTab(t); setGrid(false); }} />
-          {tab === 'echeances' && backlog.items.length > 0 && !grid && (
-            <p className="note">{backlog.items.length} période{backlog.items.length > 1 ? 's' : ''} intégralement réglée{backlog.items.length > 1 ? 's' : ''} sans quittance.{' '}
-              <button type="button" className="link" onClick={() => setBacklogOpen(true)}>Mettre en cohérence les quittances</button></p>
+          {tab === 'echeances' && coherence > 0 && !grid && (
+            <p className="note">{[backlog.items.length > 0 && `${backlog.items.length} période${backlog.items.length > 1 ? 's' : ''} intégralement réglée${backlog.items.length > 1 ? 's' : ''} sans quittance`,
+              toAlign > 0 && `${toAlign} mois payé${toAlign > 1 ? 's' : ''} pour un montant inférieur à l’échéance (le paiement fait foi)`].filter(Boolean).join(' ; ')}.{' '}
+              <button type="button" className="link" onClick={() => setBacklogOpen(true)}>Mettre en cohérence paiements et quittances</button></p>
           )}
           {tab === 'echeances' && grid ? (
             <GridEditor rows={rows.filter((v) => !v.charge.cancelled_at)} columns={chargeGrid} rowKey={(v) => v.charge.id} rowLabel={(v) => periodLabel(v.charge)}
@@ -186,12 +194,13 @@ export function RentsPage() {
           ) : tab === 'echeances' ? (
             <DataTable id="echeances" rows={rows} columns={columns} rowKey={(v) => v.charge.id} initialSort={{ id: 'due', dir: 'desc' }}
               onOpen={(v) => navigate(`/baux/${v.charge.lease_id}`)}
+              rowActions={(v) => [...chargeEdit.actionsFor(v), { label: 'Voir le bail', onSelect: () => navigate(`/baux/${v.charge.lease_id}`) }]}
               bulkActions={(sel, clear) => <Button size="sm" variant="danger" onClick={async () => { if (await cancelDuplicates(sel)) clear(); }}>Annuler comme doublons ({sel.length})</Button>}
               toolbar={<>
                 <label className="inline-select">Afficher
                   <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
                     <option value="a_traiter">À traiter</option><option value="impayee">Impayées</option><option value="partielle">Partiellement payées</option>
-                    <option value="payee">Payées</option><option value="a_venir">À venir</option>
+                    <option value="payee">Payées</option><option value="a_venir">À venir</option><option value="annulee">Annulées</option>
                     <option value="doublons">Doublons possibles ({dupCharges.ids.size})</option><option value="toutes">Toutes</option>
                   </select></label>
                 <Button size="sm" onClick={() => setGrid(true)} disabled={!rows.length}>Modifier en grille</Button>

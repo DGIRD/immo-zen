@@ -203,3 +203,23 @@ test('remise en ordre par mois : affectations recalculées, quittances respecté
   assert.ok(!kept.remove.some((a) => a.charge_id === 'a'));
   assert.deepEqual(kept.add, [{ payment_id: 'p10', charge_id: 'o', amount: 500 }], 'août déjà quittancé (paiement de septembre) : août reste tel quel');
 });
+
+test('le paiement fait foi : échéance alignée sur le montant payé, mois échus proposés', async () => {
+  const { alignToPaid, paidAlignments, chargePaymentRemoval } = await import('../src/domain/rental.ts');
+  // charges conservées, loyer = différence ; sous les charges, tout va aux charges
+  assert.deepEqual(alignToPaid({ rent_amount: 1555, charges_amount: 60 }, 1600), { rent_amount: 1540, charges_amount: 60 });
+  assert.deepEqual(alignToPaid({ rent_amount: 900, charges_amount: 60 }, 40), { rent_amount: 0, charges_amount: 40 });
+  const cs = [charge('c8', '2026-08-01', '2026-08-05', 1555, 60), charge('c9', '2026-09-01', '2026-09-05', 1555, 60), charge('c10', '2026-10-01', '2026-10-05', 1555, 60),
+    charge('cx', '2026-07-01', '2026-07-05', 1555, 60, { cancelled_at: '2026-10-01' })];
+  const al = [alloc('p8', 'c8', 1600), alloc('p9', 'c9', 1615), alloc('p10', 'c10', 1000)];
+  const views = chargeViews(cs, al, '2026-10-27');
+  const out = paidAlignments(views, [], '2026-10-27');
+  assert.deepEqual(out.map((a) => [a.view.charge.id, a.paid, a.gap, a.suggested]), [['c8', 1600, 15, true], ['c10', 1000, 615, false]], 'payé en entier exclu, mois en cours non coché');
+  assert.equal(paidAlignments(views, [{ charge_id: 'c8', kind: 'quittance', cancelled_at: null, extra_lines: [] }], '2026-10-27').length, 1, 'mois déjà quittancé exclu');
+  // annuler le paiement d'une échéance : paiement propre supprimé, paiement partagé seulement détaché
+  const pays = [pay('p8', 1600, '2026-08-04'), pay('pp', 2000, '2026-09-04')];
+  const shared = [alloc('p8', 'c8', 1600), alloc('pp', 'c9', 1615), alloc('pp', 'c8', 385)];
+  const r = chargePaymentRemoval('c8', pays, shared);
+  assert.deepEqual(r.remove.map((p) => p.id), ['p8']);
+  assert.deepEqual(r.detach.map((a) => a.id), ['pp-c8']);
+});

@@ -2,6 +2,7 @@ import { date, money, number, pct } from '../domain/format.ts';
 import { STATUS_LABELS, TYPE_LABELS } from '../domain/labels.ts';
 import { Modal } from '../ui/components.tsx';
 import type { PropertyRow } from './propertyShared.tsx';
+import { simulatedCashflow } from '../domain/simulator.ts';
 
 type Line = [label: string, show: (r: PropertyRow) => string, value?: (r: PropertyRow) => number | null, better?: 'high' | 'low'];
 const LINES: Line[] = [
@@ -17,7 +18,7 @@ const LINES: Line[] = [
   ['Loyer mensuel', (r) => money(r.m.result?.annualRent !== undefined ? r.m.result.annualRent / 12 : null)],
   ['Rendement brut', (r) => pct(r.m.result?.grossYield), (r) => r.m.result?.grossYield ?? null, 'high'],
   ['Rendement après charges', (r) => pct(r.m.result?.netYield), (r) => r.m.result?.netYield ?? null, 'high'],
-  ['Cash-flow / mois', (r) => money(r.m.result?.cashflowMonthlyYear1), (r) => r.m.result?.cashflowMonthlyYear1 ?? null, 'high'],
+  ['Cash-flow / mois', (r) => money(simulatedCashflow(r.m.result)), (r) => simulatedCashflow(r.m.result), 'high'],
   ['Statut', (r) => STATUS_LABELS[r.p.status]],
   ['Relance', (r) => date(r.p.follow_up_date)],
   ['Simulation', (r) => (r.m.scenario ? 'Oui' : 'Aucune simulation')],

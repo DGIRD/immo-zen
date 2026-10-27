@@ -188,3 +188,14 @@ test('valeurs par défaut de l’utilisateur : PNO à 99 € sauf choix enregist
   assert.equal(userDefaults({ pnoAnnual: 120, _v: 2 }).pnoAnnual, 120);
   assert.equal(userDefaults({ price: 5, _v: 2 }).price, 0, 'seuls les champs réglables sont repris');
 });
+
+test('prospection : pas de cash-flow tant que le loyer au m² n’est pas renseigné', async () => {
+  const { simulate, simulatedCashflow, DEFAULT_INPUTS } = await import('../src/domain/simulator.ts');
+  const base = { ...DEFAULT_INPUTS, price: 150000, surface: 30, pnoAnnual: 120, propertyTaxAnnual: 700 };
+  const empty = simulate({ ...base, rentMode: 'bas', rentM2Low: 0 });
+  assert.ok(empty.ok);
+  assert.equal(simulatedCashflow(empty.result), null, 'charges seules : simulation non lancée');
+  const filled = simulate({ ...base, rentMode: 'bas', rentM2Low: 25 });
+  assert.ok(filled.ok);
+  assert.equal(simulatedCashflow(filled.result), filled.result.cashflowMonthlyYear1);
+});

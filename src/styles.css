@@ -272,6 +272,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .cashflow strong small { font-size: 1rem; font-weight: 400; color: var(--ink-soft); }
 .cashflow.pos strong { color: var(--vert); }
 .cashflow.neg strong { color: var(--brique); }
+.cashflow.pending strong { color: var(--ink-soft); }
 .results { margin: 0; }
 .results > div { display: flex; justify-content: space-between; gap: 1rem; padding: .28rem 0; font-size: .92rem; }
 .results dt { color: var(--ink-soft); }
