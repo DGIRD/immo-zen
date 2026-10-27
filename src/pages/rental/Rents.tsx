@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../data/store.tsx';
 import type { Payment, Receipt } from '../../data/types.ts';
 import { downloadBlob, stamp, toCsv, toXlsx, type ExportColumn } from '../../domain/exporting.ts';
-import { date, money2 } from '../../domain/format.ts';
-import { CHARGE_STATUS_LABELS, monthLabel, PAYMENT_METHOD_LABELS, type ChargeView } from '../../domain/rental.ts';
+import { date, money2, todayParis } from '../../domain/format.ts';
+import { CHARGE_STATUS_LABELS, leaseState, monthLabel, monthOf, monthRepairPlan, restorableCharges, startChangeImpact, PAYMENT_METHOD_LABELS, type ChargeView } from '../../domain/rental.ts';
 import { round2 } from '../../domain/simulator.ts';
 import { chargeDuplicates, paymentDuplicates } from '../../domain/duplicates.ts';
 import { receiptBacklog } from '../../domain/receiptBacklog.ts';
@@ -13,6 +13,7 @@ import { Button, Checkbox, EmptyState, PageHeader, Section, Tabs, useConfirm } f
 import { navigate } from '../../ui/router.ts';
 import { RentImportDialog } from './RentImport.tsx';
 import { ReceiptBacklogDialog } from './ReceiptBacklog.tsx';
+import { MonthRepairDialog } from './MonthRepair.tsx';
 import { applyPaymentEdit, ChargeActions, ChargeBadge, METHODS, PaymentDialog, paymentAllocated, periodLabel, ReceiptDialog, ReceiptsTable, usePaymentActions, useRental } from './common.tsx';
 
 type Filter = 'a_traiter' | 'impayee' | 'partielle' | 'payee' | 'a_venir' | 'doublons' | 'toutes';
@@ -30,8 +31,25 @@ export function RentsPage() {
   const [importing, setImporting] = useState(false);
   const [grid, setGrid] = useState(false);
   const [backlogOpen, setBacklogOpen] = useState(false);
+  const [repairOpen, setRepairOpen] = useState(false);
   const store = useStore();
   const { ask, dialog } = useConfirm();
+
+  // Une échéance par mois : si la tâche quotidienne n'a pas encore créé celle du mois en cours, on la crée ici.
+  const today = todayParis();
+  const generated = useRef(false);
+  useEffect(() => {
+    if (generated.current) return;
+    const missing = store.data.leases.filter((l) => leaseState(l, today) === 'actif'
+      && !store.data.charges.some((c) => c.lease_id === l.id && c.kind === 'loyer' && monthOf(c.period_start) === monthOf(today)));
+    if (!missing.length) return;
+    generated.current = true;
+    void (async () => {
+      let n = 0;
+      for (const l of missing) n += (await store.call((r) => r.generateCharges(l.id))) ?? 0;
+      if (n) { await store.refresh(); store.notify(`${n} échéance(s) du mois créée(s).`); }
+    })();
+  }, [store, today]);
 
   const months = useMemo(() => [...new Set(views.map((v) => v.charge.period_start.slice(0, 7)))].sort().reverse(), [views]);
   const data = store.data;
@@ -46,6 +64,13 @@ export function RentsPage() {
     return v.status === filter;
   });
   const totals = rows.reduce((t, v) => ({ due: round2(t.due + (v.charge.cancelled_at ? 0 : v.total)), paid: round2(t.paid + v.paid), rest: round2(t.rest + v.remaining) }), { due: 0, paid: 0, rest: 0 });
+  // baux dont les paiements ne sont pas affectés à l'échéance de leur mois (ancienne répartition, échéances parasites)
+  const toRepair = useMemo(() => data.leases.filter((l) => {
+    const stale = startChangeImpact(l, l.start_date, data.charges, data.allocations, data.receipts);
+    if (stale.remove.length || restorableCharges(l, data.charges, data.payments).length) return true;
+    const p = monthRepairPlan(l, data.charges, data.payments, data.allocations, data.receipts, today);
+    return p.add.length > 0 || p.remove.length > 0;
+  }).map((l) => l.id), [data, today]);
   const toConfirm = views.filter((v) => v.overdue).length;
   const toReceipt = views.filter((v) => v.status === 'payee' && !v.charge.cancelled_at && !quittanceFor(v.charge.id)).length;
 
@@ -112,10 +137,12 @@ export function RentsPage() {
         actions={<>
           <Button disabled={!data.leases.length} onClick={() => setBacklogOpen(true)} title="Émettre les quittances manquantes des périodes déjà réglées">
             Mettre en cohérence les quittances{backlog.items.length ? ` (${backlog.items.length})` : ''}</Button>
+          {toRepair.length > 0 && <Button onClick={() => setRepairOpen(true)} title="Affecter chaque paiement à l’échéance de son mois">Répartir les paiements par mois ({toRepair.length})</Button>}
           <Button disabled={!data.leases.length} onClick={() => setImporting(true)}>Importer des loyers (Excel)</Button>
           <Button variant="primary" disabled={!data.leases.length} onClick={() => setPay({ mode: 'saisie' })}>Enregistrer un paiement</Button>
         </>} />
       <RentImportDialog open={importing} onClose={() => setImporting(false)} />
+      <MonthRepairDialog open={repairOpen} onClose={() => setRepairOpen(false)} leaseIds={leaseFilter ? toRepair.filter((id) => id === leaseFilter) : toRepair} />
       <ReceiptBacklogDialog open={backlogOpen} onClose={() => setBacklogOpen(false)} leaseId={leaseFilter || undefined} />
       {dialog}
       {!data.leases.length ? (
@@ -132,6 +159,10 @@ export function RentsPage() {
             <div className="figure"><span className="figure-label">Dû (sélection)</span><span className="figure-value">{money2(totals.due)}</span><span className="figure-hint">réglé {money2(totals.paid)}</span></div>
             <div className="figure"><span className="figure-label">Reste dû (sélection)</span><span className={`figure-value ${totals.rest ? 'neg' : ''}`}>{money2(totals.rest)}</span></div>
           </div>
+          {toRepair.length > 0 && (
+            <p className="note note-warn">{toRepair.length} bail{toRepair.length > 1 ? 'x ont' : ' a'} des paiements qui ne règlent pas l’échéance de leur mois (répartition d’un ancien import ou échéances antérieures au bail).{' '}
+              <button type="button" className="link" onClick={() => setRepairOpen(true)}>Répartir les paiements par mois</button></p>
+          )}
           <p className="muted small">L’absence de réponse à l’e-mail de confirmation ne vaut jamais paiement : une échéance reste impayée tant que vous n’avez pas confirmé ou saisi le paiement.</p>
           <div className="row lease-filter">
             <label className="inline-select">Bail

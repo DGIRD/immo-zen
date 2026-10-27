@@ -277,6 +277,31 @@ export interface LeaseContract {
   special_conditions?: string | null;
   signed_place?: string | null;
   signed_on?: string | null;
+  // ----- Contrats types modifiés par le décret n° 2026-596 du 6 juillet 2026 (baux conclus ou renouvelés à compter du 1er octobre 2026)
+  /** Numéro de téléphone portable du bailleur (facultatif). */
+  landlord_phone?: string | null;
+  /** Logement soumis à la servitude de résidence principale (art. L. 151-14-1 du code de l'urbanisme). */
+  principal_residence_servitude?: boolean;
+  /** Clause résolutoire : défaut d'assurance des risques locatifs (facultatif, proposé par défaut). */
+  clause_insurance?: boolean;
+  /** Clause résolutoire : troubles de voisinage constatés par une décision passée en force de chose jugée (facultatif). */
+  clause_neighbours?: boolean;
+  /** IV.A.2° Date de révision du loyer (à défaut : date anniversaire du contrat). */
+  revision_date?: string | null;
+  /** IV.C (location vide) Contribution pour le partage des économies de charges : montant, durée, travaux. */
+  charges_economy?: string | null;
+  /** Assurance souscrite par le bailleur pour le compte des colocataires : montant annuel récupérable. */
+  coloc_insurance_annual?: number | null;
+  /** Réévaluation d'un loyer manifestement sous-évalué (renouvellement) : montant et modalités. */
+  rent_reassessment?: string | null;
+  /** IX. Honoraires : détail. */
+  agency_fees_landlord_edl?: number | null;
+  agency_fees_landlord_other?: number | null;
+  agency_fees_tenant_edl?: number | null;
+  agency_cap_m2?: number | null;
+  agency_cap_edl_m2?: number | null;
+  /** XI.E Autorisation préalable de mise en location (« permis de louer »). */
+  rental_permit?: boolean;
 }
 
 /** Accès d'un locataire à son espace (invitation, acceptation, révocation). */

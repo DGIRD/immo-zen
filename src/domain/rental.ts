@@ -115,7 +115,7 @@ export function startChangeImpact(lease: Pick<Lease, 'id' | 'start_date'>, newSt
 
 /**
  * Réaffectation des paiements d'un bail restés (en tout ou partie) non répartis :
- * du plus ancien paiement au plus récent, sur les échéances ouvertes les plus anciennes.
+ * du plus ancien paiement au plus récent, d'abord sur l'échéance du mois du paiement (allocateByMonth).
  */
 export function reallocatePayments(leaseId: string, charges: RentCharge[], payments: Payment[], allocations: Allocation[], today: string): { payment_id: string; charge_id: string; amount: number }[] {
   const own = charges.filter((c) => c.lease_id === leaseId);
@@ -128,7 +128,7 @@ export function reallocatePayments(leaseId: string, charges: RentCharge[], payme
     const free = round2(p.amount - (byPay.get(p.id) ?? 0));
     if (free <= 0) continue;
     const views = chargeViews(own, [...alloc, ...out.map((a, i) => ({ id: `n${i}`, user_id: '', created_at: '', ...a }) as Allocation)], today);
-    for (const a of autoAllocate(free, views).allocations) out.push({ payment_id: p.id, ...a });
+    for (const a of allocateByMonth(free, p.paid_on, views).allocations) out.push({ payment_id: p.id, ...a });
   }
   return out;
 }
@@ -247,6 +247,116 @@ export function autoAllocate(amount: number, open: ChargeView[]): AllocationPlan
     left = round2(left - a);
   }
   return { allocations, remainder: left };
+}
+
+/** Mois (AAAA-MM) d'une date. */
+export const monthOf = (d: string) => d.slice(0, 7);
+
+/**
+ * Répartition d'un paiement selon son mois (règle cible) :
+ * 1. les échéances de ce mois (le loyer, puis les autres sommes dues du mois) ;
+ * 2. le reste sur les échéances ouvertes les plus anciennes (arriérés), jamais avant `from`
+ *    (date de début du bail : des échéances restées d'une date erronée ne captent rien) ;
+ * 3. l'excédent reste en avance au crédit du locataire.
+ */
+export function allocateByMonth(amount: number, paidOn: string, open: ChargeView[], from?: string): AllocationPlan {
+  // `from` écarte seulement les loyers restés d'une date de début erronée (un rappel de charges peut porter sur une année antérieure)
+  const ok = open.filter((v) => v.remaining > 0 && !v.charge.cancelled_at && (!from || v.charge.kind !== 'loyer' || v.charge.period_end >= from));
+  const m = monthOf(paidOn);
+  const own = ok.filter((v) => monthOf(v.charge.period_start) === m)
+    .sort((a, b) => (a.charge.kind === 'loyer' ? 0 : 1) - (b.charge.kind === 'loyer' ? 0 : 1) || a.charge.due_date.localeCompare(b.charge.due_date));
+  let left = round2(amount);
+  const allocations: AllocationPlan['allocations'] = [];
+  for (const v of own) {
+    if (left <= 0) break;
+    const a = round2(Math.min(left, v.remaining));
+    allocations.push({ charge_id: v.charge.id, amount: a });
+    left = round2(left - a);
+  }
+  // arriérés seulement : une échéance future reste à régler par son propre paiement
+  const rest = autoAllocate(left, ok.filter((v) => !own.includes(v) && monthOf(v.charge.period_start) < m));
+  return { allocations: [...allocations, ...rest.allocations], remainder: rest.remainder };
+}
+
+/** Applique des affectations prévues à des vues (reste dû diminué), pour enchaîner plusieurs paiements. */
+export function applyPlan(views: ChargeView[], plan: { charge_id: string; amount: number }[]): ChargeView[] {
+  const by = new Map<string, number>();
+  for (const a of plan) by.set(a.charge_id, round2((by.get(a.charge_id) ?? 0) + a.amount));
+  return views.map((v) => (by.has(v.charge.id) ? { ...v, paid: round2(v.paid + by.get(v.charge.id)!), remaining: round2(Math.max(0, v.remaining - by.get(v.charge.id)!)) } : v));
+}
+
+export interface MonthRepair {
+  /** Affectations retirées (échéances sans quittance ni reçu valable). */
+  remove: Allocation[];
+  /** Nouvelles affectations, calculées mois par mois. */
+  add: { payment_id: string; charge_id: string; amount: number }[];
+  /** Échéances dont l'état change (payée ↔ non payée). */
+  changed: number;
+}
+
+/**
+ * Remise en ordre d'un bail selon la règle « un paiement règle d'abord l'échéance de son mois » :
+ * les affectations des échéances couvertes par une quittance ou un reçu valable sont conservées ;
+ * toutes les autres sont recalculées, paiement par paiement, du plus ancien au plus récent.
+ */
+export function monthRepairPlan(lease: Pick<Lease, 'id' | 'start_date'>, charges: RentCharge[], payments: Payment[], allocations: Allocation[],
+  receipts: Pick<Receipt, 'charge_id' | 'cancelled_at' | 'extra_lines'>[], today: string): MonthRepair {
+  const own = charges.filter((c) => c.lease_id === lease.id);
+  const ids = new Set(own.map((c) => c.id));
+  const frozen = new Set<string>();
+  for (const r of receipts) if (!r.cancelled_at) { frozen.add(r.charge_id); for (const x of r.extra_lines ?? []) frozen.add(x.charge_id); }
+  const mine = allocations.filter((a) => ids.has(a.charge_id));
+  const keep = mine.filter((a) => frozen.has(a.charge_id));
+  const remove = mine.filter((a) => !frozen.has(a.charge_id));
+  const kept = allocatedByPayment(keep);
+  let views = chargeViews(own, keep, today);
+  const add: MonthRepair['add'] = [];
+  for (const p of payments.filter((x) => x.lease_id === lease.id).sort((a, b) => a.paid_on.localeCompare(b.paid_on) || a.created_at.localeCompare(b.created_at))) {
+    const free = round2(p.amount - (kept.get(p.id) ?? 0));
+    if (free <= 0) continue;
+    const plan = allocateByMonth(free, p.paid_on, views, lease.start_date);
+    for (const a of plan.allocations) add.push({ payment_id: p.id, ...a });
+    views = applyPlan(views, plan.allocations);
+  }
+  // l'opération est inutile si elle redonne exactement la même répartition
+  const key = (xs: { payment_id: string; charge_id: string; amount: number }[]) => xs.map((a) => `${a.payment_id}|${a.charge_id}|${round2(a.amount)}`).sort().join(';');
+  if (key(remove) === key(add)) return { remove: [], add: [], changed: 0 };
+  const before = new Map(chargeViews(own, mine, today).map((v) => [v.charge.id, v.status]));
+  const changed = views.filter((v) => before.get(v.charge.id) !== v.status).length;
+  return { remove, add, changed };
+}
+
+/**
+ * Échéances de loyer annulées sans motif, dans la période du bail, alors qu'un paiement a été reçu
+ * le même mois (annulation automatique d'une fin de bail saisie par erreur, par exemple).
+ */
+export function restorableCharges(lease: Pick<Lease, 'id' | 'start_date' | 'end_date'>, charges: RentCharge[], payments: Pick<Payment, 'lease_id' | 'paid_on'>[]): RentCharge[] {
+  const months = new Set(payments.filter((p) => p.lease_id === lease.id).map((p) => monthOf(p.paid_on)));
+  return charges.filter((c) => c.lease_id === lease.id && c.kind === 'loyer' && c.cancelled_at && !c.cancel_reason?.trim()
+    && c.period_end >= lease.start_date && (!lease.end_date || c.period_start <= lease.end_date) && months.has(monthOf(c.period_start)))
+    .sort((a, b) => a.period_start.localeCompare(b.period_start));
+}
+
+export interface MonthSummary {
+  lease_id: string;
+  /** AAAA-MM */
+  month: string;
+  /** Somme des paiements du mois (date de paiement). */
+  received: number;
+  /** Échéance de loyer du mois, si elle existe. */
+  charge: ChargeView | null;
+}
+
+/** Paiements additionnés par bail et par mois de paiement. */
+export function monthlyTotals(rows: { lease_id: string; paid_on: string; amount: number }[], views: ChargeView[]): MonthSummary[] {
+  const by = new Map<string, MonthSummary>();
+  for (const r of rows) {
+    const k = `${r.lease_id}|${monthOf(r.paid_on)}`;
+    const cur = by.get(k) ?? { lease_id: r.lease_id, month: monthOf(r.paid_on), received: 0, charge: views.find((v) => v.charge.lease_id === r.lease_id && v.charge.kind === 'loyer' && !v.charge.cancelled_at && monthOf(v.charge.period_start) === monthOf(r.paid_on)) ?? null };
+    cur.received = round2(cur.received + r.amount);
+    by.set(k, cur);
+  }
+  return [...by.values()].sort((a, b) => a.month.localeCompare(b.month) || a.lease_id.localeCompare(b.lease_id));
 }
 
 /** Vérifie une répartition saisie à la main (mêmes règles que le serveur). */

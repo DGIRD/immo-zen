@@ -550,8 +550,8 @@ async function main() {
   });
 
   await step('confirmation : date du jour proposée par défaut et signalée', async () => {
-    const row = page.locator('table.dt-table tbody tr').first();
-    await row.getByRole('button', { name: 'Confirmer le paiement' }).click();
+    // le paiement du mois a réglé l'échéance du mois en cours : on confirme l'échéance impayée suivante
+    await page.locator('table.dt-table tbody tr', { has: page.locator('.status', { hasText: /^Impayée$/ }) }).first().getByRole('button', { name: 'Confirmer le paiement' }).click();
     const dlg = page.locator('dialog[open]');
     await dlg.getByText('Date du jour proposée par défaut').waitFor();
     await dlg.getByText(/sans confirmation, le loyer reste impayé/).waitFor();
@@ -603,6 +603,8 @@ async function main() {
     await dlg.getByLabel(/collez les lignes/).fill(text);
     await dlg.getByRole('button', { name: 'Analyser le texte collé' }).click();
     await dlg.getByText('1 prête(s)').waitFor();
+    // paiements additionnés par mois, document du mois proposé
+    await dlg.getByText('Récapitulatif par mois et quittances proposées').waitFor();
     await page.screenshot({ path: join(out, '25-import-loyers.png'), fullPage: true });
     await dlg.getByRole('button', { name: 'Importer 1 paiement(s)' }).click();
     await page.getByText('1 loyer(s) importé(s)').waitFor();
@@ -723,7 +725,7 @@ async function main() {
     const preview = page.locator('.contract-preview');
     await preview.getByRole('heading', { name: 'Contrat de location – logement meublé' }).waitFor();
     for (const t of ['I. Désignation des parties', 'III. Date de prise d’effet et durée du contrat', 'Clause résolutoire', 'Mobilier', 'Annexes']) await preview.getByText(t).first().waitFor();
-    await preview.getByText(/reconduit tacitement pour un an/).waitFor();
+    await preview.getByText(/reconduit tacitement pour une durée d’un an/).waitFor();
     await page.screenshot({ path: join(out, '32-contrat-bail.png'), fullPage: true });
     const [pdf] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Télécharger le PDF' }).click()]);
     assert.match(pdf.suggestedFilename(), /^bail-meuble-montreuil-\d{4}-\d{2}-01\.pdf$/);
@@ -1118,11 +1120,18 @@ async function main() {
     await dlg.getByRole('heading', { name: 'Vérifiez la date de début' }).waitFor();
     await dlg.getByRole('button', { name: 'La date est correcte, enregistrer' }).click();
     await page.getByRole('tab', { name: /Échéances \(\d{3}\)/ }).waitFor();
-    // un vrai paiement se répartit sur l'échéance la plus ancienne (mars 1990)
+    // un vrai paiement règle l'échéance de son mois, jamais mars 1990
     await page.getByRole('button', { name: 'Enregistrer un paiement' }).first().click();
     await page.locator('dialog[open]').getByLabel('Montant reçu').fill('100');
     await page.locator('dialog[open]').getByRole('button', { name: 'Enregistrer le paiement' }).click();
     await page.getByText('Paiement enregistré.').waitFor();
+    {
+      const snap = await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!));
+      const month = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()).slice(0, 7);
+      const last = snap.payment_allocations.at(-1);
+      const ch = snap.rent_charges.find((c: { id: string }) => c.id === last.charge_id);
+      assert.equal(ch.period_start.slice(0, 7), month, 'paiement affecté au mois en cours');
+    }
     await page.getByRole('button', { name: 'Modifier', exact: true }).first().click();
     const today = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()));
     const [y, m] = today.split('-').map(Number) as [number, number];
@@ -1132,7 +1141,7 @@ async function main() {
     dlg = page.locator('dialog[open]');
     await dlg.getByRole('heading', { name: 'Modifier la date de début du bail ?' }).waitFor();
     await dlg.getByText(/supprimer définitivement \d+ échéances/).waitFor();
-    await dlg.getByText(/les paiements sont conservés/).waitFor();
+    await dlg.getByText(/Aucune n’a reçu de paiement/).waitFor();
     await dlg.getByRole('button', { name: /^Supprimer \d+ échéances et enregistrer$/ }).click();
     await page.getByRole('tab', { name: 'Échéances (2)' }).waitFor();
     await page.getByRole('tab', { name: 'Paiements (1)' }).waitFor();

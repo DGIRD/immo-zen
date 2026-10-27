@@ -20,7 +20,7 @@ const lease = (o: Partial<Lease> = {}): Lease => ({
 });
 const tenant = (last: string, first = 'Léa'): Tenant => ({ id: last, user_id: 'u', version: 1, created_at: '', updated_at: '', first_name: first, last_name: last, email: `${last.toLowerCase()}@example.test`, phone: null, notes: null, archived_at: null });
 const ctx = (o: Partial<ContractContext> = {}): ContractContext => ({ lease: lease(), property: property(), tenants: [tenant('Martin')], today: '2026-10-20', ...o });
-const full = (c: Partial<LeaseContract>, x = ctx()): LeaseContract => ({ ...defaultContract(x), construction_period: '1949_1974', energy_cost_min: 900, energy_cost_max: 1300, energy_ref_year: 2025, ...c });
+const full = (c: Partial<LeaseContract>, x = ctx()): LeaseContract => ({ ...defaultContract(x), construction_period: '1949_1974', tax_id: '6900312345678', energy_cost_min: 900, energy_cost_max: 1300, energy_ref_year: 2025, ...c });
 
 test('bail vide : contrat type (I à XI), reconduction 3 ans, révision IRL, clause résolutoire à six semaines', () => {
   const x = ctx();
@@ -31,7 +31,9 @@ test('bail vide : contrat type (I à XI), reconduction 3 ans, révision IRL, cla
   assert.deepEqual(doc.errors, []);
   assert.deepEqual(doc.warnings, []);
   const titles = doc.sections.map((s) => s.title);
-  assert.deepEqual(titles.slice(0, 7), ['I. Désignation des parties', 'II. Objet du contrat', 'III. Date de prise d’effet et durée du contrat', 'IV. Conditions financières', 'V. Travaux', 'VI. Garanties', 'VII. Clause résolutoire']);
+  // rubriques et numérotation du contrat type, toujours présentes (« Sans objet » si non applicable)
+  assert.deepEqual(titles, ['I. Désignation des parties', 'II. Objet du contrat', 'III. Date de prise d’effet et durée du contrat', 'IV. Conditions financières', 'V. Travaux',
+    'VI. Garanties', 'VII. Clause de solidarité', 'VIII. Clause résolutoire', 'IX. Le cas échéant, honoraires de location', 'X. Autres conditions particulières', 'XI. Annexes', 'Signatures']);
   const t = contractText(doc);
   assert.match(t, /décret n° 2015-587/);
   assert.match(t, /Surface habitable : 42,5 m²/);
@@ -40,8 +42,21 @@ test('bail vide : contrat type (I à XI), reconduction 3 ans, révision IRL, cla
   assert.match(t, /six semaines après un commandement de payer/);
   assert.match(t, /préavis de trois mois/);
   assert.match(t, /entre 900,00 € et 1 300,00 € par an/);
-  assert.match(t, /Notice d’information/);
-  assert.ok(!/Clause de solidarité/.test(t), 'pas de solidarité avec un seul locataire');
+  assert.match(t, /notice d’information relative aux droits/);
+  assert.match(t, /Sans objet \(un seul locataire\)/);
+  assert.match(t, /décret n° 2026-596 du 6 juillet 2026/);
+  assert.match(t, /C\. Le cas échéant, contribution pour le partage des économies de charges : sans objet/);
+  assert.match(t, /G\. Dépenses énergétiques/);
+  // clause résolutoire réécrite (décret n° 2026-596) : partie obligatoire et clauses facultatives
+  assert.match(t, /à défaut de versement du dépôt de garantie, six semaines après un commandement de payer/);
+  assert.match(t, /assurance des risques locatifs par le locataire, un mois après/);
+  assert.match(t, /passée en force de chose jugée/);
+  assert.ok(!/L\. 151-14-1/.test(t), 'servitude de résidence principale seulement le cas échéant');
+  const opt = contractText(buildContract(full({ clause_insurance: false, clause_neighbours: false, principal_residence_servitude: true, landlord_phone: '06 12 34 56 78' }, x), x));
+  assert.ok(!/assurance des risques locatifs par le locataire/.test(opt));
+  assert.match(opt, /exclusivement à titre de résidence principale/);
+  assert.match(opt, /L\. 481-4/);
+  assert.match(opt, /Numéro de téléphone portable \(facultatif\) : 06 12 34 56 78/);
   assert.match(doc.fileName, /^bail-vide-lyon-2026-11-01\.pdf$/);
 });
 
@@ -72,11 +87,15 @@ test('bail meublé : un an, dépôt de deux mois, mobilier minimal, préavis d�
   assert.deepEqual(doc.errors, []);
   const t = contractText(doc);
   assert.match(t, /titre Ier bis/);
-  assert.match(t, /reconduit tacitement pour un an/);
+  assert.match(t, /reconduit tacitement pour une durée d’un an/);
   assert.match(t, /préavis d’un mois/);
   assert.match(t, /Clause de solidarité/);
   assert.match(t, /Réfrigérateur et congélateur/);
-  assert.match(t, /forfait mensuel de 60,00 €/);
+  assert.match(t, /Modalité de règlement des charges récupérables : Forfait/);
+  assert.match(t, /60,00 € par mois/);
+  assert.match(t, /D\. Modalités de paiement/);
+  assert.match(t, /F\. Dépenses énergétiques/);
+  assert.match(t, /inventaire et un état détaillé du mobilier/);
   assert.match(t, /en 3 exemplaires/);
   const student = buildContract(full({ student: true, duration_months: 9 }, x), x);
   assert.deepEqual(student.errors, []);

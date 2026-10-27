@@ -4,7 +4,7 @@ import type { Lease, Payment, PaymentMethod, Receipt, RentCharge } from '../../d
 import type { ReceiptChanges, Snapshot } from '../../data/repo.ts';
 import { date, dateTime, money2, todayParis } from '../../domain/format.ts';
 import {
-  autoAllocate, CHARGE_STATUS_LABELS, chargeViews, checkAllocation, leaseState, leaseTenants, LEASE_STATE_LABELS, monthLabel,
+  allocateByMonth, autoAllocate, CHARGE_STATUS_LABELS, chargeViews, checkAllocation, leaseState, leaseTenants, LEASE_STATE_LABELS, monthLabel,
   PAYMENT_METHOD_LABELS, tenantName, type ChargeStatus, type ChargeView, type LeaseState,
 } from '../../domain/rental.ts';
 import { round2 } from '../../domain/simulator.ts';
@@ -72,6 +72,8 @@ export function PaymentDialog({ open, onClose, leaseId, chargeId, mode = 'saisie
   const [error, setError] = useState<string | null>(null);
   /** Paiements déjà enregistrés qui ressemblent à celui-ci (avertissement anti-doublon). */
   const [dups, setDups] = useState<Payment[] | null>(null);
+  /** Émettre le document de l'échéance réglée (quittance si intégralement réglée). */
+  const [issue, setIssue] = useState(false);
 
   const open_ = useMemo(() => views.filter((v) => v.charge.lease_id === lease && v.remaining > 0 && !v.charge.cancelled_at), [views, lease]);
   const target = chargeId ? open_.find((v) => v.charge.id === chargeId) : undefined;
@@ -79,7 +81,7 @@ export function PaymentDialog({ open, onClose, leaseId, chargeId, mode = 'saisie
   useEffect(() => {
     if (!open) return;
     setLease(leaseId ?? (data.leases.length === 1 ? data.leases[0]!.id : ''));
-    setPaidOn(today); setDateTouched(false); setMethod('virement'); setReference(''); setComment(''); setManual(null); setError(null); setDups(null);
+    setPaidOn(today); setDateTouched(false); setMethod('virement'); setReference(''); setComment(''); setManual(null); setError(null); setDups(null); setIssue(false);
     const v = chargeId ? views.find((x) => x.charge.id === chargeId) : undefined;
     setAmount(v ? v.remaining : null);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -93,14 +95,17 @@ export function PaymentDialog({ open, onClose, leaseId, chargeId, mode = 'saisie
       const rest = autoAllocate(round2(amount - first), open_.filter((v) => v !== target));
       return { allocations: [{ charge_id: target.charge.id, amount: round2(first) }, ...rest.allocations], remainder: rest.remainder };
     }
-    return autoAllocate(amount, ordered);
-  }, [amount, open_, target]);
+    // sans échéance désignée : l'échéance du mois de la date de réception, puis les arriérés
+    return allocateByMonth(amount, paidOn || today, ordered, data.leases.find((l) => l.id === lease)?.start_date);
+  }, [amount, open_, target, paidOn, today, lease, data.leases]);
 
   const plan = manual
     ? Object.entries(manual).filter(([, a]) => a && a > 0).map(([charge_id, a]) => ({ charge_id, amount: round2(a!) }))
     : auto.allocations;
   const allocatedSum = round2(plan.reduce((s, a) => s + a.amount, 0));
   const remainder = amount ? round2(amount - allocatedSum) : 0;
+  // échéances de loyer que ce paiement solde entièrement (quittance proposée)
+  const settled = plan.filter((a) => { const v = open_.find((x) => x.charge.id === a.charge_id); return v && v.charge.kind === 'loyer' && round2(a.amount) >= v.remaining; }).map((a) => a.charge_id);
 
   async function save() {
     setError(null);
@@ -124,8 +129,11 @@ export function PaymentDialog({ open, onClose, leaseId, chargeId, mode = 'saisie
         const ok = await store.createMany('payment_allocations', plan.map((a) => ({ payment_id: p.id, charge_id: a.charge_id, amount: a.amount })));
         if (!ok) { setError('Paiement enregistré, mais sa répartition a été refusée : reprenez-la depuis le bail.'); return; }
       }
+      // quittance de l'échéance désormais intégralement réglée (échéance confirmée, ou celle du mois du paiement)
+      let issued = 0;
+      if (issue && settled.length) for (const id of settled) if (await store.call((r) => r.issueReceipt(id, 'quittance'))) issued++;
       await store.refresh();
-      store.notify(mode === 'confirmation' ? 'Paiement confirmé.' : 'Paiement enregistré.');
+      store.notify(`${mode === 'confirmation' ? 'Paiement confirmé.' : 'Paiement enregistré.'}${issued ? ` ${issued > 1 ? `${issued} quittances émises.` : 'Quittance émise.'}` : ''}`);
       onClose();
     } finally {
       setBusy(false);
@@ -185,6 +193,9 @@ export function PaymentDialog({ open, onClose, leaseId, chargeId, mode = 'saisie
           {remainder > 0 && <p className="small">Non affecté : <strong>{money2(remainder)}</strong>, conservé comme avance (trop-perçu) au crédit du locataire.</p>}
           {remainder < 0 && <p className="form-error small">La répartition dépasse le montant reçu de {money2(-remainder)}.</p>}
         </div>
+      )}
+      {settled.length > 0 && (
+        <Checkbox label={`Émettre la quittance de ${settled.map((id) => periodLabel(open_.find((v) => v.charge.id === id)!.charge)).join(', ')}`} checked={issue} onChange={setIssue} />
       )}
       {dups && (
         <div className="note note-warn" role="alert">
@@ -422,7 +433,7 @@ export async function applyPaymentEdit(store: Store, d: Ledger, p: Payment, f: P
       .filter((v) => v.remaining > 0);
     // les échéances réglées auparavant par ce paiement sont servies en premier
     const first = autoAllocate(round2(f.amount), open.filter((v) => freed.has(v.charge.id)));
-    const rest = autoAllocate(first.remainder, open.filter((v) => !freed.has(v.charge.id)));
+    const rest = allocateByMonth(first.remainder, f.paid_on, open.filter((v) => !freed.has(v.charge.id)));
     const plan = [...first.allocations, ...rest.allocations];
     if (plan.length && !(await store.createMany('payment_allocations', plan.map((a) => ({ payment_id: p.id, ...a }))))) return null;
     let reissued = 0;

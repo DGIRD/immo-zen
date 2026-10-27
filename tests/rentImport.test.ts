@@ -28,11 +28,20 @@ test('import de loyers : bail retrouvé par locataire ou par adresse, moyens de 
   assert.equal(matchMethod('CAF'), 'caf');
 });
 
-test('import de loyers : répartition chronologique sur les échéances dues, excédent en avance', () => {
-  const v = (id: string, due: string, remaining: number) => ({ charge: { id, due_date: due, cancelled_at: null }, remaining }) as never;
-  const plans = planAllocations([{ key: 'a', amount: 900 }, { key: 'b', amount: 900 }], [v('c1', '2026-01-05', 750), v('c2', '2026-02-05', 750)]);
-  assert.deepEqual(plans.get('a'), [{ charge_id: 'c1', amount: 750 }, { charge_id: 'c2', amount: 150 }]);
-  assert.deepEqual(plans.get('b'), [{ charge_id: 'c2', amount: 600 }], 'le reste (300 €) demeure en avance');
+test('import de loyers : chaque paiement règle le mois de sa date, quittance proposée par mois', async () => {
+  const { chargeViews } = await import('../src/domain/rental.ts');
+  const { monthProposals } = await import('../src/domain/rentImport.ts');
+  const c = (id: string, start: string, total: number) => ({ id, lease_id: 'l1', kind: 'loyer', period_start: start, period_end: start, due_date: start, rent_amount: total, charges_amount: 0, cancelled_at: null }) as never;
+  const cs = [c('c0', '1990-04-01', 900), c('c9', '2026-09-01', 900), c('c10', '2026-10-01', 900)];
+  const views = chargeViews(cs, [], '2026-10-27');
+  const plans = planAllocations([{ key: 'b', amount: 900, paid_on: '2026-10-06' }, { key: 'a', amount: 900, paid_on: '2026-09-04' }], views, '2024-09-01');
+  assert.deepEqual(plans.get('a'), [{ charge_id: 'c9', amount: 900 }]);
+  assert.deepEqual(plans.get('b'), [{ charge_id: 'c10', amount: 900 }], 'pas de répartition sur 1990');
+  const row = (ref: string, date: string, amount: number) => ({ line: 2, date, amount, rawTenant: null, rawProperty: null, leaseId: 'l1', method: 'virement', reference: null, comment: null, ref, errors: [] }) as never;
+  const props = monthProposals([row('1', '2026-09-04', 600), row('2', '2026-09-20', 300), row('3', '2026-10-06', 850)], views, [], [{ id: 'l1', start_date: '2024-09-01' }]);
+  assert.deepEqual(props.map((m) => [m.month, m.received, m.paidAfter, m.action]), [['2026-09', 900, 900, 'quittance'], ['2026-10', 850, 850, 'recu']]);
+  const done = monthProposals([row('1', '2026-09-04', 900)], views, [{ charge_id: 'c9', kind: 'quittance', cancelled_at: null, extra_lines: [] }], [{ id: 'l1', start_date: '2024-09-01' }]);
+  assert.equal(done[0]!.action, 'deja');
 });
 
 test('adresses : suggestions de la Base Adresse Nationale', () => {

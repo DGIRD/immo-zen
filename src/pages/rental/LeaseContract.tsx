@@ -15,8 +15,8 @@ import { AddressFields } from '../../ui/AddressFields.tsx';
 import type { Lease, Property } from '../../data/types.ts';
 
 const KIND_HELP: Record<ContractKind, string> = {
-  vide: 'Résidence principale du locataire, logement nu : contrat type du décret n° 2015-587 (annexe 1). Durée de 3 ans (6 ans pour une société bailleresse), dépôt de garantie d’un mois maximum.',
-  meuble: 'Résidence principale du locataire, logement meublé : contrat type du décret n° 2015-587 (annexe 2). Durée d’un an (9 mois pour un étudiant), dépôt de garantie de deux mois maximum, mobilier minimal obligatoire.',
+  vide: 'Résidence principale du locataire, logement nu : contrat type du décret n° 2015-587 (annexe 1), version issue du décret n° 2026-596 applicable aux baux conclus ou renouvelés depuis le 1er octobre 2026. Durée de 3 ans (6 ans pour une société bailleresse), dépôt de garantie d’un mois maximum.',
+  meuble: 'Résidence principale du locataire, logement meublé : contrat type du décret n° 2015-587 (annexe 2), version issue du décret n° 2026-596 applicable aux baux conclus ou renouvelés depuis le 1er octobre 2026. Durée d’un an (9 mois pour un étudiant), dépôt de garantie de deux mois maximum, mobilier minimal obligatoire.',
   civil_secondaire: 'Logement qui n’est pas la résidence principale du locataire (résidence secondaire) : bail soumis au Code civil, durée et conditions libres. Pas de modèle officiel.',
   civil_societe: 'Logement loué à une société pour y loger un salarié ou un dirigeant désigné : bail soumis au Code civil. Pas de modèle officiel.',
   parking: 'Garage, box ou emplacement de stationnement loué seul : bail soumis au Code civil. Pas de modèle officiel.',
@@ -112,6 +112,7 @@ export function LeaseContractPage({ id }: { id: string }) {
               <Select label="Le bailleur est" value={c.landlord_kind ?? 'physique'} onChange={(v) => setDraft({ ...c, landlord_kind: v ?? 'physique', duration_months: c.kind === 'vide' ? defaultDuration('vide', v ?? 'physique', false) : c.duration_months })}
                 options={[['physique', 'Une personne physique'], ['sci_familiale', 'Une SCI familiale'], ['morale', 'Une personne morale (société)']] as const} />
               <TextInput label="E-mail du bailleur (facultatif)" type="email" value={c.landlord_email} onChange={(v) => set('landlord_email', v || null)} />
+              {housing && <TextInput label="Téléphone portable du bailleur (facultatif)" type="tel" value={c.landlord_phone} onChange={(v) => set('landlord_phone', v || null)} hint="Mention facultative du contrat type depuis le 1er octobre 2026. Celui des locataires est repris de leur fiche." />}
               <TextInput label="Mandataire (facultatif)" wide value={c.landlord_representative} onChange={(v) => set('landlord_representative', v || null)} placeholder="Nom, adresse, activité, n° de carte professionnelle" />
               {c.kind === 'civil_societe' ? (
                 <>
@@ -148,6 +149,7 @@ export function LeaseContractPage({ id }: { id: string }) {
                 <Select label="Eau chaude" value={c.hot_water ?? 'individuel'} onChange={(v) => set('hot_water', v ?? 'individuel')} options={[['individuel', 'Individuelle'], ['collectif', 'Collective']] as const} />
                 {(c.heating === 'collectif' || c.hot_water === 'collectif') && <TextInput label="Répartition des consommations collectives" wide value={c.collective_split} onChange={(v) => set('collective_split', v || null)} />}
                 {housing && <Select label="Destination" value={c.usage ?? 'habitation'} onChange={(v) => set('usage', v ?? 'habitation')} options={[['habitation', 'Habitation'], ['mixte', 'Mixte professionnel et habitation']] as const} />}
+                {housing && <Checkbox label="Logement soumis à la servitude de résidence principale (art. L. 151-14-1 du code de l’urbanisme)" checked={!!c.principal_residence_servitude} onChange={(v) => set('principal_residence_servitude', v)} />}
                 <TextInput label="Annexes privatives" wide value={c.private_annexes} onChange={(v) => set('private_annexes', v || null)} placeholder="Cave n° 4, parking n° 12…" />
                 <TextInput label="Parties communes" wide value={c.common_areas} onChange={(v) => set('common_areas', v || null)} placeholder="Ascenseur, local vélos, espaces verts…" />
                 <TextInput label="Accès internet" wide value={c.telecom} onChange={(v) => set('telecom', v || null)} placeholder="Raccordement à la fibre optique…" />
@@ -176,6 +178,10 @@ export function LeaseContractPage({ id }: { id: string }) {
                   <NumberInput label="Dépenses d’énergie : estimation basse" suffix="€/an" value={c.energy_cost_min ?? null} onChange={(v) => set('energy_cost_min', v)} hint="Indiquée sur le DPE." />
                   <NumberInput label="Dépenses d’énergie : estimation haute" suffix="€/an" value={c.energy_cost_max ?? null} onChange={(v) => set('energy_cost_max', v)} />
                   <NumberInput label="Année de référence des prix" value={c.energy_ref_year ?? null} onChange={(v) => set('energy_ref_year', v === null ? null : Math.round(v))} />
+                  <TextInput label="Date de révision (facultatif)" type="date" value={c.revision_date ?? ''} onChange={(v) => set('revision_date', v || null)} hint="À défaut : chaque année à la date anniversaire du contrat." />
+                  {c.kind === 'vide' && <TextInput label="Contribution pour le partage des économies de charges" wide value={c.charges_economy} onChange={(v) => set('charges_economy', v || null)} placeholder="Montant, durée restant à courir, travaux justifiant la contribution" />}
+                  {tenants.length > 1 && <NumberInput label="Assurance souscrite pour le compte des colocataires" suffix="€/an" value={c.coloc_insurance_annual ?? null} onChange={(v) => set('coloc_insurance_annual', v)} hint="Montant total annuel récupérable (récupéré par douzième)." />}
+                  <TextInput label="Réévaluation d’un loyer manifestement sous-évalué" wide value={c.rent_reassessment} onChange={(v) => set('rent_reassessment', v || null)} placeholder="Uniquement lors d’un renouvellement : montant et modalités" />
                   <NumberInput label="Loyer du précédent locataire" suffix="€" value={c.previous_rent ?? null} onChange={(v) => set('previous_rent', v)} hint="Obligatoire s’il a quitté le logement moins de 18 mois avant la signature." />
                   <TextInput label="Date du dernier versement" type="date" value={c.previous_rent_date ?? ''} onChange={(v) => set('previous_rent_date', v || null)} />
                   <Checkbox label="Logement en zone tendue ou soumis à l’encadrement des loyers" checked={!!c.zone_tendue} onChange={(v) => set('zone_tendue', v)} />
@@ -198,8 +204,13 @@ export function LeaseContractPage({ id }: { id: string }) {
                 <TextArea label="Travaux réalisés depuis le dernier bail" value={c.works_done} onChange={(v) => set('works_done', v || null)} rows={2} />
                 <TextArea label="Majoration de loyer pour travaux du bailleur" value={c.works_landlord} onChange={(v) => set('works_landlord', v || null)} rows={2} />
                 <TextArea label="Diminution de loyer pour travaux du locataire" value={c.works_tenant} onChange={(v) => set('works_tenant', v || null)} rows={2} />
-                <NumberInput label="Honoraires d’agence à la charge du locataire" suffix="€" value={c.agency_fees_tenant ?? null} onChange={(v) => set('agency_fees_tenant', v)} />
-                <NumberInput label="Honoraires d’agence à la charge du bailleur" suffix="€" value={c.agency_fees_landlord ?? null} onChange={(v) => set('agency_fees_landlord', v)} />
+                <NumberInput label="Honoraires bailleur : visite, dossier, bail" suffix="€" value={c.agency_fees_landlord ?? null} onChange={(v) => set('agency_fees_landlord', v)} />
+                <NumberInput label="Honoraires bailleur : état des lieux d’entrée" suffix="€" value={c.agency_fees_landlord_edl ?? null} onChange={(v) => set('agency_fees_landlord_edl', v)} />
+                <NumberInput label="Honoraires bailleur : autres prestations" suffix="€" value={c.agency_fees_landlord_other ?? null} onChange={(v) => set('agency_fees_landlord_other', v)} />
+                <NumberInput label="Honoraires locataire : visite, dossier, bail" suffix="€" value={c.agency_fees_tenant ?? null} onChange={(v) => set('agency_fees_tenant', v)} />
+                <NumberInput label="Honoraires locataire : état des lieux d’entrée" suffix="€" value={c.agency_fees_tenant_edl ?? null} onChange={(v) => set('agency_fees_tenant_edl', v)} />
+                <NumberInput label="Plafond locataire (visite, dossier, bail)" suffix="€/m²" value={c.agency_cap_m2 ?? null} onChange={(v) => set('agency_cap_m2', v)} />
+                <NumberInput label="Plafond locataire (état des lieux)" suffix="€/m²" value={c.agency_cap_edl_m2 ?? null} onChange={(v) => set('agency_cap_edl_m2', v)} />
               </div>
             </Section>
           )}
@@ -208,6 +219,17 @@ export function LeaseContractPage({ id }: { id: string }) {
             <Section title="Mobilier">
               <TextArea label="Éléments de mobilier (un par ligne)" rows={8} value={(c.furniture ?? []).join('\n')} onChange={(v) => set('furniture', v.split('\n').map((x) => x.trim()).filter(Boolean))}
                 hint="Liste minimale du décret n° 2015-981 proposée ; complétez-la. L’inventaire détaillé est annexé au bail." />
+            </Section>
+          )}
+
+          {housing && (
+            <Section title="Clause résolutoire et annexes">
+              <p className="muted small">La résiliation pour défaut de paiement du loyer, des charges ou du dépôt de garantie (six semaines après un commandement de payer) figure toujours au contrat. Les clauses suivantes sont facultatives.</p>
+              <div className="grid">
+                <Checkbox label="Résiliation à défaut d’assurance des risques locatifs (un mois après un commandement)" checked={c.clause_insurance !== false} onChange={(v) => set('clause_insurance', v)} />
+                <Checkbox label="Résiliation pour troubles de voisinage constatés par une décision de justice définitive" checked={c.clause_neighbours !== false} onChange={(v) => set('clause_neighbours', v)} />
+                <Checkbox label="Autorisation préalable de mise en location annexée (« permis de louer »)" checked={!!c.rental_permit} onChange={(v) => set('rental_permit', v)} />
+              </div>
             </Section>
           )}
 
