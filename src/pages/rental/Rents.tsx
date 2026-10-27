@@ -6,7 +6,6 @@ import { date, money2, todayParis } from '../../domain/format.ts';
 import { CHARGE_STATUS_LABELS, leaseState, monthLabel, monthOf, monthRepairPlan, restorableCharges, startChangeImpact, PAYMENT_METHOD_LABELS, type ChargeView } from '../../domain/rental.ts';
 import { round2 } from '../../domain/simulator.ts';
 import { chargeDuplicates, paymentDuplicates } from '../../domain/duplicates.ts';
-import { receiptBacklog } from '../../domain/receiptBacklog.ts';
 import { DataTable, type Column } from '../../ui/DataTable.tsx';
 import { GridEditor, type GridColumn } from '../../ui/GridEditor.tsx';
 import { Button, Checkbox, EmptyState, PageHeader, Section, Tabs, useConfirm } from '../../ui/components.tsx';
@@ -56,9 +55,7 @@ export function RentsPage() {
   const months = useMemo(() => [...new Set(views.map((v) => v.charge.period_start.slice(0, 7)))].sort().reverse(), [views]);
   const data = store.data;
   const dupCharges = useMemo(() => chargeDuplicates(data.charges), [data.charges]);
-  const backlog = useMemo(() => receiptBacklog(views, data.receipts, leaseFilter || undefined), [views, data.receipts, leaseFilter]);
   const coherence = useCoherenceCount(leaseFilter || undefined);
-  const toAlign = coherence - backlog.items.length;
   const rows = views.filter((v) => {
     if (leaseFilter && v.charge.lease_id !== leaseFilter) return false;
     if (month && !v.charge.period_start.startsWith(month)) return false;
@@ -181,8 +178,7 @@ export function RentsPage() {
           <Tabs tabs={[['echeances', 'Échéances'], ['paiements', `Paiements (${data.payments.filter((p) => !leaseFilter || p.lease_id === leaseFilter).length})`],
             ['quittances', `Quittances et reçus (${data.receipts.filter((r) => !r.cancelled_at && (!leaseFilter || r.lease_id === leaseFilter)).length})`]]} value={tab} onChange={(t) => { setTab(t); setGrid(false); }} />
           {tab === 'echeances' && coherence > 0 && !grid && (
-            <p className="note">{[backlog.items.length > 0 && `${backlog.items.length} période${backlog.items.length > 1 ? 's' : ''} intégralement réglée${backlog.items.length > 1 ? 's' : ''} sans quittance`,
-              toAlign > 0 && `${toAlign} mois payé${toAlign > 1 ? 's' : ''} pour un montant inférieur à l’échéance (le paiement fait foi)`].filter(Boolean).join(' ; ')}.{' '}
+            <p className="note">{coherence} action{coherence > 1 ? 's' : ''} proposée{coherence > 1 ? 's' : ''} pour que chaque mois reprenne les paiements reçus ce mois-là (le paiement fait foi) et ait sa quittance.{' '}
               <button type="button" className="link" onClick={() => setBacklogOpen(true)}>Mettre en cohérence paiements et quittances</button></p>
           )}
           {tab === 'echeances' && grid ? (

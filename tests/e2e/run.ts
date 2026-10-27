@@ -532,8 +532,15 @@ async function main() {
     await page.getByText('Paiement enregistré.').waitFor();
     const rows = page.locator('table.dt-table tbody tr');
     await page.locator('.status', { hasText: /^Payée$/ }).first().waitFor();
+    // le paiement fait foi : il règle le mois de sa date, l'excédent reste en avance (pas de loyer d'un autre mois)
     assert.equal(await rows.filter({ has: page.locator('.status', { hasText: /^Payée$/ }) }).count(), 1);
-    assert.equal(await rows.filter({ has: page.locator('.status', { hasText: /^Partiel/ }) }).count(), 1);
+    assert.equal(await rows.filter({ has: page.locator('.status', { hasText: /^Partiel/ }) }).count(), 0);
+    // paiement partiel confirmé sur un mois précédent
+    await rows.filter({ has: page.locator('.status', { hasText: /^Impayée$/ }) }).first().getByRole('button', { name: 'Confirmer le paiement' }).click();
+    await dlg.getByLabel('Montant reçu').fill('300');
+    await dlg.getByRole('button', { name: 'Confirmer le paiement' }).click();
+    await page.getByText('Paiement confirmé.').first().waitFor();
+    await rows.filter({ has: page.locator('.status', { hasText: /^Partiel/ }) }).first().waitFor();
     assert.equal(await page.getByRole('button', { name: 'Émettre la quittance' }).count(), 1, 'quittance proposée uniquement pour la période réglée');
   });
 
@@ -576,7 +583,7 @@ async function main() {
     const dlg = page.locator('dialog[open]');
     const body = await dlg.getByLabel('Message').inputValue();
     assert.match(body, /Léa Martin/);
-    assert.match(body.replace(/[\u202f\u00a0]/g, ' '), /651,00 €/, 'reste dû du mois partiellement payé');
+    assert.match(body.replace(/[\u202f\u00a0]/g, ' '), /525,50 €/, 'reste dû du mois partiellement payé');
     assert.doesNotMatch(body, /pénalit/i);
     await dlg.getByRole('button', { name: 'Envoyer par e-mail' }).click();
     await page.getByText(/Relance mise en file/).waitFor();
@@ -589,7 +596,7 @@ async function main() {
     await page.getByRole('button', { name: 'Ajouter le mouvement' }).click();
     await page.locator('.kv').getByText('780,00').first().waitFor();
     const balance = (await page.locator('.figure', { hasText: 'Solde du locataire' }).innerText()).replace(/[\u202f\u00a0]/g, ' ');
-    assert.match(balance, /-651,00 €/, 'dépôt exclu du solde des loyers');
+    assert.match(balance, /-351,00 €/, 'dépôt exclu du solde des loyers (2 125,50 reçus − 2 476,50 dus)');
   });
 
   await step('rappel de charges 2025, import de loyers Excel et quittance avec rappel', async () => {
@@ -886,8 +893,8 @@ async function main() {
     dlg = page.locator('dialog[open]');
     await dlg.getByRole('heading', { name: 'Mettre en cohérence paiements et quittances' }).waitFor();
     await dlg.getByText('Le paiement fait foi').first().waitFor();
-    await dlg.getByRole('button', { name: /^Émettre \d+ quittances?$/ }).click();
-    await page.getByText(/quittances? émises? : paiements et quittances sont en cohérence/).first().waitFor();
+    await dlg.getByRole('button', { name: /^Mettre en cohérence et émettre \d+ quittances?$/ }).click();
+    await page.getByText(/^Paiements et quittances en cohérence : \d+ quittances? émises?/).first().waitFor();
     assert.equal(await page.getByRole('button', { name: /^Mettre en cohérence paiements et quittances \(/ }).count(), 0, 'plus rien à quittancer');
     // échéances en grille : une échéance quittancée est verrouillée
     await page.getByLabel('Afficher').selectOption('toutes');
@@ -1011,11 +1018,11 @@ async function main() {
     await row().locator('.status', { hasText: /^Partiel/ }).waitFor();
     await page.getByRole('button', { name: /^Mettre en cohérence paiements et quittances \(\d+\)/ }).click();
     dlg = page.locator('dialog[open]');
-    await dlg.getByText('Mois payés pour un montant inférieur à l’échéance').waitFor();
-    assert.ok(await dlg.getByRole('checkbox', { name: `Aligner ${period} sur le montant payé` }).isChecked(), 'mois échu proposé à l’alignement');
+    await dlg.getByText('Payé moins', { exact: true }).first().waitFor();
+    assert.ok(await dlg.getByRole('checkbox', { name: new RegExp(`^Aligner ${period} sur 500,00`) }).isChecked(), 'mois échu proposé à l’alignement');
     await page.screenshot({ path: join(out, '39-coherence-paiement-source.png'), fullPage: true });
-    await dlg.getByRole('button', { name: /^Émettre \d+ quittances?$/ }).click();
-    await page.getByText(/alignée.? sur le montant payé/).first().waitFor();
+    await dlg.getByRole('button', { name: /^Mettre en cohérence/ }).click();
+    await page.getByText(/alignées? sur le montant payé/).first().waitFor();
     await row().locator('.status', { hasText: /^Payée$/ }).waitFor();
     assert.match((await row().innerText()).replace(/[\u202f\u00a0]/g, ' '), /500,00 €/, 'échéance ramenée au montant payé');
     await row().getByRole('button', { name: /^Quittance Q-/ }).click();

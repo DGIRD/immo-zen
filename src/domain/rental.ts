@@ -253,10 +253,10 @@ export function autoAllocate(amount: number, open: ChargeView[]): AllocationPlan
 export const monthOf = (d: string) => d.slice(0, 7);
 
 /**
- * Répartition d'un paiement selon son mois (règle cible) :
+ * Répartition d'un paiement selon son mois (le paiement fait foi) :
  * 1. les échéances de ce mois (le loyer, puis les autres sommes dues du mois) ;
- * 2. le reste sur les échéances ouvertes les plus anciennes (arriérés), jamais avant `from`
- *    (date de début du bail : des échéances restées d'une date erronée ne captent rien) ;
+ * 2. le reste sur les rappels de charges déjà exigibles — jamais sur le loyer d'un autre mois :
+ *    un arriéré se règle en confirmant le paiement sur son échéance ;
  * 3. l'excédent reste en avance au crédit du locataire.
  */
 export function allocateByMonth(amount: number, paidOn: string, open: ChargeView[], from?: string): AllocationPlan {
@@ -273,8 +273,9 @@ export function allocateByMonth(amount: number, paidOn: string, open: ChargeView
     allocations.push({ charge_id: v.charge.id, amount: a });
     left = round2(left - a);
   }
-  // arriérés seulement : une échéance future reste à régler par son propre paiement
-  const rest = autoAllocate(left, ok.filter((v) => !own.includes(v) && monthOf(v.charge.period_start) < m));
+  // le paiement fait foi : il ne règle jamais le loyer d'un autre mois (ni passé, ni futur) ;
+  // seules les autres sommes déjà exigibles (rappels de charges) peuvent prendre l'excédent
+  const rest = autoAllocate(left, ok.filter((v) => !own.includes(v) && v.charge.kind !== 'loyer' && v.charge.due_date <= paidOn));
   return { allocations: [...allocations, ...rest.allocations], remainder: rest.remainder };
 }
 
@@ -306,8 +307,10 @@ export function monthRepairPlan(lease: Pick<Lease, 'id' | 'start_date'>, charges
   const frozen = new Set<string>();
   for (const r of receipts) if (!r.cancelled_at) { frozen.add(r.charge_id); for (const x of r.extra_lines ?? []) frozen.add(x.charge_id); }
   const mine = allocations.filter((a) => ids.has(a.charge_id));
-  const keep = mine.filter((a) => frozen.has(a.charge_id));
-  const remove = mine.filter((a) => !frozen.has(a.charge_id));
+  // un paiement saisi ou confirmé sur une échéance garde sa répartition (choix explicite)
+  const manual = new Set(payments.filter((p) => !importedPayment(p)).map((p) => p.id));
+  const keep = mine.filter((a) => frozen.has(a.charge_id) || manual.has(a.payment_id));
+  const remove = mine.filter((a) => !keep.includes(a));
   const kept = allocatedByPayment(keep);
   let views = chargeViews(own, keep, today);
   const add: MonthRepair['add'] = [];
@@ -389,6 +392,117 @@ export function chargePaymentRemoval(chargeId: string, payments: Payment[], allo
     if (!others && round2(a.amount) >= round2(p.amount)) { if (!remove.includes(p)) remove.push(p); } else detach.push(a);
   }
   return { remove, detach };
+}
+
+// ---------- Mise en cohérence mois par mois (le paiement fait foi) ----------
+export interface SourceMonth {
+  charge: RentCharge;
+  /** AAAA-MM */
+  month: string;
+  /** Somme des paiements datés de ce mois. */
+  received: number;
+  /** Montant dû actuel de l'échéance. */
+  total: number;
+  /** Déjà couvert par une quittance valable : rien n'est modifié. */
+  frozen: boolean;
+  /** Mois échu (avant le mois en cours). */
+  past: boolean;
+  /** Réglé actuellement sur l'échéance (toutes dates de paiement confondues). */
+  paidNow: number;
+}
+
+export interface SourcePlan {
+  months: SourceMonth[];
+  /** Paiements datés d'un mois sans échéance de loyer active (avant le début du bail, mois annulé…). */
+  orphans: Payment[];
+}
+
+/**
+ * Lecture « le paiement fait foi » d'un bail : pour chaque échéance de loyer, la somme des paiements
+ * datés de son mois. Sert à proposer l'alignement de l'échéance sur cette somme et la quittance du mois.
+ */
+export function paymentSourcePlan(leaseId: string, charges: RentCharge[], payments: Payment[], allocations: Allocation[],
+  receipts: Pick<Receipt, 'charge_id' | 'kind' | 'cancelled_at' | 'extra_lines'>[], today: string): SourcePlan {
+  const covered = new Set<string>();
+  for (const r of receipts) if (!r.cancelled_at && r.kind === 'quittance') { covered.add(r.charge_id); for (const x of r.extra_lines ?? []) covered.add(x.charge_id); }
+  const own = charges.filter((c) => c.lease_id === leaseId && c.kind === 'loyer' && !c.cancelled_at).sort((a, b) => a.period_start.localeCompare(b.period_start));
+  const pays = payments.filter((p) => p.lease_id === leaseId);
+  const byMonth = new Map<string, number>();
+  const addTo = (m: string, x: number) => byMonth.set(m, round2((byMonth.get(m) ?? 0) + x));
+  const chargeById = new Map(charges.map((c) => [c.id, c]));
+  for (const p of pays) {
+    // un paiement saisi ou confirmé sur une échéance compte pour le mois de cette échéance ;
+    // un paiement importé, pour le mois de sa date
+    let rest = p.amount;
+    if (!importedPayment(p)) for (const a of allocations.filter((x) => x.payment_id === p.id)) {
+      const c = chargeById.get(a.charge_id);
+      if (c && c.kind === 'loyer' && !c.cancelled_at) { addTo(monthOf(c.period_start), a.amount); rest = round2(rest - a.amount); }
+    }
+    if (rest > 0) addTo(monthOf(p.paid_on), rest);
+  }
+  const alloc = allocatedByCharge(allocations);
+  const cur = monthOf(today);
+  const months = own.map((c) => ({
+    charge: c, month: monthOf(c.period_start), received: byMonth.get(monthOf(c.period_start)) ?? 0, total: chargeTotal(c),
+    frozen: covered.has(c.id), past: monthOf(c.period_start) < cur, paidNow: alloc.get(c.id) ?? 0,
+  }));
+  const withCharge = new Set(months.map((m) => m.month));
+  return { months, orphans: pays.filter((p) => importedPayment(p) && !withCharge.has(monthOf(p.paid_on))).sort((a, b) => a.paid_on.localeCompare(b.paid_on)) };
+}
+
+/** Paiement issu d'un import de relevé (sa date fait foi) ; sinon saisi ou confirmé sur une échéance (sa répartition fait foi). */
+export const importedPayment = (p: Pick<Payment, 'source'>) => p.source === 'import';
+
+/**
+ * Nouvelle répartition stricte « un paiement ne règle que le mois de sa date » :
+ * - les affectations aux échéances quittancées, et celles des paiements saisis ou confirmés
+ *   sur une échéance (choix explicite), sont conservées ;
+ * - chaque échéance de loyer prend le montant `targets` (sinon son montant actuel) ;
+ * - chaque paiement règle l'échéance de loyer de son mois, puis les autres sommes dues
+ *   (rappels de charges) déjà exigibles à sa date ; jamais le loyer d'un autre mois ;
+ * - le reste demeure en avance au crédit du locataire.
+ */
+export function sourceReallocation(leaseId: string, charges: RentCharge[], payments: Payment[], allocations: Allocation[],
+  receipts: Pick<Receipt, 'charge_id' | 'kind' | 'cancelled_at' | 'extra_lines'>[], targets: Map<string, number>):
+  { remove: Allocation[]; add: { payment_id: string; charge_id: string; amount: number }[]; updates: { charge: RentCharge; rent_amount: number; charges_amount: number }[] } {
+  const covered = new Set<string>();
+  for (const r of receipts) if (!r.cancelled_at && r.kind === 'quittance') { covered.add(r.charge_id); for (const x of r.extra_lines ?? []) covered.add(x.charge_id); }
+  const own = charges.filter((c) => c.lease_id === leaseId && !c.cancelled_at);
+  const ids = new Set(own.map((c) => c.id));
+  const mine = allocations.filter((a) => ids.has(a.charge_id));
+  // conservées : échéances quittancées, et paiements saisis ou confirmés sur une échéance précise
+  const manual = new Set(payments.filter((p) => !importedPayment(p)).map((p) => p.id));
+  const keep = mine.filter((a) => covered.has(a.charge_id) || manual.has(a.payment_id));
+  const remove = mine.filter((a) => !keep.includes(a));
+  const updates: { charge: RentCharge; rent_amount: number; charges_amount: number }[] = [];
+  const cap = new Map<string, number>();
+  for (const c of own) {
+    if (covered.has(c.id)) continue;
+    const t = targets.get(c.id);
+    if (t !== undefined && round2(t) !== chargeTotal(c)) { const x = alignToPaid(c, t); updates.push({ charge: c, ...x }); cap.set(c.id, round2(x.rent_amount + x.charges_amount)); } else cap.set(c.id, chargeTotal(c));
+  }
+  for (const a of keep) cap.set(a.charge_id, round2((cap.get(a.charge_id) ?? 0) - a.amount));
+  const keptByPay = allocatedByPayment(keep);
+  const add: { payment_id: string; charge_id: string; amount: number }[] = [];
+  const pays = payments.filter((p) => p.lease_id === leaseId).sort((a, b) => a.paid_on.localeCompare(b.paid_on) || a.created_at.localeCompare(b.created_at));
+  for (const p of pays) {
+    let left = round2(p.amount - (keptByPay.get(p.id) ?? 0));
+    const m = monthOf(p.paid_on);
+    const targetsFor = [
+      ...own.filter((c) => c.kind === 'loyer' && monthOf(c.period_start) === m),
+      ...own.filter((c) => c.kind !== 'loyer' && c.due_date <= p.paid_on).sort((a, b) => a.due_date.localeCompare(b.due_date)),
+    ];
+    for (const c of targetsFor) {
+      if (left <= 0) break;
+      const room = cap.get(c.id) ?? 0;
+      if (room <= 0) continue;
+      const a = round2(Math.min(left, room));
+      add.push({ payment_id: p.id, charge_id: c.id, amount: a });
+      cap.set(c.id, round2(room - a));
+      left = round2(left - a);
+    }
+  }
+  return { remove, add, updates };
 }
 
 export interface MonthSummary {
