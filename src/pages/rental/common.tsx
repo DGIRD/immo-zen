@@ -314,8 +314,10 @@ export function ReceiptDialog({ receipt, onClose, onReplaced }: { receipt: Recei
 }
 
 /** Boutons d'action d'une échéance : payer, confirmer, quittance, reçu. */
-export function ChargeActions({ v, onPay, onConfirm, onReceipt }: {
+export function ChargeActions({ v, onPay, onConfirm, onReceipt, hideIssued = false }: {
   v: ChargeView; onPay: (v: ChargeView) => void; onConfirm: (v: ChargeView) => void; onReceipt: (r: Receipt) => void;
+  /** Ne pas répéter le bouton de la quittance déjà émise (affichée dans une colonne Document). */
+  hideIssued?: boolean;
 }) {
   const store = useStore();
   const { quittanceFor, views } = useRental();
@@ -342,7 +344,7 @@ export function ChargeActions({ v, onPay, onConfirm, onReceipt }: {
       </Modal>
       {v.remaining > 0 && <Button size="sm" onClick={() => (v.charge.due_date <= todayParis() ? onConfirm(v) : onPay(v))}>{v.charge.due_date <= todayParis() ? 'Confirmer le paiement' : 'Paiement anticipé'}</Button>}
       {v.status === 'payee' && (q
-        ? <Button size="sm" variant="ghost" onClick={() => onReceipt(q)}>Quittance {q.number}</Button>
+        ? (hideIssued ? null : <Button size="sm" variant="ghost" onClick={() => onReceipt(q)}>Quittance {q.number}</Button>)
         : <Button size="sm" variant="primary" onClick={() => (pending.length ? setExtras(pending.map((x) => x.charge.id)) : void issueQuittance([]))}>Émettre la quittance</Button>)}
       {v.status === 'partielle' && (
         <Button size="sm" variant="ghost" onClick={async () => { const r = await store.call((repo) => repo.issueReceipt(v.charge.id, 'recu'), 'Reçu émis.'); if (r) onReceipt(r); }}>Reçu partiel</Button>
@@ -567,36 +569,4 @@ export function usePaymentActions() {
     removeMany: (list: Payment[], then?: () => void) => { done.current = then ?? null; setRemoving(list); },
     ui,
   };
-}
-
-/** Liste des quittances et reçus : documents annulés masqués par défaut ; ouvrir, modifier, rééditer. */
-export function ReceiptsTable({ receipts, onOpen, leaseLabelOf }: { receipts: Receipt[]; onOpen: (r: Receipt) => void; leaseLabelOf?: (leaseId: string) => string }) {
-  const [showCancelled, setShowCancelled] = useState(false);
-  const actions = useReceiptActions(onOpen);
-  const cancelled = receipts.filter((r) => r.cancelled_at).length;
-  const rows = receipts.filter((r) => showCancelled || !r.cancelled_at);
-  return (
-    <>
-      {cancelled > 0 && <Checkbox label={`Afficher les documents annulés ou remplacés (${cancelled})`} checked={showCancelled} onChange={setShowCancelled} />}
-      {rows.length === 0 ? <p className="muted">Aucun document. Une quittance s’émet depuis une échéance intégralement réglée ; un reçu depuis une échéance partiellement réglée.</p> : (
-        <div className="dt-scroll"><table className="dt-table receipts-table">
-          <thead><tr><th>N°</th><th>Type</th>{leaseLabelOf && <th>Bail</th>}<th>Période</th><th>Émis le</th><th className="num">Montant</th><th>Envoi</th><th><span className="sr-only">Actions</span></th></tr></thead>
-          <tbody>{rows.map((r) => (
-            <tr key={r.id} className={r.cancelled_at ? 'muted' : ''}>
-              <td>{r.number}</td><td>{r.kind === 'quittance' ? 'Quittance' : 'Reçu partiel'}</td>{leaseLabelOf && <td>{leaseLabelOf(r.lease_id)}</td>}
-              <td>{monthLabel(r.period_start)}</td><td>{date(r.issued_on)}</td>
-              <td className="num">{money2(r.paid_amount)}</td><td>{r.cancelled_at ? <span title={r.cancel_reason ?? undefined}>{r.cancel_reason?.startsWith('Remplacé') ? r.cancel_reason : 'Annulé'}</span> : sendLabel(r)}</td>
-              <td><div className="row">
-                <Button size="sm" onClick={() => onOpen(r)}>Ouvrir</Button>
-                {!r.cancelled_at && <Button size="sm" variant="ghost" onClick={() => actions.edit(r)}>Modifier</Button>}
-                {!r.cancelled_at && <Button size="sm" variant="ghost" onClick={() => void actions.reissue(r)}>Rééditer</Button>}
-                {!r.cancelled_at && <Button size="sm" variant="ghost" onClick={() => actions.remove(r)}>Supprimer</Button>}
-              </div></td>
-            </tr>
-          ))}</tbody>
-        </table></div>
-      )}
-      {actions.ui}
-    </>
-  );
 }

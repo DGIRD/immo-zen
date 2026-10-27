@@ -547,3 +547,10 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 .listing-import textarea { width: 100%; font: inherit; }
 .listing-found { margin-top: .6rem; }
 .listing-found .pill { margin-left: .35rem; }
+
+/* Loyers et paiements : tableau unique (paiements et documents dans la ligne de l'échéance) */
+.pay-lines, .doc-lines { display: flex; flex-direction: column; gap: .2rem; min-width: 12rem; }
+.pay-line { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; white-space: nowrap; }
+.pay-line .row-delete { margin-left: auto; padding: 0 .25rem; font-size: .85em; opacity: .55; }
+.pay-line .row-delete:hover, .pay-line .row-delete:focus-visible { opacity: 1; }
+.doc-lines .link { text-align: left; }
