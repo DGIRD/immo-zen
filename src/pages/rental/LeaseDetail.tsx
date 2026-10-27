@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../../data/store.tsx';
-import type { DepositMovement, Payment, Receipt, Reminder, RentCharge } from '../../data/types.ts';
+import type { DepositMovement, Lease, Payment, Receipt, Reminder, RentCharge } from '../../data/types.ts';
 import { date, dateTime, money2, todayParis } from '../../domain/format.ts';
 import {
-  autoAllocate, chargeTotal, DEFAULT_REMINDER_TEMPLATES, leaseLedger, leaseTenants, monthLabel, PAYMENT_METHOD_LABELS, renderTemplate, startChangeImpact, tenantName,
+  allocateByMonth, chargeTotal, DEFAULT_REMINDER_TEMPLATES, leaseLedger, leaseTenants, monthLabel, PAYMENT_METHOD_LABELS, renderTemplate, startChangeImpact, tenantName,
   type ChargeView,
 } from '../../domain/rental.ts';
 import { round2 } from '../../domain/simulator.ts';
@@ -16,6 +16,7 @@ import { receiptBacklog } from '../../domain/receiptBacklog.ts';
 import { AccessPill, useTenantAccess } from './TenantAccess.tsx';
 import { IRL_VALUES, irlLabel, revisionPlan } from '../../domain/irl.ts';
 import { reallocateLease, StartChangeMessage } from './Leases.tsx';
+import { MonthRepairDialog, useLeaseRepair } from './MonthRepair.tsx';
 import { ChargeActions, ChargeBadge, LeaseBadge, PaymentDialog, paymentAllocated, periodLabel, ReceiptDialog, ReceiptsTable, usePaymentActions, useRental } from './common.tsx';
 
 type Tab = 'echeances' | 'paiements' | 'quittances' | 'relances' | 'depot' | 'titulaires' | 'documents';
@@ -73,6 +74,7 @@ export function LeaseDetailPage({ id }: { id: string }) {
           <Button onClick={async () => { const n = await store.call((r) => r.generateCharges(lease.id)); if (n !== null) store.notify(n ? `${n} échéance(s) générée(s).` : 'Échéances déjà à jour.'); }}>Générer les échéances</Button>
           <Button variant="primary" onClick={() => setPay({ mode: 'saisie' })}>Enregistrer un paiement</Button>
         </>} />
+      <RepairNote lease={lease} />
       <div className="status-line"><LeaseBadge lease={lease} />{lease.receipt_auto_send && <span className="pill pill-ok">Quittances automatiques</span>}{lease.reminder_enabled && <span className="pill pill-neutral">Relances préparées après {lease.reminder_delay_days} j</span>}</div>
 
       <div className="figures">
@@ -158,6 +160,18 @@ export function LeaseDetailPage({ id }: { id: string }) {
   );
 }
 
+/** Paiements qui ne règlent pas l'échéance de leur mois : proposition de remise en ordre. */
+function RepairNote({ lease }: { lease: Lease }) {
+  const { needed } = useLeaseRepair(lease);
+  const [open, setOpen] = useState(false);
+  if (!needed) return null;
+  return <>
+    <p className="note note-warn">Des paiements de ce bail ne règlent pas l’échéance de leur mois (ancienne répartition, échéances antérieures au bail ou annulées).{' '}
+      <button type="button" className="link" onClick={() => setOpen(true)}>Répartir les paiements par mois</button></p>
+    <MonthRepairDialog open={open} onClose={() => setOpen(false)} leaseIds={[lease.id]} />
+  </>;
+}
+
 function PaymentsList({ payments, views, onAdd }: { payments: Payment[]; views: ChargeView[]; onAdd: () => void }) {
   const store = useStore();
   const { data } = store;
@@ -180,7 +194,7 @@ function PaymentsList({ payments, views, onAdd }: { payments: Payment[]; views: 
                 <td><div className="row">
                   {free > 0 && views.some((v) => v.remaining > 0) && (
                     <Button size="sm" onClick={async () => {
-                      const plan = autoAllocate(free, views.filter((v) => v.remaining > 0));
+                      const plan = allocateByMonth(free, p.paid_on, views.filter((v) => v.remaining > 0), data.leases.find((l) => l.id === p.lease_id)?.start_date);
                       if (plan.allocations.length) await store.createMany('payment_allocations', plan.allocations.map((a) => ({ payment_id: p.id, ...a })));
                     }}>Affecter l’avance</Button>
                   )}

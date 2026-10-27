@@ -170,8 +170,36 @@ test('réaffectation des paiements après correction de la date de début', asyn
   const cs = [charge('s', '2024-09-01', '2024-09-05', 900, 60), charge('o', '2024-10-01', '2024-10-05', 900, 60), charge('n', '2024-11-01', '2024-11-05', 900, 60)];
   const pays = [pay('p2', 960, '2024-10-06'), pay('p1', 1000, '2024-09-08')];
   const plan = reallocatePayments('L1', cs, pays, [], '2024-12-01');
-  assert.deepEqual(plan, [
-    { payment_id: 'p1', charge_id: 's', amount: 960 }, { payment_id: 'p1', charge_id: 'o', amount: 40 },
-    { payment_id: 'p2', charge_id: 'o', amount: 920 }, { payment_id: 'p2', charge_id: 'n', amount: 40 },
-  ]);
+  // chaque paiement règle l'échéance de son mois ; l'excédent de septembre reste en avance
+  assert.deepEqual(plan, [{ payment_id: 'p1', charge_id: 's', amount: 960 }, { payment_id: 'p2', charge_id: 'o', amount: 960 }]);
+});
+
+test('paiement : échéance du mois d\'abord, puis arriérés, jamais une échéance future ni antérieure au bail', async () => {
+  const { allocateByMonth } = await import('../src/domain/rental.ts');
+  const cs = [charge('old', '1990-04-01', '1990-04-05', 500), charge('a', '2026-08-01', '2026-08-05', 500), charge('s', '2026-09-01', '2026-09-05', 500),
+    charge('o', '2026-10-01', '2026-10-05', 500), charge('r', '2026-10-01', '2026-10-01', 80, 0, { kind: 'regularisation' }), charge('n', '2026-11-01', '2026-11-05', 500)];
+  const views = chargeViews(cs, [], '2026-10-27');
+  assert.deepEqual(allocateByMonth(500, '2026-10-06', views, '2024-09-01').allocations, [{ charge_id: 'o', amount: 500 }], 'octobre payé, pas 1990');
+  assert.deepEqual(allocateByMonth(1200, '2026-10-06', views, '2024-09-01'), {
+    allocations: [{ charge_id: 'o', amount: 500 }, { charge_id: 'r', amount: 80 }, { charge_id: 'a', amount: 500 }, { charge_id: 's', amount: 120 }], remainder: 0,
+  });
+  assert.equal(allocateByMonth(800, '2026-11-02', chargeViews([charge('n', '2026-11-01', '2026-11-05', 500)], [], '2026-11-02')).remainder, 300, 'excédent en avance');
+});
+
+test('remise en ordre par mois : affectations recalculées, quittances respectées', async () => {
+  const { monthRepairPlan } = await import('../src/domain/rental.ts');
+  const l = lease({ start_date: '2026-08-01' });
+  const cs = [charge('x', '1990-01-01', '1990-01-05', 500), charge('a', '2026-08-01', '2026-08-05', 500), charge('s', '2026-09-01', '2026-09-05', 500), charge('o', '2026-10-01', '2026-10-05', 500)];
+  const pays = [pay('p8', 500, '2026-08-04'), pay('p9', 500, '2026-09-04'), pay('p10', 500, '2026-10-04')];
+  // import ancien : tout réparti sur les plus anciennes, dont 1990
+  const wrong = [alloc('p8', 'x', 500), alloc('p9', 'a', 500), alloc('p10', 's', 500)];
+  const plan = monthRepairPlan(l, cs, pays, wrong, [], '2026-10-27');
+  assert.equal(plan.remove.length, 3);
+  assert.deepEqual(plan.add, [{ payment_id: 'p8', charge_id: 'a', amount: 500 }, { payment_id: 'p9', charge_id: 's', amount: 500 }, { payment_id: 'p10', charge_id: 'o', amount: 500 }]);
+  // déjà en ordre : rien à faire
+  assert.deepEqual(monthRepairPlan(l, cs, pays, plan.add.map((a) => alloc(a.payment_id, a.charge_id, a.amount)), [], '2026-10-27').add, []);
+  // une échéance quittancée garde ses affectations
+  const kept = monthRepairPlan(l, cs, pays, wrong, [{ charge_id: 'a', cancelled_at: null, extra_lines: [] }], '2026-10-27');
+  assert.ok(!kept.remove.some((a) => a.charge_id === 'a'));
+  assert.deepEqual(kept.add, [{ payment_id: 'p10', charge_id: 'o', amount: 500 }], 'août déjà quittancé (paiement de septembre) : août reste tel quel');
 });

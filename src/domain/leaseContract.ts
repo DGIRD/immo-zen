@@ -3,8 +3,10 @@
  *
  *  - Location vide et location meublée à usage de résidence principale : structure et mentions des contrats types
  *    du décret n° 2015-587 du 29 mai 2015 (annexe 1 : logement nu, annexe 2 : logement meublé), pris pour
- *    l'application de l'article 3 de la loi n° 89-462 du 6 juillet 1989, mis à jour (décence énergétique,
- *    dépenses d'énergie, clause résolutoire après six semaines).
+ *    l'application de l'article 3 de la loi n° 89-462 du 6 juillet 1989, dans leur version issue du décret
+ *    n° 2026-596 du 6 juillet 2026 (baux conclus ou renouvelés à compter du 1er octobre 2026) : rubriques I à XI
+ *    dans l'ordre officiel, téléphone portable facultatif, servitude de résidence principale, clause résolutoire
+ *    réécrite (partie obligatoire et clauses facultatives).
  *  - Bail civil (résidence secondaire, logement loué à une société) et location d'un parking seul : il n'existe
  *    pas de modèle officiel ; le contrat suit les articles 1714 et suivants du Code civil.
  *
@@ -60,6 +62,15 @@ export const FURNITURE_MINIMUM = [
   'Luminaires',
   'Matériel d’entretien ménager adapté aux caractéristiques du logement',
 ];
+/** Référence du contrat type officiel (version applicable aux baux conclus ou renouvelés depuis le 1er octobre 2026). */
+export const CONTRACT_TYPE_REF = {
+  vide: 'annexe 1 du décret n° 2015-587 du 29 mai 2015 modifié, en dernier lieu par le décret n° 2026-596 du 6 juillet 2026',
+  meuble: 'annexe 2 du décret n° 2015-587 du 29 mai 2015 modifié, en dernier lieu par le décret n° 2026-596 du 6 juillet 2026',
+} as const;
+export const CONTRACT_TYPE_SOURCES = {
+  vide: 'https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000047983882',
+  meuble: 'https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000054393993',
+} as const;
 export const NOTICE_URL = 'https://www.service-public.fr/particuliers/vosdroits/F920';
 
 const isHousing = (k: ContractKind) => k === 'vide' || k === 'meuble';
@@ -96,6 +107,8 @@ export function defaultContract(ctx: ContractContext): LeaseContract {
     payment_terms: 'echoir',
     furniture: kind === 'meuble' ? [...FURNITURE_MINIMUM] : [],
     signed_on: ctx.today,
+    clause_insurance: true,
+    clause_neighbours: true,
   };
   return { ...base, ...(saved ?? {}), kind };
 }
@@ -191,6 +204,7 @@ export function checkContract(c: LeaseContract, ctx: ContractContext): { errors:
       if (c.rent_complement && c.rent_complement > 0 && (property.dpe === 'F' || property.dpe === 'G')) errors.push('Complément de loyer interdit pour un logement classé F ou G.');
     }
     if (!c.construction_period) warnings.push('Période de construction à préciser.');
+    if (!c.tax_id?.trim()) warnings.push('Identifiant fiscal du logement à indiquer (mention du contrat type ; il figure dans l’espace « Gérer mes biens immobiliers » sur impots.gouv.fr).');
     if (lease.irl_enabled && !lease.irl_base_label) warnings.push('Révision prévue sans trimestre de référence de l’IRL (bail → Modifier).');
   }
   if (c.kind === 'civil_secondaire' || c.kind === 'civil_societe') {
@@ -210,7 +224,7 @@ export function buildContract(c: LeaseContract, ctx: ContractContext): ContractD
     title: c.kind === 'vide' ? 'Contrat de location – logement nu' : c.kind === 'meuble' ? 'Contrat de location – logement meublé'
       : c.kind === 'parking' ? 'Contrat de location d’un emplacement de stationnement' : 'Bail d’habitation soumis au Code civil',
     subtitle: c.kind === 'vide' || c.kind === 'meuble'
-      ? `Soumis au ${c.kind === 'vide' ? 'titre Ier' : 'titre Ier bis'} de la loi n° 89-462 du 6 juillet 1989 tendant à améliorer les rapports locatifs – contrat type défini par le décret n° 2015-587 du 29 mai 2015`
+      ? `Contrat type de location ou de colocation de logement ${c.kind === 'vide' ? 'nu' : 'meublé'} – soumis au ${c.kind === 'vide' ? 'titre Ier' : 'titre Ier bis'} de la loi n° 89-462 du 6 juillet 1989 tendant à améliorer les rapports locatifs – ${CONTRACT_TYPE_REF[c.kind]}`
       : c.kind === 'parking' ? 'Location soumise aux articles 1714 et suivants du Code civil'
       : 'Location ne constituant pas la résidence principale du preneur, soumise aux articles 1714 et suivants du Code civil',
     sections,
@@ -234,6 +248,14 @@ function tenantRows(ctx: ContractContext): [string, string][] {
 }
 const address = (p: Property) => [p.address, [p.zip, p.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
 
+/** Mention « sans objet » d'une rubrique du contrat type non applicable (la numérotation officielle est conservée). */
+const NA = 'Sans objet.';
+
+/**
+ * Location vide (annexe 1) ou meublée (annexe 2) : rubriques I à XI et sous-rubriques dans l'ordre et sous les intitulés
+ * des contrats types, dans leur version issue du décret n° 2026-596 du 6 juillet 2026 (contrats conclus ou renouvelés à
+ * compter du 1er octobre 2026). Une rubrique « le cas échéant » non applicable est conservée avec la mention « Sans objet ».
+ */
 function housingSections(c: LeaseContract, ctx: ContractContext): DocSection[] {
   const { lease: l, property: p, tenants } = ctx;
   const furnished = c.kind === 'meuble';
@@ -242,149 +264,196 @@ function housingSections(c: LeaseContract, ctx: ContractContext): DocSection[] {
   const reduced = c.kind === 'vide' && !!c.reduced_reason?.trim() && duration < 36;
   const s: DocSection[] = [];
 
+  // ---------- I. Désignation des parties
   s.push({ title: 'I. Désignation des parties', blocks: [
     { t: 'p', text: 'Le présent contrat est conclu entre les soussignés :' },
-    { t: 'kv', rows: landlordRows(c, l) },
+    { t: 'kv', rows: [
+      ['Nom et prénom, ou dénomination du bailleur', l.landlord_name || '—'],
+      ['Domicile ou siège social', l.landlord_address || '—'],
+      ['Qualité du bailleur', c.landlord_kind === 'morale' ? 'Personne morale' : c.landlord_kind === 'sci_familiale' ? 'Personne morale : société civile constituée exclusivement entre parents et alliés jusqu’au quatrième degré inclus' : 'Personne physique'],
+      ...(c.landlord_email ? [['Adresse électronique (facultatif)', c.landlord_email] as [string, string]] : []),
+      ...(c.landlord_phone ? [['Numéro de téléphone portable (facultatif)', c.landlord_phone] as [string, string]] : []),
+    ] },
     { t: 'p', text: 'désigné(s) ci-après « le bailleur » ;' },
-    { t: 'kv', rows: tenantRows(ctx) },
+    { t: 'kv', rows: [['Le cas échéant, représenté par le mandataire (nom ou raison sociale, adresse, activité exercée, numéro et lieu de délivrance de la carte professionnelle)', c.landlord_representative || NA]] },
+    { t: 'kv', rows: tenants.flatMap((t, i): [string, string][] => {
+      const k = coloc ? `Colocataire ${i + 1}` : 'Locataire';
+      return [[`${k} : nom et prénom`, tenantFull(t)], ...(t.email ? [[`${k} : adresse électronique (facultatif)`, t.email] as [string, string]] : []),
+        ...(t.phone ? [[`${k} : numéro de téléphone portable (facultatif)`, t.phone] as [string, string]] : [])];
+    }) },
     { t: 'p', text: `désigné(s) ci-après « le locataire »${coloc ? ' (colocation)' : ''}.` },
-    ...(c.guarantor ? [{ t: 'p', text: `Garant : ${c.guarantor} (acte de cautionnement annexé).` } as Block] : []),
+    ...(c.guarantor ? [{ t: 'p', text: `Le cas échéant, garant : ${c.guarantor}.` } as Block] : []),
+    { t: 'p', text: 'Il a été convenu ce qui suit :' },
   ] });
 
+  // ---------- II. Objet du contrat
   s.push({ title: 'II. Objet du contrat', blocks: [
     { t: 'p', text: `Le présent contrat a pour objet la location d’un logement${furnished ? ' meublé' : ''} ainsi déterminé :` },
+    { t: 'p', text: 'A. Consistance du logement' },
     { t: 'kv', rows: [
-      ['A. Localisation du logement', address(p)],
-      ...(c.tax_id ? [['Identifiant fiscal du logement', c.tax_id] as [string, string]] : []),
+      ['Localisation du logement', address(p)],
+      ['Identifiant fiscal du logement', c.tax_id || '—'],
       ['Type d’habitat', c.building_type === 'individuel' ? 'Individuel' : 'Immeuble collectif'],
       ['Régime juridique de l’immeuble', c.ownership_regime === 'monopropriete' ? 'Monopropriété' : 'Copropriété'],
       ['Période de construction', c.construction_period ? CONSTRUCTION_LABELS[c.construction_period] : '—'],
       ['Surface habitable', c.surface ? `${String(c.surface).replace('.', ',')} m²` : '—'],
       ['Nombre de pièces principales', c.rooms ? String(c.rooms) : '—'],
-      ['Autres parties du logement', c.other_parts || 'Néant'],
-      ['Éléments d’équipement du logement', c.equipment || (furnished ? 'Cuisine équipée, installations sanitaires' : 'Installations sanitaires')],
-      ['Production de chauffage', c.heating === 'collectif' ? 'Collective' : 'Individuelle'],
-      ['Production d’eau chaude sanitaire', c.hot_water === 'collectif' ? 'Collective' : 'Individuelle'],
-      ...((c.heating === 'collectif' || c.hot_water === 'collectif') ? [['Répartition de la consommation (collectif)', c.collective_split || 'Selon le règlement de copropriété'] as [string, string]] : []),
-      ['Niveau de performance énergétique (DPE)', p.dpe ? `Classe ${p.dpe}` : '—'],
+      ['Le cas échéant, autres parties du logement', c.other_parts || NA],
+      ['Le cas échéant, éléments d’équipements du logement', c.equipment || (furnished ? 'Cuisine équipée, installations sanitaires' : NA)],
+      ['Modalité de production de chauffage', c.heating === 'collectif' ? `Collectif${c.collective_split ? ` (répartition : ${c.collective_split})` : ''}` : 'Individuel'],
+      ['Modalité de production d’eau chaude sanitaire', c.hot_water === 'collectif' ? `Collective${c.collective_split && c.heating !== 'collectif' ? ` (répartition : ${c.collective_split})` : ''}` : 'Individuelle'],
+      ['Niveau de performance du logement (classe du diagnostic de performance énergétique)', p.dpe ? `Classe ${p.dpe}` : '—'],
     ] },
-    { t: 'p', text: 'Rappel : un logement décent doit respecter un niveau de performance minimal. En France métropolitaine, il doit être au moins de classe F depuis le 1er janvier 2025, de classe E à compter du 1er janvier 2028 et de classe D à compter du 1er janvier 2034 (article 6 de la loi du 6 juillet 1989).' },
+    { t: 'p', text: 'Rappel : un logement décent doit respecter les critères minimaux de performance suivants : en France métropolitaine, à compter du 1er janvier 2025, le niveau de performance minimal du logement correspond à la classe F du DPE ; à compter du 1er janvier 2028, à la classe E ; à compter du 1er janvier 2034, à la classe D. En Guadeloupe, Martinique, Guyane, à La Réunion et à Mayotte, à compter du 1er janvier 2028, à la classe F ; à compter du 1er janvier 2031, à la classe E. La consommation d’énergie finale et le niveau de performance du logement sont déterminés selon la méthode du DPE mentionné à l’article L. 126-26 du code de la construction et de l’habitation.' },
+    { t: 'p', text: `B. Destination des locaux : ${c.usage === 'mixte' ? 'usage mixte professionnel et d’habitation' : 'usage d’habitation'}.` },
+    ...(c.principal_residence_servitude ? [{ t: 'p', text: 'Le logement est soumis aux dispositions de l’article L. 151-14-1 du code de l’urbanisme : il doit être occupé exclusivement à titre de résidence principale, au sens de l’article 2 de la loi n° 89-462 du 6 juillet 1989.' } as Block] : []),
     { t: 'kv', rows: [
-      ['B. Destination des locaux', c.usage === 'mixte' ? 'Usage mixte professionnel et d’habitation' : 'Usage d’habitation'],
-      ['C. Locaux et équipements accessoires à usage privatif', c.private_annexes || 'Néant'],
-      ['D. Locaux, parties, équipements et accessoires à usage commun', c.common_areas || 'Néant'],
-      ['E. Équipement d’accès aux technologies de l’information et de la communication', c.telecom || 'Néant'],
+      ['C. Le cas échéant, désignation des locaux et équipements accessoires de l’immeuble à usage privatif du locataire', c.private_annexes || NA],
+      ['D. Le cas échéant, énumération des locaux, parties, équipements et accessoires de l’immeuble à usage commun', c.common_areas || NA],
+      ['E. Le cas échéant, équipement d’accès aux technologies de l’information et de la communication', c.telecom || NA],
     ] },
   ] });
 
-  const startRows: [string, string][] = [
-    ['A. Date de prise d’effet', frDate(l.start_date)],
-    ['B. Durée du contrat', `${months(duration)}${c.kind === 'meuble' && c.student ? ' (location à un étudiant)' : ''}`],
-  ];
+  // ---------- III. Date de prise d'effet et durée
   const durationText = c.kind === 'vide'
     ? (reduced
-      ? `Le bailleur, personne physique, conclut le contrat pour une durée réduite, au moins égale à un an, en raison de l’événement suivant, justifiant qu’il reprenne le logement pour des raisons professionnelles ou familiales : ${c.reduced_reason}. Le bailleur confirme la réalisation de l’événement au locataire deux mois au moins avant le terme du contrat.`
+      ? 'Le contrat est conclu pour une durée réduite, au moins égale à un an, le bailleur personne physique justifiant d’un événement précis qui le conduit à reprendre le logement pour des raisons professionnelles ou familiales. Le bailleur confirme la réalisation de l’événement au locataire, par lettre recommandée avec demande d’avis de réception, deux mois au moins avant le terme du contrat.'
       : `En l’absence de proposition de renouvellement du contrat, celui-ci est, à son terme, reconduit tacitement pour ${c.landlord_kind === 'morale' ? '6 ans' : '3 ans'} et dans les mêmes conditions.`)
     : c.student
       ? 'Location consentie à un étudiant pour une durée de neuf mois : le contrat n’est pas reconduit tacitement et prend fin à son terme.'
-      : 'En l’absence de proposition de renouvellement du contrat, celui-ci est, à son terme, reconduit tacitement pour un an et dans les mêmes conditions.';
+      : 'En l’absence de proposition de renouvellement du contrat, celui-ci est, à son terme, reconduit tacitement pour une durée d’un an et dans les mêmes conditions.';
   s.push({ title: 'III. Date de prise d’effet et durée du contrat', blocks: [
-    { t: 'kv', rows: startRows },
+    { t: 'p', text: 'La durée du contrat et sa date de prise d’effet sont ainsi définies :' },
+    { t: 'kv', rows: [
+      ['A. Date de prise d’effet du contrat', frDate(l.start_date)],
+      ['B. Durée du contrat', `${months(duration)}${furnished && c.student ? ' (location consentie à un étudiant)' : ''}`],
+      ...(c.kind === 'vide' ? [['C. Le cas échéant, événement et raison justifiant la durée réduite du contrat de location', reduced ? c.reduced_reason! : NA] as [string, string]] : []),
+    ] },
     { t: 'p', text: durationText },
     { t: 'p', text: furnished
       ? 'Le locataire peut mettre fin au bail à tout moment, après avoir donné congé avec un préavis d’un mois. Le bailleur peut, lorsqu’il donne congé à son locataire, mettre fin au bail à son échéance et après un préavis de trois mois, pour reprendre le logement en vue de l’occuper lui-même ou une personne de sa famille, pour le vendre, ou pour un motif sérieux et légitime.'
-      : 'Le locataire peut mettre fin au bail à tout moment, après avoir donné congé avec un préavis de trois mois, réduit à un mois dans les cas prévus par la loi (notamment logement situé en zone tendue, obtention d’un premier emploi, mutation, perte d’emploi, nouvel emploi consécutif à une perte d’emploi, état de santé, bénéficiaire du RSA ou de l’allocation adulte handicapé, attribution d’un logement social). Le bailleur peut, lorsqu’il donne congé à son locataire, mettre fin au bail à son échéance et après un préavis de six mois, pour reprendre le logement en vue de l’occuper lui-même ou une personne de sa famille, pour le vendre, ou pour un motif sérieux et légitime.' },
-    { t: 'p', text: 'Le congé doit être notifié par lettre recommandée avec demande d’avis de réception, par acte de commissaire de justice ou par remise en main propre contre récépissé ou émargement.' },
+      : 'Le locataire peut mettre fin au bail à tout moment, après avoir donné congé dans les conditions de forme et de délai prévues par la loi : préavis de trois mois, réduit à un mois dans les cas prévus par l’article 15 de la loi du 6 juillet 1989 (notamment logement situé en zone tendue, obtention d’un premier emploi, mutation, perte d’emploi, nouvel emploi consécutif à une perte d’emploi, état de santé, bénéficiaire du revenu de solidarité active ou de l’allocation aux adultes handicapés, attribution d’un logement social). Le bailleur peut, lorsqu’il donne congé à son locataire, mettre fin au bail à son échéance et après un préavis de six mois, pour reprendre le logement en vue de l’occuper lui-même ou une personne de sa famille, pour le vendre, ou pour un motif sérieux et légitime.' },
+    { t: 'p', text: 'Le congé est notifié par lettre recommandée avec demande d’avis de réception, par acte de commissaire de justice ou par remise en main propre contre récépissé ou émargement.' },
   ] });
 
-  const rentBlocks: Block[] = [
-    { t: 'kv', rows: [
-      ['Montant du loyer mensuel hors charges', eur(l.rent_hc)],
-      ...(c.zone_tendue ? [
-        ['Logement soumis au décret fixant annuellement l’évolution maximale des loyers à la relocation', 'Oui'],
-        ['Loyer de référence (€/m²/mois)', eur(c.reference_rent)],
-        ['Loyer de référence majoré (€/m²/mois)', eur(c.reference_rent_increased)],
-        ...(c.rent_complement ? [['Complément de loyer', `${eur(c.rent_complement)} – ${c.rent_complement_reason ?? ''}`] as [string, string]] : []),
-      ] as [string, string][] : []),
-      ...(c.previous_rent ? [['Loyer du précédent locataire', `${eur(c.previous_rent)}${c.previous_rent_date ? `, dernier versement le ${frDate(c.previous_rent_date)}` : ''}`] as [string, string]] : []),
-    ] },
-  ];
-  if (p.dpe === 'F' || p.dpe === 'G') rentBlocks.push({ t: 'p', text: 'Logement classé F ou G : le loyer ne peut faire l’objet d’aucune révision, majoration ni réévaluation (article 17-1 de la loi du 6 juillet 1989).' });
-  else if (l.irl_enabled) {
-    rentBlocks.push({ t: 'p', text: `Révision du loyer : le loyer est révisé chaque année à la date anniversaire du contrat, en fonction de la variation de l’indice de référence des loyers (IRL) publié par l’INSEE. Trimestre de référence : ${l.irl_base_label ? l.irl_base_label.replace('-T', ', ') + 'e trimestre' : '—'}${l.irl_base_value ? ` (valeur ${String(l.irl_base_value).replace('.', ',')})` : ''}. À défaut de manifestation du bailleur dans un délai d’un an suivant cette date, il est réputé avoir renoncé à la révision pour l’année écoulée.` });
-  } else rentBlocks.push({ t: 'p', text: 'Le loyer n’est pas révisable en cours de bail.' });
-  const chargesText = l.charges_mode === 'forfait'
-    ? `Charges récupérables : forfait mensuel de ${eur(l.charges_amount)}, révisé chaque année dans les mêmes conditions que le loyer. Il ne donne lieu à aucune régularisation.`
-    : `Charges récupérables : provisions mensuelles de ${eur(l.charges_amount)}, faisant l’objet d’une régularisation annuelle. Le bailleur communique au locataire, un mois avant cette régularisation, le décompte par nature de charges et, en immeuble collectif, le mode de répartition entre les locataires.`;
-  rentBlocks.push({ t: 'p', text: chargesText });
-  rentBlocks.push({ t: 'kv', rows: [
-    ['Périodicité du paiement', 'Mensuelle'],
-    ['Paiement', c.payment_terms === 'echu' ? 'À terme échu' : 'À échoir (d’avance)'],
-    ['Date de paiement', `Le ${l.payment_day} de chaque mois`],
-    ['Lieu de paiement', c.payment_place || 'Virement sur le compte indiqué par le bailleur'],
-    ['Montant total dû à la première échéance', eur(l.rent_hc + l.charges_amount)],
+  // ---------- IV. Conditions financières
+  const L = (i: number) => 'ABCDEFG'[i]!;
+  let k = 0;
+  const fin: Block[] = [{ t: 'p', text: 'Les parties conviennent des conditions financières suivantes :' }];
+  fin.push({ t: 'p', text: `${L(k++)}. Loyer` });
+  fin.push({ t: 'kv', rows: [
+    ['1° Fixation du loyer initial – a) Montant du loyer mensuel', eur(l.rent_hc)],
+    ['b) Le cas échéant, logement soumis au décret fixant annuellement le montant maximum d’évolution des loyers à la relocation', c.zone_tendue ? 'Oui' : 'Non'],
+    ['Logement soumis au loyer de référence majoré fixé par arrêté préfectoral', c.zone_tendue && c.reference_rent_increased ? 'Oui' : 'Non'],
+    ...(c.zone_tendue && c.reference_rent_increased ? [
+      ['Montant du loyer de référence', `${eur(c.reference_rent)}/m²/mois`],
+      ['Montant du loyer de référence majoré', `${eur(c.reference_rent_increased)}/m²/mois`],
+      ['Le cas échéant, complément de loyer', c.rent_complement ? `${eur(c.rent_complement)} – caractéristiques justifiant le complément : ${c.rent_complement_reason ?? ''}` : NA],
+    ] as [string, string][] : []),
+    ['c) Le cas échéant, informations relatives au loyer du dernier locataire', c.previous_rent ? `${eur(c.previous_rent)}${c.previous_rent_date ? `, date de versement : ${frDate(c.previous_rent_date)}` : ''}` : NA],
   ] });
-  if (c.energy_cost_min && c.energy_cost_max) {
-    rentBlocks.push({ t: 'p', text: `Montant estimé des dépenses annuelles d’énergie pour un usage standard : entre ${eur(c.energy_cost_min)} et ${eur(c.energy_cost_max)} par an${c.energy_ref_year ? ` (prix de l’énergie indexés au 1er janvier ${c.energy_ref_year})` : ''}.` });
+  if (p.dpe === 'F' || p.dpe === 'G') {
+    fin.push({ t: 'p', text: '2° Révision : sans objet. Logement classé F ou G : le loyer ne peut faire l’objet d’aucune révision, majoration ni réévaluation (article 17-1 de la loi du 6 juillet 1989).' });
+  } else if (l.irl_enabled) {
+    fin.push({ t: 'kv', rows: [
+      ['2° Le cas échéant, modalités de révision – a) Date de révision', c.revision_date ? frDate(c.revision_date) : 'Chaque année, à la date anniversaire du contrat'],
+      ['b) Date ou trimestre de référence de l’IRL', l.irl_base_label ? `${l.irl_base_label.replace('-T', ', ')}e trimestre${l.irl_base_value ? ` (valeur ${String(l.irl_base_value).replace('.', ',')})` : ''}` : '—'],
+    ] });
+  } else fin.push({ t: 'p', text: '2° Le cas échéant, modalités de révision : sans objet (loyer non révisable en cours de bail).' });
+
+  fin.push({ t: 'p', text: `${L(k++)}. Charges récupérables` });
+  fin.push({ t: 'kv', rows: [
+    ['1. Modalité de règlement des charges récupérables', l.charges_mode === 'forfait' ? (furnished ? 'Forfait' : 'Forfait (colocation)') : l.charges_amount ? 'Provisions sur charges avec régularisation annuelle' : 'Paiement périodique des charges sans provision'],
+    ['2. Le cas échéant, montant des provisions sur charges ou du forfait de charges', l.charges_amount ? `${eur(l.charges_amount)} par mois` : NA],
+    ['3. Le cas échéant, modalités de révision du forfait de charges', l.charges_mode === 'forfait' ? 'Révision chaque année aux mêmes conditions que le loyer principal' : NA],
+  ] });
+  if (!furnished) {
+    fin.push({ t: 'p', text: `${L(k++)}. Le cas échéant, contribution pour le partage des économies de charges : ${c.charges_economy?.trim() || 'sans objet'}.` });
   }
-  s.push({ title: 'IV. Conditions financières', blocks: rentBlocks });
+  fin.push({ t: 'p', text: `${L(k++)}. Le cas échéant, en cas de colocation, souscription par le bailleur d’une assurance pour le compte des colocataires : ${coloc && c.coloc_insurance_annual ? `oui – montant total annuel récupérable : ${eur(c.coloc_insurance_annual)}, montant récupérable par douzième : ${eur(Math.round(c.coloc_insurance_annual / 12 * 100) / 100)}` : coloc ? 'non' : 'sans objet'}.` });
+  fin.push({ t: 'p', text: `${L(k++)}. Modalités de paiement` });
+  fin.push({ t: 'kv', rows: [
+    ['Périodicité du paiement', 'Mensuelle'],
+    ['Paiement', c.payment_terms === 'echu' ? 'À terme échu' : 'À échoir'],
+    ['Date ou période de paiement', `Le ${l.payment_day} de chaque mois`],
+    ['Le cas échéant, lieu de paiement', c.payment_place || 'Virement sur le compte indiqué par le bailleur'],
+    ['Le cas échéant, montant total dû à la première échéance de paiement pour une période complète de location', `${eur(l.rent_hc + l.charges_amount)} (loyer hors charges ${eur(l.rent_hc)}, ${l.charges_mode === 'forfait' ? 'forfait' : 'provision'} de charges ${eur(l.charges_amount)})`],
+  ] });
+  fin.push({ t: 'p', text: `${L(k++)}. Le cas échéant, exclusivement lors d’un renouvellement de contrat, modalités de réévaluation d’un loyer manifestement sous-évalué : ${c.rent_reassessment?.trim() || 'sans objet'}.` });
+  fin.push({ t: 'p', text: `${L(k++)}. Dépenses énergétiques (pour information) : montant estimé des dépenses annuelles d’énergie pour un usage standard : ${c.energy_cost_min && c.energy_cost_max ? `entre ${eur(c.energy_cost_min)} et ${eur(c.energy_cost_max)} par an${c.energy_ref_year ? `, prix moyens des énergies indexés au 1er janvier ${c.energy_ref_year} (abonnements compris)` : ''}` : '—'}.` });
+  s.push({ title: 'IV. Conditions financières', blocks: fin });
 
+  // ---------- V. Travaux
   s.push({ title: 'V. Travaux', blocks: [
     { t: 'kv', rows: [
-      ['Travaux réalisés depuis la fin du dernier contrat', c.works_done || 'Néant'],
-      ['Majoration du loyer en cours de bail consécutive à des travaux d’amélioration du bailleur', c.works_landlord || 'Néant'],
-      ['Diminution de loyer consécutive à des travaux entrepris par le locataire', c.works_tenant || 'Néant'],
+      ['A. Le cas échéant, montant et nature des travaux d’amélioration ou de mise en conformité avec les caractéristiques de décence effectués depuis la fin du dernier contrat de location ou depuis le dernier renouvellement', c.works_done || NA],
+      ['B. Le cas échéant, majoration du loyer en cours de bail consécutive à des travaux d’amélioration entrepris par le bailleur', c.works_landlord || NA],
+      ['C. Le cas échéant, diminution de loyer en cours de bail consécutive à des travaux entrepris par le locataire', c.works_tenant || NA],
     ] },
   ] });
 
+  // ---------- VI. Garanties
   s.push({ title: 'VI. Garanties', blocks: [
-    { t: 'p', text: `Dépôt de garantie : ${eur(l.deposit_amount)}${l.deposit_amount ? '' : ' (aucun dépôt)'}. Il ne peut excéder ${furnished ? 'deux mois' : 'un mois'} de loyer hors charges. Il est restitué dans un délai d’un mois à compter de la remise des clés lorsque l’état des lieux de sortie est conforme à l’état des lieux d’entrée, de deux mois dans le cas contraire, déduction faite des sommes restant dues au bailleur et dûment justifiées.` },
+    { t: 'p', text: `Le cas échéant, montant du dépôt de garantie de l’exécution des obligations du locataire (${furnished ? 'inférieur ou égal à deux mois' : 'inférieur ou égal à un mois'} de loyer hors charges) : ${l.deposit_amount ? eur(l.deposit_amount) : 'sans objet (aucun dépôt)'}.` },
+    { t: 'p', text: 'Le dépôt de garantie est restitué dans un délai maximal d’un mois à compter de la remise des clés lorsque l’état des lieux de sortie est conforme à l’état des lieux d’entrée, et de deux mois dans le cas contraire, déduction faite, le cas échéant, des sommes restant dues au bailleur et des sommes dont celui-ci pourrait être tenu en lieu et place du locataire, sous réserve qu’elles soient dûment justifiées.' },
   ] });
 
-  if (coloc) {
-    s.push({ title: 'VII. Clause de solidarité', blocks: [
-      { t: 'p', text: 'Les colocataires sont tenus solidairement et indivisiblement de l’exécution des obligations du présent contrat. La solidarité d’un colocataire sortant cesse lorsqu’un nouveau colocataire le remplace ou, à défaut, à l’expiration d’un délai de six mois après la date d’effet de son congé.' },
-    ] });
-  }
+  // ---------- VII. Clause de solidarité
+  s.push({ title: 'VII. Clause de solidarité', blocks: [
+    { t: 'p', text: coloc
+      ? 'Modalités particulières des obligations en cas de pluralité de locataires : les colocataires sont tenus solidairement et indivisiblement de l’exécution des obligations du présent contrat. Conformément à l’article 8-1 de la loi du 6 juillet 1989, la solidarité d’un colocataire sortant et celle de la personne qui s’est portée caution pour lui prennent fin à la date d’effet du congé régulièrement délivré lorsqu’un nouveau colocataire figure au bail ou, à défaut, à l’expiration d’un délai de six mois après la date d’effet du congé.'
+      : 'Sans objet (un seul locataire).' },
+  ] });
 
-  s.push({ title: `${coloc ? 'VIII' : 'VII'}. Clause résolutoire`, blocks: [
-    { t: 'p', text: 'Le présent contrat sera résilié immédiatement et de plein droit, sans qu’il soit besoin de faire ordonner cette résolution en justice :' },
-    { t: 'list', items: [
-      'six semaines après un commandement de payer demeuré infructueux, à défaut de paiement du loyer ou des charges dûment justifiées aux termes convenus, ou de versement du dépôt de garantie ;',
-      'un mois après un commandement demeuré infructueux, à défaut d’assurance contre les risques locatifs ;',
-      'en cas d’obligation d’user paisiblement des locaux loués non respectée, résultant de troubles de voisinage constatés par une décision de justice passée en force de chose jugée.',
+  // ---------- VIII. Clause résolutoire (décret n° 2026-596 : partie obligatoire et clauses facultatives)
+  const optional = [
+    ...(c.clause_insurance !== false ? ['à défaut de souscription d’une assurance des risques locatifs par le locataire, un mois après un commandement demeuré infructueux ;'] : []),
+    ...(c.clause_neighbours !== false ? ['en cas de non-respect par le locataire de son obligation d’user paisiblement des locaux loués, résultant de troubles de voisinage constatés par une décision de justice passée en force de chose jugée ;'] : []),
+    ...(c.principal_residence_servitude ? ['lorsque le logement est soumis à l’article L. 151-14-1 du code de l’urbanisme, en cas de non-respect par le locataire de son obligation d’occuper le logement exclusivement à titre de résidence principale ; la clause ne produit effet qu’à l’expiration du délai de mise en demeure fixé par le maire en application du II de l’article L. 481-4 du même code.'] : []),
+  ];
+  s.push({ title: 'VIII. Clause résolutoire', blocks: [
+    { t: 'p', text: 'Modalités de résiliation de plein droit du contrat : le présent contrat est résilié de plein droit, à défaut de paiement du loyer ou des charges dûment justifiées aux termes convenus, ou à défaut de versement du dépôt de garantie, six semaines après un commandement de payer demeuré infructueux.' },
+    ...(optional.length ? [{ t: 'p', text: 'Il est également résilié de plein droit :' } as Block, { t: 'list', items: optional } as Block] : []),
+  ] });
+
+  // ---------- IX. Honoraires de location
+  const hasFees = [c.agency_fees_tenant, c.agency_fees_landlord, c.agency_fees_tenant_edl, c.agency_fees_landlord_edl, c.agency_fees_landlord_other].some((x) => x && x > 0);
+  s.push({ title: 'IX. Le cas échéant, honoraires de location', blocks: hasFees ? [
+    { t: 'p', text: 'A. Dispositions applicables : la rémunération des personnes mandatées pour se livrer ou prêter leur concours à l’entremise ou à la négociation d’une mise en location d’un logement est à la charge exclusive du bailleur, à l’exception des honoraires liés aux prestations de visite du preneur, de constitution de son dossier, de rédaction du bail et d’établissement de l’état des lieux d’entrée (article 5 de la loi du 6 juillet 1989). Les honoraires imputables au locataire ne peuvent excéder ceux imputés au bailleur et sont plafonnés par mètre carré de surface habitable.' },
+    { t: 'kv', rows: [
+      ['Plafond des honoraires imputables aux locataires (visite, constitution du dossier, rédaction du bail)', c.agency_cap_m2 ? `${eur(c.agency_cap_m2)}/m² de surface habitable` : '—'],
+      ['Plafond des honoraires imputables aux locataires (état des lieux d’entrée)', c.agency_cap_edl_m2 ? `${eur(c.agency_cap_edl_m2)}/m² de surface habitable` : '—'],
     ] },
-  ] });
+    { t: 'p', text: 'B. Détail et répartition des honoraires' },
+    { t: 'kv', rows: [
+      ['1. À la charge du bailleur : visite du preneur, constitution de son dossier et rédaction de bail', eur(c.agency_fees_landlord ?? 0)],
+      ['Le cas échéant, établissement de l’état des lieux d’entrée', eur(c.agency_fees_landlord_edl ?? 0)],
+      ['Le cas échéant, autres prestations', eur(c.agency_fees_landlord_other ?? 0)],
+      ['2. À la charge du locataire : visite du preneur, constitution de son dossier et rédaction de bail', eur(c.agency_fees_tenant ?? 0)],
+      ['Le cas échéant, établissement de l’état des lieux d’entrée', eur(c.agency_fees_tenant_edl ?? 0)],
+    ] },
+  ] : [{ t: 'p', text: 'Sans objet (aucun professionnel mandaté et rémunéré pour la mise en location).' }] });
 
-  const n = (i: number) => ['VII', 'VIII', 'IX', 'X', 'XI', 'XII'][i + (coloc ? 1 : 0)];
-  let i = 1;
-  if (c.agency_fees_tenant || c.agency_fees_landlord) {
-    s.push({ title: `${n(i++)}. Honoraires de location`, blocks: [
-      { t: 'p', text: 'Rappel : la rémunération des personnes mandatées pour la mise en location est à la charge exclusive du bailleur, à l’exception des honoraires liés à la visite, à la constitution du dossier, à la rédaction du bail et à l’établissement de l’état des lieux d’entrée, partagés entre le bailleur et le locataire ; la part du locataire ne peut excéder celle du bailleur ni les plafonds réglementaires par mètre carré de surface habitable.' },
-      { t: 'kv', rows: [['Honoraires à la charge du bailleur', eur(c.agency_fees_landlord ?? 0)], ['Honoraires à la charge du locataire', eur(c.agency_fees_tenant ?? 0)]] },
-    ] });
-  }
-  s.push({ title: `${n(i++)}. Autres conditions particulières`, blocks: [
+  // ---------- X. Autres conditions particulières
+  s.push({ title: 'X. Autres conditions particulières', blocks: [
     { t: 'p', text: c.special_conditions?.trim() || 'Néant.' },
-    { t: 'p', text: 'Le locataire s’assure contre les risques locatifs et en justifie lors de la remise des clés puis chaque année à la demande du bailleur. Il ne peut ni sous-louer ni céder le bail sans l’accord écrit du bailleur, y compris sur le prix du loyer.' },
+    ...(furnished ? [
+      { t: 'p', text: 'Le logement est loué meublé. Il comporte au minimum les éléments de mobilier suivants (décret n° 2015-981 du 31 juillet 2015), dont l’inventaire et l’état détaillé sont annexés au présent contrat :' } as Block,
+      { t: 'list', items: c.furniture?.length ? c.furniture : FURNITURE_MINIMUM } as Block,
+    ] : []),
   ] });
 
-  const annexes = [
-    ...(c.ownership_regime === 'copropriete' ? ['Extrait du règlement concernant la destination de l’immeuble, la jouissance et l’usage des parties privatives et communes, et la quote-part afférente au lot loué dans chacune des catégories de charges'] : []),
-    `Dossier de diagnostic technique : diagnostic de performance énergétique${c.construction_period === 'avant_1949' ? ', constat de risque d’exposition au plomb' : ''}, état mentionnant l’absence ou la présence d’amiante (immeubles dont le permis de construire est antérieur au 1er juillet 1997), état de l’installation intérieure d’électricité et de gaz (installations de plus de quinze ans), état des risques et pollutions`,
-    'Notice d’information relative aux droits et obligations des locataires et des bailleurs (arrêté du 29 mai 2015)',
-    'État des lieux d’entrée',
-    ...(furnished ? ['Inventaire et état détaillé du mobilier'] : []),
-    ...(c.zone_tendue ? ['Références aux loyers habituellement constatés dans le voisinage pour des logements comparables (le cas échéant)'] : []),
+  // ---------- XI. Annexes
+  const annexes: string[] = [
+    `A. Le cas échéant, un extrait du règlement concernant la destination de l’immeuble, la jouissance et l’usage des parties privatives et communes, et précisant la quote-part afférente au lot loué dans chacune des catégories de charges : ${c.ownership_regime === 'copropriete' ? 'joint' : 'sans objet'}`,
+    `B. Un dossier de diagnostic technique comprenant : un diagnostic de performance énergétique ; ${c.construction_period === 'avant_1949' ? 'un constat de risque d’exposition au plomb (immeuble construit avant le 1er janvier 1949)' : 'le cas échéant, un constat de risque d’exposition au plomb (immeubles construits avant le 1er janvier 1949) : sans objet'} ; le cas échéant, une copie d’un état mentionnant l’absence ou la présence de matériaux ou de produits de la construction contenant de l’amiante ; le cas échéant, un état de l’installation intérieure d’électricité et de gaz ; le cas échéant, un état des risques naturels et technologiques`,
+    'C. Une notice d’information relative aux droits et obligations des locataires et des bailleurs',
+    furnished ? 'D. Un état des lieux, un inventaire et un état détaillé du mobilier' : 'D. Un état des lieux',
+    `E. Le cas échéant, une autorisation préalable de mise en location : ${c.rental_permit ? 'jointe' : 'sans objet'}`,
+    `F. Le cas échéant, les références aux loyers habituellement constatés dans le voisinage pour des logements comparables : ${c.zone_tendue ? 'jointes le cas échéant' : 'sans objet'}`,
     ...(c.guarantor ? ['Acte de cautionnement'] : []),
   ];
-  if (furnished) {
-    s.push({ title: `${n(i++)}. Mobilier`, blocks: [
-      { t: 'p', text: 'Le logement est loué meublé. Il comporte au minimum les éléments de mobilier suivants, dont l’inventaire et l’état détaillé sont annexés au présent contrat :' },
-      { t: 'list', items: c.furniture?.length ? c.furniture : FURNITURE_MINIMUM },
-    ] });
-  }
-  s.push({ title: `${n(i++)}. Annexes`, blocks: [{ t: 'list', items: annexes }] });
+  s.push({ title: 'XI. Annexes', blocks: [{ t: 'p', text: 'Sont annexées et jointes au contrat de location les pièces suivantes :' }, { t: 'list', items: annexes }] });
   s.push(signatureSection(c, ctx));
   return s;
 }
