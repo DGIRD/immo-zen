@@ -278,13 +278,13 @@ async function main() {
     bai03 += ' ; forfait de charges refusé en location vide';
     await page.getByLabel('Charges', { exact: true }).selectOption('provision');
     await page.getByRole('button', { name: 'Enregistrer' }).first().click();
-    await page.getByRole('tab', { name: /Échéances \(3\)/ }).waitFor();
+    await page.getByRole('tab', { name: /^Loyers et paiements \(3 échéances/ }).waitFor();
     leaseUrl = page.url();
     const d = await db(page);
     const lease = d.leases.find((l: { property_id: string }) => d.properties.find((p: { id: string; title: string }) => p.id === l.property_id)?.title === 'T2 recette');
     const ch = d.rent_charges.filter((x: { lease_id: string }) => x.lease_id === lease.id).sort((a: { due_date: string }, b: { due_date: string }) => a.due_date.localeCompare(b.due_date));
     const first = ch[0];
-    await page.reload(); await page.getByRole('tab', { name: /Échéances \(3\)/ }).waitFor();
+    await page.reload(); await page.getByRole('tab', { name: /^Loyers et paiements \(3 échéances/ }).waitFor();
     return `bail créé (début ${start}), 3 échéances ; 1re proratisée : ${first.rent_amount} € HC + ${first.charges_amount} € ; pas de doublon après rechargement`;
   });
 
@@ -295,7 +295,7 @@ async function main() {
 
   await c('LOY-02', async () => {
     await page.goto(leaseUrl);
-    await page.getByRole('tab', { name: /Échéances/ }).click();
+    await page.getByRole('tab', { name: /^Loyers et paiements/ }).click();
     const row = page.locator('table.dt-table tbody tr').filter({ has: page.getByRole('button', { name: /Confirmer le paiement|Paiement/ }) }).first();
     const due = T(await row.innerText());
     await row.getByRole('button', { name: /Confirmer le paiement|Paiement/ }).click();
@@ -327,7 +327,7 @@ async function main() {
 
   await c('LOY-06', async () => {
     await page.goto(leaseUrl);
-    await page.getByRole('tab', { name: /Échéances/ }).click();
+    await page.getByRole('tab', { name: /^Loyers et paiements/ }).click();
     const txt = T(await page.locator('table.dt-table').innerText());
     const statuses = [...new Set((txt.match(/À venir|Impayée|Payée|Partiel\w*/g) ?? []))].join(', ');
     const row = page.locator('table.dt-table tbody tr').filter({ has: page.getByRole('button', { name: 'Annuler', exact: true }) }).first();
@@ -336,7 +336,7 @@ async function main() {
     assert.ok(await dlg.getByRole('button', { name: 'Annuler l’échéance' }).isDisabled(), 'annulation possible sans motif');
     await dlg.getByLabel('Motif d’annulation').fill('Mois offert (travaux)');
     await dlg.getByRole('button', { name: 'Annuler l’échéance' }).click();
-    await page.getByText('Annulée : Mois offert (travaux)').waitFor();
+    await page.getByText('Annulée : Mois offert (travaux)').first().waitFor();
     return `statuts : ${statuts(statuses)} ; motif obligatoire, affiché sous la période (« Annulée : Mois offert (travaux) »)`;
   });
 

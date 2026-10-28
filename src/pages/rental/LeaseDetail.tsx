@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../../data/store.tsx';
-import type { DepositMovement, Lease, Payment, Receipt, Reminder, RentCharge } from '../../data/types.ts';
+import type { DepositMovement, Lease, Receipt, Reminder, RentCharge } from '../../data/types.ts';
 import { date, dateTime, money2, todayParis } from '../../domain/format.ts';
 import {
-  allocateByMonth, chargeTotal, DEFAULT_REMINDER_TEMPLATES, leaseLedger, leaseTenants, monthLabel, PAYMENT_METHOD_LABELS, renderTemplate, startChangeImpact, tenantName,
+  chargeTotal, DEFAULT_REMINDER_TEMPLATES, leaseLedger, leaseTenants, renderTemplate, startChangeImpact, tenantName,
   type ChargeView,
 } from '../../domain/rental.ts';
 import { round2 } from '../../domain/simulator.ts';
@@ -11,26 +11,27 @@ import { Button, EmptyState, KeyValue, Modal, NumberInput, PageHeader, Section, 
 import { href, navigate } from '../../ui/router.ts';
 import { DocumentList } from './Documents.tsx';
 import { ReceiptBacklogDialog, useCoherenceCount } from './ReceiptBacklog.tsx';
-import { chargeDuplicates, findDuplicates, sameCharge } from '../../domain/duplicates.ts';
+import { findDuplicates, sameCharge } from '../../domain/duplicates.ts';
 import { AccessPill, useTenantAccess } from './TenantAccess.tsx';
 import { IRL_VALUES, irlLabel, revisionPlan } from '../../domain/irl.ts';
 import { reallocateLease, StartChangeMessage } from './Leases.tsx';
 import { MonthRepairDialog, useLeaseRepair } from './MonthRepair.tsx';
-import { useChargeEditing } from './ChargeEdit.tsx';
-import { ChargeActions, ChargeBadge, LeaseBadge, PaymentDialog, paymentAllocated, periodLabel, ReceiptDialog, ReceiptsTable, usePaymentActions, useRental } from './common.tsx';
+import { RentLedger } from './RentLedger.tsx';
+import { LeaseBadge, PaymentDialog, periodLabel, ReceiptDialog, useRental } from './common.tsx';
 
-type Tab = 'echeances' | 'paiements' | 'quittances' | 'relances' | 'depot' | 'titulaires' | 'documents';
+const plural = (n: number, w: string) => `${n} ${w}${n > 1 ? 's' : ''}`;
+
+type Tab = 'loyers' | 'relances' | 'depot' | 'titulaires' | 'documents';
 
 export function LeaseDetailPage({ id }: { id: string }) {
   const store = useStore();
   const { data } = store;
   const { views, propertyById } = useRental();
   const today = todayParis();
-  const [tab, setTab] = useState<Tab>('echeances');
+  const [tab, setTab] = useState<Tab>('loyers');
   const [pay, setPay] = useState<{ chargeId?: string; mode: 'saisie' | 'confirmation' } | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [chargeForm, setChargeForm] = useState(false);
-  const chargeEdit = useChargeEditing();
   const [backlog, setBacklog] = useState(false);
   const { ask, dialog } = useConfirm();
   const backlogCount = useCoherenceCount(id);
@@ -49,7 +50,6 @@ export function LeaseDetailPage({ id }: { id: string }) {
   const titulaires = data.leaseTenants.filter((x) => x.lease_id === lease.id);
   const names = leaseTenants(lease.id, data.leaseTenants, data.tenants).map(tenantName).join(', ');
   const drafts = reminders.filter((r) => r.status === 'brouillon').length;
-  const dupIds = chargeDuplicates(charges.map((v) => v.charge)).ids;
   // échéances restées d'une date de début erronée (antérieures au début du bail)
   const stale = startChangeImpact(lease, lease.start_date, data.charges, data.allocations, data.receipts);
   async function cleanSchedule() {
@@ -94,47 +94,16 @@ export function LeaseDetailPage({ id }: { id: string }) {
 
       <RentRevision leaseId={lease.id} />
 
-      <Tabs tabs={[['echeances', `Échéances (${charges.length})`], ['paiements', `Paiements (${payments.length})`], ['quittances', `Quittances et reçus (${receipts.filter((r) => !r.cancelled_at).length})`],
+      <Tabs tabs={[['loyers', `Loyers et paiements (${plural(charges.length, 'échéance')}, ${plural(payments.length, 'paiement')})`],
         ['relances', `Relances${drafts ? ` (${drafts} à valider)` : ''}`], ['depot', 'Dépôt de garantie'], ['titulaires', `Titulaires (${titulaires.length})`], ['documents', 'Documents']]} value={tab} onChange={setTab} />
 
-      {tab === 'echeances' && (
-        <Section title="Échéances" actions={<>
+      {tab === 'loyers' && (
+        <Section title="Loyers et paiements" actions={<>
           {backlogCount > 0 && <Button size="sm" onClick={() => setBacklog(true)}>Mettre en cohérence paiements et quittances ({backlogCount})</Button>}
           <Button size="sm" onClick={() => setChargeForm(true)}>Ajouter une somme due</Button></>}>
-          {charges.length === 0 ? <p className="muted">Aucune échéance. Elles sont générées chaque mois à partir du bail ; utilisez « Générer les échéances » pour les créer dès maintenant.</p> : (
-            <div className="dt-scroll"><table className="dt-table">
-              <thead><tr><th>Période</th><th>Échéance</th><th className="num">Loyer</th><th className="num">Charges</th><th className="num">Total</th><th className="num">Réglé</th><th className="num">Reste</th><th>Statut</th><th><span className="sr-only">Actions</span></th></tr></thead>
-              <tbody>
-                {[...charges].reverse().map((v) => (
-                  <tr key={v.charge.id} className={v.charge.cancelled_at ? 'muted' : ''}>
-                    <td>{periodLabel(v.charge)}{v.charge.cancelled_at && v.charge.cancel_reason ? <small className="muted block">Annulée : {v.charge.cancel_reason}</small> : null}</td><td>{date(v.charge.due_date)}</td>
-                    <td className="num">{money2(v.charge.rent_amount)}</td><td className="num">{money2(v.charge.charges_amount)}</td>
-                    <td className="num">{money2(v.total)}</td><td className="num">{money2(v.paid)}</td>
-                    <td className={`num ${v.overdue ? 'neg' : ''}`}>{money2(v.remaining)}</td>
-                    <td><ChargeBadge v={v} />{dupIds.has(v.charge.id) && <span className="pill pill-warn dup-flag" title="Une autre échéance couvre la même période">doublon possible</span>}</td>
-                    <td><div className="row">
-                      <ChargeActions v={v} onPay={(x) => setPay({ chargeId: x.charge.id, mode: 'saisie' })} onConfirm={(x) => setPay({ chargeId: x.charge.id, mode: 'confirmation' })} onReceipt={setReceipt} />
-                      {v.charge.cancelled_at
-                        ? <Button size="sm" onClick={() => chargeEdit.restore(v)}>Réactiver</Button>
-                        : <>
-                          <Button size="sm" variant="ghost" onClick={() => chargeEdit.edit(v)}>Modifier</Button>
-                          {v.paid > 0 && <Button size="sm" variant="ghost" onClick={() => chargeEdit.unpay(v)}>Annuler le paiement</Button>}
-                          {v.paid === 0 && <Button size="sm" variant="ghost" onClick={() => chargeEdit.cancel(v)}>Annuler</Button>}
-                        </>}
-                    </div></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table></div>
-          )}
-        </Section>
-      )}
-
-      {tab === 'paiements' && <PaymentsList payments={payments} views={charges} onAdd={() => setPay({ mode: 'saisie' })} />}
-
-      {tab === 'quittances' && (
-        <Section title="Quittances et reçus">
-          <ReceiptsTable receipts={receipts} onOpen={setReceipt} />
+          {charges.length === 0 && payments.length === 0
+            ? <p className="muted">Aucune échéance. Elles sont générées chaque mois à partir du bail ; utilisez « Générer les échéances » pour les créer dès maintenant.</p>
+            : <RentLedger leaseFilter={lease.id} fixedLease figures={false} initialFilter="toutes" inlineEdit />}
         </Section>
       )}
 
@@ -147,7 +116,6 @@ export function LeaseDetailPage({ id }: { id: string }) {
       <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} onReplaced={setReceipt} />
       <ChargeDialog open={chargeForm} leaseId={lease.id} onClose={() => setChargeForm(false)} />
       <ReceiptBacklogDialog open={backlog} onClose={() => setBacklog(false)} leaseId={lease.id} />
-      {chargeEdit.ui}
       {dialog}
     </>
   );
@@ -163,45 +131,6 @@ function RepairNote({ lease }: { lease: Lease }) {
       <button type="button" className="link" onClick={() => setOpen(true)}>Répartir les paiements par mois</button></p>
     <MonthRepairDialog open={open} onClose={() => setOpen(false)} leaseIds={[lease.id]} />
   </>;
-}
-
-function PaymentsList({ payments, views, onAdd }: { payments: Payment[]; views: ChargeView[]; onAdd: () => void }) {
-  const store = useStore();
-  const { data } = store;
-  const pay = usePaymentActions();
-  const viewById = new Map(views.map((v) => [v.charge.id, v]));
-  return (
-    <Section title="Paiements" actions={<Button size="sm" variant="primary" onClick={onAdd}>Enregistrer un paiement</Button>}>
-      {payments.length === 0 ? <p className="muted">Aucun paiement enregistré.</p> : (
-        <div className="dt-scroll"><table className="dt-table">
-          <thead><tr><th>Date</th><th className="num">Montant</th><th>Moyen</th><th>Référence</th><th>Affecté à</th><th className="num">Non affecté</th><th /></tr></thead>
-          <tbody>{payments.map((p) => {
-            const allocs = data.allocations.filter((a) => a.payment_id === p.id);
-            const free = round2(p.amount - paymentAllocated(p, data.allocations));
-            return (
-              <tr key={p.id}>
-                <td>{date(p.paid_on)}{p.date_defaulted && <span className="pill pill-warn" title="Date du jour utilisée par défaut lors de la confirmation">date par défaut</span>}</td>
-                <td className="num">{money2(p.amount)}</td><td>{PAYMENT_METHOD_LABELS[p.method]}</td><td>{p.reference ?? '—'}</td>
-                <td className="small">{allocs.map((a) => { const v = viewById.get(a.charge_id); return v ? `${periodLabel(v.charge)} : ${money2(a.amount)}` : null; }).filter(Boolean).join(' ; ') || '—'}</td>
-                <td className={`num ${free > 0 ? 'pos' : ''}`}>{free > 0 ? money2(free) : '—'}</td>
-                <td><div className="row">
-                  {free > 0 && views.some((v) => v.remaining > 0) && (
-                    <Button size="sm" onClick={async () => {
-                      const plan = allocateByMonth(free, p.paid_on, views.filter((v) => v.remaining > 0), data.leases.find((l) => l.id === p.lease_id)?.start_date);
-                      if (plan.allocations.length) await store.createMany('payment_allocations', plan.allocations.map((a) => ({ payment_id: p.id, ...a })));
-                    }}>Affecter l’avance</Button>
-                  )}
-                  <Button size="sm" variant="ghost" onClick={() => pay.edit(p)}>Modifier</Button>
-                  <Button size="sm" variant="ghost" onClick={() => pay.remove(p)}>Supprimer</Button>
-                </div></td>
-              </tr>
-            );
-          })}</tbody>
-        </table></div>
-      )}
-      {pay.ui}
-    </Section>
-  );
 }
 
 function ChargeDialog({ open, leaseId, onClose }: { open: boolean; leaseId: string; onClose: () => void }) {
