@@ -85,6 +85,7 @@ Partage d'un document : case « Visible dans l'espace locataire » à l'ajout, o
   - **Modifier** : date, loyer, charges. « Aligner sur le montant payé » ramène la ligne à ce qui a été réellement payé. Une quittance existante est annulée puis réémise sur le nouveau montant.
   - **Annuler le paiement** : les paiements du mois sont supprimés et le mois redevient dû ; les documents concernés sont annulés.
   - **Annuler la ligne** (avec un motif) puis **Réactiver** : une ligne annulée reste visible avec le filtre « Annulés ».
+- **Modifier en grille** : toutes les colonnes du tableau, en saisie rapide. Modifiables : échéance, loyer, charges, autre somme due (une par mois, 0 la retire) et son libellé, réglé et date de règlement (un seul paiement dans le mois ; un montant saisi sur un mois sans paiement crée le paiement), reçu en mode confirmation. Total, écart, statut et reports se recalculent à l'enregistrement ; une ligne quittancée reste verrouillée.
 - **Passage au tableau unique** : à la première ouverture, une reprise range chaque paiement existant dans son mois (ou le mois de l'échéance sur laquelle il avait été confirmé) et reporte les restes dus ; une sauvegarde est téléchargée avant. Les quittances déjà émises restent attachées à leur mois.
 
 ### Importer un relevé
