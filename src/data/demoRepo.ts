@@ -9,6 +9,7 @@ import { createDemoPlatform } from './platform.ts';
 import { applyStatusRules, statusEventSummary } from '../domain/property.ts';
 import { allocatedByCharge, chargeTotal, LEASE_START_MIN, leaseTenants, planCharges, startChangeImpact, tenantName } from '../domain/rental.ts';
 import { round2 } from '../domain/simulator.ts';
+import { ledgerSettings } from '../domain/ledger.ts';
 import { todayParis } from '../domain/format.ts';
 import { EMPTY_SNAPSHOT, RepoError, type Repo, type SessionInfo, type Snapshot, type UpdateResult } from './repo.ts';
 import type { LeaseRevision, TenantAccount } from './types.ts';
@@ -52,8 +53,8 @@ const DEFAULTS: Partial<Record<TableName, Record<string, unknown>>> = {
   leases: { label: null, furnished: false, end_date: null, charges_amount: 0, charges_mode: 'provision', deposit_amount: 0, payment_day: 1, landlord_name: null,
     landlord_address: null, owner_confirmation_email: false, receipt_auto_send: false, reminder_enabled: false, reminder_delay_days: 10, notes: null },
   lease_tenants: { left_on: null },
-  rent_charges: { kind: 'loyer', label: null, cancelled_at: null, charges_amount: 0, rent_amount: 0 },
-  payments: { date_defaulted: false, method: 'virement', reference: null, comment: null, source: 'saisie' },
+  rent_charges: { kind: 'loyer', label: null, cancelled_at: null, charges_amount: 0, rent_amount: 0, carry_from: null, carried_to: null, excess_mode: null, received_at: null },
+  payments: { date_defaulted: false, method: 'virement', reference: null, comment: null, source: 'saisie', period_month: null },
   deposit_movements: { comment: null },
   reminders: { level: 1, charge_ids: [], debt_amount: 0, recipients: [], status: 'brouillon', created_by: 'proprietaire', sent_at: null, error: null },
   documents: { property_id: null, lease_id: null, tenant_id: null, category: 'autre', notes: null, shared_with_tenant: false },
@@ -236,6 +237,7 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
       db.documents.forEach((d) => { if (d.tenant_id === id) d.tenant_id = null; });
     }
     if (table === 'payments') db.payment_allocations = db.payment_allocations.filter((a) => a.payment_id !== id);
+    if (table === 'rent_charges') db.rent_charges.forEach((c) => { if (c.carried_to === id) c.carried_to = null; });
     if (table === 'documents') db.expenses.forEach((e) => { if (e.document_id === id) e.document_id = null; });
     if (table === 'pro_contacts') {
       db.properties.forEach((p) => { if (p.agency_id === id) p.agency_id = null; if (p.agent_id === id) p.agent_id = null; });
@@ -406,7 +408,8 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
       const db = read();
       const l = db.leases.find((x) => x.id === leaseId) ?? fail('Bail introuvable.');
       let n = 0;
-      for (const c of planCharges(l, until ?? today())) {
+      const ls = ledgerSettings(db.user_settings.rental_settings);
+      for (const c of planCharges(l, until ?? today(), ls.startMode === 'date' ? ls.startDate : null)) {
         if (db.rent_charges.some((x) => x.lease_id === l.id && x.kind === 'loyer' && x.period_start === c.period_start)) continue;
         insertOne(db, 'rent_charges', { lease_id: l.id, kind: 'loyer', ...c });
         n++;
@@ -432,7 +435,8 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
         if (x!.cancelled_at) fail('Somme due annulée.');
         if (allocated(db, x!.id) < chargeTotal(x!)) fail(`Le rappel « ${x!.label ?? 'Régularisation'} » n’est pas intégralement réglé.`);
         if (inExtras(db, x!.id) || db.receipts.some((r) => r.charge_id === x!.id && r.kind === 'quittance' && !r.cancelled_at)) fail(`Le rappel « ${x!.label ?? 'Régularisation'} » figure déjà sur une quittance.`);
-        return { charge_id: x!.id, label: x!.label ?? 'Rappel de charges', amount: chargeTotal(x!) };
+        const label = x!.kind === 'report' ? `${x!.label ?? 'Reste dû'} réglé` : x!.label ?? 'Rappel de charges';
+        return { charge_id: x!.id, label, amount: chargeTotal(x!) };
       });
       const r = issue(db, chargeId, 'quittance');
       r.extra_lines = lines;

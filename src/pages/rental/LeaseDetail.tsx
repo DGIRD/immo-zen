@@ -3,19 +3,17 @@ import { useStore } from '../../data/store.tsx';
 import type { DepositMovement, Lease, Receipt, Reminder, RentCharge } from '../../data/types.ts';
 import { date, dateTime, money2, todayParis } from '../../domain/format.ts';
 import {
-  chargeTotal, DEFAULT_REMINDER_TEMPLATES, leaseLedger, leaseTenants, renderTemplate, startChangeImpact, tenantName,
+  chargeTotal, DEFAULT_REMINDER_TEMPLATES, leaseLedger, leaseState, leaseTenants, renderTemplate, tenantName,
   type ChargeView,
 } from '../../domain/rental.ts';
 import { round2 } from '../../domain/simulator.ts';
 import { Button, EmptyState, KeyValue, Modal, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
 import { href, navigate } from '../../ui/router.ts';
 import { DocumentList } from './Documents.tsx';
-import { ReceiptBacklogDialog, useCoherenceCount } from './ReceiptBacklog.tsx';
 import { findDuplicates, sameCharge } from '../../domain/duplicates.ts';
 import { AccessPill, useTenantAccess } from './TenantAccess.tsx';
 import { IRL_VALUES, irlLabel, revisionPlan } from '../../domain/irl.ts';
-import { reallocateLease, StartChangeMessage } from './Leases.tsx';
-import { MonthRepairDialog, useLeaseRepair } from './MonthRepair.tsx';
+import { syncLedgerWith } from './ledgerSync.ts';
 import { RentLedger } from './RentLedger.tsx';
 import { LeaseBadge, PaymentDialog, periodLabel, ReceiptDialog, useRental } from './common.tsx';
 
@@ -29,12 +27,10 @@ export function LeaseDetailPage({ id }: { id: string }) {
   const { views, propertyById } = useRental();
   const today = todayParis();
   const [tab, setTab] = useState<Tab>('loyers');
-  const [pay, setPay] = useState<{ chargeId?: string; mode: 'saisie' | 'confirmation' } | null>(null);
+  const [pay, setPay] = useState<{ mode: 'saisie' | 'confirmation' } | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [chargeForm, setChargeForm] = useState(false);
-  const [backlog, setBacklog] = useState(false);
-  const { ask, dialog } = useConfirm();
-  const backlogCount = useCoherenceCount(id);
+  const { dialog } = useConfirm();
   const lease = data.leases.find((l) => l.id === id);
   if (!lease) return <EmptyState title="Bail introuvable" action={<Button onClick={() => navigate('/baux')}>Retour aux baux</Button>} />;
 
@@ -50,19 +46,9 @@ export function LeaseDetailPage({ id }: { id: string }) {
   const titulaires = data.leaseTenants.filter((x) => x.lease_id === lease.id);
   const names = leaseTenants(lease.id, data.leaseTenants, data.tenants).map(tenantName).join(', ');
   const drafts = reminders.filter((r) => r.status === 'brouillon').length;
-  // échéances restées d'une date de début erronée (antérieures au début du bail)
-  const stale = startChangeImpact(lease, lease.start_date, data.charges, data.allocations, data.receipts);
-  async function cleanSchedule() {
-    if (stale.blocked.length) { store.notify(`${stale.blocked.length} échéance(s) concernée(s) sont couvertes par une quittance ou un reçu : annulez-les d’abord.`); return; }
-    if (!(await ask('Supprimer les échéances antérieures au bail ?', <StartChangeMessage from={lease!.start_date} to={lease!.start_date} imp={stale} />,
-      `Supprimer ${stale.remove.length} échéance${stale.remove.length > 1 ? 's' : ''}`))) return;
-    const n = await store.call((r) => r.cleanLeaseSchedule(lease!.id));
-    if (n === null) return;
-    await store.call((r) => r.generateCharges(lease!.id));
-    const k = stale.paid.length ? await reallocateLease(store, lease!.id) : 0;
-    store.notify(`${n} échéance(s) supprimée(s)${k ? ', paiements réaffectés' : ''}.`);
-  }
-
+  const ended = leaseState(lease, today) === 'termine';
+  // solde de sortie : reste dû (ou avance) du locataire, puis dépôt de garantie détenu
+  const exitBalance = round2(ledger.balance + depositHeld);
   return (
     <>
       <p className="crumbs"><a href={href('/baux')}>Locataires et baux</a>{property && <>, <a href={href(`/bien/${property.id}`)}>{property.title}</a></>}</p>
@@ -71,38 +57,29 @@ export function LeaseDetailPage({ id }: { id: string }) {
         actions={<>
           <Button onClick={() => navigate(`/baux/${lease.id}/modifier`)}>Modifier</Button>
           <Button onClick={() => navigate(`/baux/${lease.id}/contrat`)}>Contrat de bail</Button>
-          <Button onClick={async () => { const n = await store.call((r) => r.generateCharges(lease.id)); if (n !== null) store.notify(n ? `${n} échéance(s) générée(s).` : 'Échéances déjà à jour.'); }}>Générer les échéances</Button>
+          <Button onClick={async () => { const n = await store.call((r) => syncLedgerWith(r, { leaseIds: [lease.id] })); if (n !== null) store.notify(n ? 'Lignes mensuelles mises à jour.' : 'Lignes déjà à jour.'); }}>Mettre à jour les lignes</Button>
           <Button variant="primary" onClick={() => setPay({ mode: 'saisie' })}>Enregistrer un paiement</Button>
         </>} />
-      <RepairNote lease={lease} />
       <div className="status-line"><LeaseBadge lease={lease} />{lease.receipt_auto_send && <span className="pill pill-ok">Quittances automatiques</span>}{lease.reminder_enabled && <span className="pill pill-neutral">Relances préparées après {lease.reminder_delay_days} j</span>}</div>
 
       <div className="figures">
         <div className="figure"><span className="figure-label">Loyer charges comprises</span><span className="figure-value">{money2(lease.rent_hc + lease.charges_amount)}</span><span className="figure-hint">dont charges {money2(lease.charges_amount)} ({lease.charges_mode === 'forfait' ? 'forfait' : 'provision'})</span></div>
         <div className="figure"><span className="figure-label">Solde du locataire</span><span className={`figure-value ${ledger.balance < 0 ? 'neg' : ledger.balance > 0 ? 'pos' : ''}`}>{money2(ledger.balance)}</span><span className="figure-hint">{ledger.balance > 0 ? 'avance (trop-perçu)' : ledger.balance < 0 ? 'reste dû au total' : 'à jour'}</span></div>
-        <div className="figure"><span className="figure-label">Impayé échu</span><span className={`figure-value ${ledger.overdue ? 'neg' : ''}`}>{money2(ledger.overdue)}</span><span className="figure-hint">échéances passées non réglées</span></div>
+        <div className="figure"><span className="figure-label">Impayé échu</span><span className={`figure-value ${ledger.overdue ? 'neg' : ''}`}>{money2(ledger.overdue)}</span><span className="figure-hint">mois passés non réglés (reports compris)</span></div>
         <div className="figure"><span className="figure-label">Dépôt de garantie détenu</span><span className="figure-value">{money2(depositHeld)}</span><span className="figure-hint">prévu au bail : {money2(lease.deposit_amount)}</span></div>
+        {ended && <div className="figure"><span className="figure-label">Solde de sortie</span><span className={`figure-value ${exitBalance < 0 ? 'neg' : ''}`}>{money2(exitBalance)}</span>
+          <span className="figure-hint">{exitBalance < 0 ? 'reste dû après imputation du dépôt' : exitBalance > 0 ? 'à restituer au locataire (dépôt moins reste dû)' : 'soldé'}</span></div>}
       </div>
-
-      {stale.remove.length > 0 && (
-        <p className="note note-warn" role="alert">
-          {stale.remove.length} échéance{stale.remove.length > 1 ? 's' : ''} de loyer antérieure{stale.remove.length > 1 ? 's' : ''} au début du bail ({date(lease.start_date)}) {stale.remove.length > 1 ? 'subsistent' : 'subsiste'}, sans doute d’une ancienne date de début erronée
-          {stale.paid.length > 0 ? ` ; des paiements y sont répartis à tort` : ''}.{' '}
-          <Button size="sm" onClick={() => void cleanSchedule()}>Supprimer ces échéances</Button>
-        </p>
-      )}
 
       <RentRevision leaseId={lease.id} />
 
-      <Tabs tabs={[['loyers', `Loyers et paiements (${plural(charges.length, 'échéance')}, ${plural(payments.length, 'paiement')})`],
+      <Tabs tabs={[['loyers', `Loyers et paiements (${new Set(charges.filter((v) => v.charge.kind === 'loyer').map((v) => v.charge.period_start.slice(0, 7))).size} mois, ${plural(payments.length, 'paiement')})`],
         ['relances', `Relances${drafts ? ` (${drafts} à valider)` : ''}`], ['depot', 'Dépôt de garantie'], ['titulaires', `Titulaires (${titulaires.length})`], ['documents', 'Documents']]} value={tab} onChange={setTab} />
 
       {tab === 'loyers' && (
-        <Section title="Loyers et paiements" actions={<>
-          {backlogCount > 0 && <Button size="sm" onClick={() => setBacklog(true)}>Mettre en cohérence paiements et quittances ({backlogCount})</Button>}
-          <Button size="sm" onClick={() => setChargeForm(true)}>Ajouter une somme due</Button></>}>
+        <Section title="Loyers et paiements" actions={<Button size="sm" onClick={() => setChargeForm(true)}>Ajouter une somme due</Button>}>
           {charges.length === 0 && payments.length === 0
-            ? <p className="muted">Aucune échéance. Elles sont générées chaque mois à partir du bail ; utilisez « Générer les échéances » pour les créer dès maintenant.</p>
+            ? <p className="muted">Aucune ligne. Elles sont créées pour chaque mois à partir des dates du bail ; utilisez « Mettre à jour les lignes » pour les créer dès maintenant.</p>
             : <RentLedger leaseFilter={lease.id} fixedLease figures={false} initialFilter="toutes" inlineEdit />}
         </Section>
       )}
@@ -112,25 +89,12 @@ export function LeaseDetailPage({ id }: { id: string }) {
       {tab === 'titulaires' && <Holders leaseId={lease.id} />}
       {tab === 'documents' && <DocumentList filter={{ lease_id: lease.id, property_id: lease.property_id }} />}
 
-      <PaymentDialog open={!!pay} onClose={() => setPay(null)} leaseId={lease.id} chargeId={pay?.chargeId} mode={pay?.mode} />
+      <PaymentDialog open={!!pay} onClose={() => setPay(null)} leaseId={lease.id} mode={pay?.mode} />
       <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} onReplaced={setReceipt} />
       <ChargeDialog open={chargeForm} leaseId={lease.id} onClose={() => setChargeForm(false)} />
-      <ReceiptBacklogDialog open={backlog} onClose={() => setBacklog(false)} leaseId={lease.id} />
       {dialog}
     </>
   );
-}
-
-/** Paiements qui ne règlent pas l'échéance de leur mois : proposition de remise en ordre. */
-function RepairNote({ lease }: { lease: Lease }) {
-  const { needed } = useLeaseRepair(lease);
-  const [open, setOpen] = useState(false);
-  if (!needed) return null;
-  return <>
-    <p className="note note-warn">Des paiements de ce bail ne règlent pas l’échéance de leur mois (ancienne répartition, échéances antérieures au bail ou annulées).{' '}
-      <button type="button" className="link" onClick={() => setOpen(true)}>Répartir les paiements par mois</button></p>
-    <MonthRepairDialog open={open} onClose={() => setOpen(false)} leaseIds={[lease.id]} />
-  </>;
 }
 
 function ChargeDialog({ open, leaseId, onClose }: { open: boolean; leaseId: string; onClose: () => void }) {
@@ -158,8 +122,12 @@ function ChargeDialog({ open, leaseId, onClose }: { open: boolean; leaseId: stri
         store.data.charges.filter((x) => x.lease_id === leaseId), sameCharge);
       if (same.length) { setDups(same); return; }
     }
-    const c = await store.create('rent_charges', { lease_id: leaseId, kind: kind === 'rappel' ? 'regularisation' : kind, label: label.trim() || null, ...period, due_date: due, rent_amount: 0, charges_amount: round2(amount) });
-    if (c) { store.notify(kind === 'rappel' ? 'Rappel de charges ajouté : une fois réglé, il pourra figurer sur la quittance du mois.' : 'Somme due ajoutée.'); onClose(); }
+    const c = await store.call(async (r) => {
+      const x = await r.insert('rent_charges', { lease_id: leaseId, kind: kind === 'rappel' ? 'regularisation' : kind, label: label.trim() || null, ...period, due_date: due, rent_amount: 0, charges_amount: round2(amount) });
+      await syncLedgerWith(r, { leaseIds: [leaseId] });
+      return x;
+    }, kind === 'rappel' ? 'Rappel de charges ajouté à « Autre somme due » du mois d’exigibilité ; il figurera sur la quittance de ce mois.' : 'Somme due ajoutée au mois d’exigibilité.');
+    if (c) onClose();
   }
   return (
     <Modal open={open} title="Ajouter une somme due" onClose={onClose} footer={<><Button onClick={onClose}>Annuler</Button><Button variant="primary" onClick={() => void save()}>{dups ? 'Ajouter quand même' : 'Ajouter'}</Button></>}>
@@ -173,7 +141,7 @@ function ChargeDialog({ open, leaseId, onClose }: { open: boolean; leaseId: stri
         <NumberInput label="Montant" suffix="€" value={amount} onChange={(v) => { setAmount(v); setDups(null); }} hint={kind === 'rappel' ? 'Charges réelles de l’année − provisions déjà versées.' : undefined} />
         <TextInput label="Date d’exigibilité" type="date" value={due} onChange={setDue} />
       </div>
-      {kind === 'rappel' && <p className="muted small">Une fois le rappel réglé, « Émettre la quittance » d’un loyer proposera de l’y ajouter sur une ligne distincte. Joignez le décompte de charges au locataire (Documents).</p>}
+      <p className="muted small">La somme s’ajoute à « Autre somme due » de la ligne du mois d’exigibilité ; elle figure sur la quittance de ce mois, sur une ligne distincte.{kind === 'rappel' ? ' Joignez le décompte de charges au locataire (Documents).' : ''}</p>
       {dups && <div className="note note-warn" role="alert"><strong>Doublon probable.</strong> {dups.map((x) => `${periodLabel(x)} : ${money2(x.rent_amount + x.charges_amount)} exigible le ${date(x.due_date)}`).join(' ; ')}. S’il s’agit bien d’une autre somme, ajoutez quand même.</div>}
       {err && <p className="form-error">{err}</p>}
     </Modal>

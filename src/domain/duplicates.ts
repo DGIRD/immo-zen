@@ -13,9 +13,11 @@ const cents = (n: number | null | undefined) => Math.round((n ?? 0) * 100);
 /** Deux textes renseignés et différents : ce ne sont pas les mêmes opérations. */
 const distinct = (a: string | null | undefined, b: string | null | undefined) => !!norm(a) && !!norm(b) && norm(a) !== norm(b);
 
-type PaymentLike = Pick<Payment, 'lease_id' | 'amount' | 'paid_on' | 'reference'> & { id?: string };
+type PaymentLike = Pick<Payment, 'lease_id' | 'amount' | 'paid_on' | 'reference'> & { id?: string; period_month?: string | null };
+/** Mois de rattachement : deux paiements rattachés à des mois différents ne sont pas des doublons. */
+const payMonth = (p: PaymentLike) => (p.period_month ?? p.paid_on).slice(0, 7);
 export function samePayment(a: PaymentLike, b: PaymentLike): boolean {
-  return a.lease_id === b.lease_id && cents(a.amount) === cents(b.amount) && near(a.paid_on, b.paid_on) && !distinct(a.reference, b.reference);
+  return a.lease_id === b.lease_id && cents(a.amount) === cents(b.amount) && near(a.paid_on, b.paid_on) && !distinct(a.reference, b.reference) && payMonth(a) === payMonth(b);
 }
 
 type ExpenseLike = Pick<Expense, 'property_id' | 'amount' | 'expense_date' | 'category' | 'label' | 'supplier'> & { id?: string };

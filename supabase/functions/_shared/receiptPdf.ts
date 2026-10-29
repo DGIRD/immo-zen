@@ -63,13 +63,19 @@ export function pdfSafe(s: string): string {
 /** Lignes de texte du document (testables indépendamment du rendu). */
 export function receiptLines(r: ReceiptData) {
   const extras = (r.extra_lines ?? []).filter((x) => x.amount);
+  // un reste dû d'un mois précédent (« Reste dû MM/AAAA réglé ») n'est pas un rappel de charges
+  const extrasPhrase = (xs: { label: string }[]) => {
+    const rest = xs.filter((x) => /^Reste dû/i.test(x.label));
+    const other = xs.filter((x) => !/^Reste dû/i.test(x.label));
+    return `${other.length ? `, ainsi que du rappel de charges (${other.map((x) => x.label).join(', ')})` : ''}${rest.length ? `, ainsi que du reste dû des mois précédents (${rest.map((x) => x.label).join(', ')})` : ''}`;
+  };
   const total = Math.round((r.rent_amount + r.charges_amount + extras.reduce((a, x) => a + x.amount, 0)) * 100) / 100;
   const remaining = Math.round((total - r.paid_amount) * 100) / 100;
   const period = `du ${frDate(r.period_start)} au ${frDate(r.period_end)}`;
   const landlord = r.landlord_name?.trim() || 'Le bailleur';
   const title = r.kind === 'quittance' ? 'Quittance de loyer' : 'Reçu de paiement partiel';
   const statement = r.kind === 'quittance'
-    ? `Je soussigné(e) ${landlord}, bailleur du logement désigné ci-dessus, déclare avoir reçu de ${r.tenant_names} la somme de ${frMoney(total)} au titre du loyer et des charges pour la période ${period}${extras.length ? `, ainsi que du rappel de charges (${extras.map((x) => x.label).join(', ')})` : ''}, et lui en donne quittance, sous réserve de tous mes droits.`
+    ? `Je soussigné(e) ${landlord}, bailleur du logement désigné ci-dessus, déclare avoir reçu de ${r.tenant_names} la somme de ${frMoney(total)} au titre du loyer et des charges pour la période ${period}${extrasPhrase(extras)}, et lui en donne quittance, sous réserve de tous mes droits.`
     : `Je soussigné(e) ${landlord}, bailleur du logement désigné ci-dessus, déclare avoir reçu de ${r.tenant_names} la somme de ${frMoney(r.paid_amount)}, à valoir sur le loyer et les charges de la période ${period}. Il reste dû ${frMoney(remaining)} pour cette période. Le présent reçu ne vaut pas quittance.`;
   return {
     title,

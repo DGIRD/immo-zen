@@ -499,7 +499,11 @@ async function main() {
   });
 
   let leaseUrl = '';
-  await step('bail : création avec nouveau locataire, échéances générées', async () => {
+  /** Mois du bail de test : M-2, M-1 et le mois en cours (AAAA-MM). */
+  let months: [string, string, string] = ['', '', ''];
+  const mm = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
+  const rowOf = (m: string) => page.locator('table.dt-table tbody tr').filter({ hasText: new RegExp(`^\\s*${['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'][Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`, 'm') }).first();
+  await step('bail : création avec nouveau locataire, une ligne par mois, reste dû reporté', async () => {
     await page.goto(url + '#/locataires');
     await page.getByRole('button', { name: 'Nouveau bail' }).click();
     await page.getByLabel('Bien', { exact: true }).selectOption({ label: 'Parking détenu' });
@@ -512,36 +516,46 @@ async function main() {
     await page.locator('.chip.on', { hasText: 'Léa Martin' }).waitFor();
     const today = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()));
     const [y, m] = today.split('-').map(Number) as [number, number];
-    const d = new Date(Date.UTC(y, m - 3, 1));
-    const start = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`;
-    await page.getByLabel('Début du bail *').fill(start);
+    const mo = (k: number) => { const d = new Date(Date.UTC(y, m - 1 - k, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
+    months = [mo(2), mo(1), mo(0)];
+    await page.getByLabel('Début du bail *').fill(`${months[0]}-01`);
     await page.getByLabel('Jour de paiement').fill('1');
-    assert.match((await page.locator('output.computed').innerText()).replace(/[\u202f\u00a0]/g, ' '), /825,50 €/, 'loyer CC repris du bien');
+    assert.match((await page.locator('output.computed').innerText()).replace(/[  ]/g, ' '), /825,50 €/, 'loyer CC repris du bien');
     await page.getByRole('button', { name: 'Enregistrer' }).first().click();
-    await page.getByRole('tab', { name: /^Loyers et paiements \(3 échéances/ }).waitFor();
+    await page.getByRole('tab', { name: /^Loyers et paiements \(3 mois/ }).waitFor();
     leaseUrl = page.url();
+    // aucun paiement : le reste dû de chaque mois échu est reporté sur le mois suivant, en cascade
+    const reported = page.locator('table.dt-table tbody tr .status', { hasText: /^Impayé reporté$/ });
+    await reported.first().waitFor();
+    assert.equal(await reported.count(), 2);
+    const cur = (await rowOf(months[2]).innerText()).replace(/[  ]/g, ' ');
+    assert.match(cur, new RegExp(`Reste dû ${mm(months[0])} à ${mm(months[1])} 1 651,00 €`), 'cumul reporté dans « Autre somme due » du mois en cours');
+    assert.match(cur, /2 476,50 €/, 'total dû du mois en cours');
     await page.screenshot({ path: join(out, '13-bail.png'), fullPage: true });
   });
 
-  await step('paiement : réparti sur plusieurs échéances, partiel', async () => {
+  await step('paiement : rattaché au mois choisi, plusieurs paiements additionnés, reste dû reporté', async () => {
     await page.getByRole('button', { name: 'Enregistrer un paiement' }).first().click();
     const dlg = page.locator('dialog[open]');
-    await dlg.getByLabel('Montant reçu').fill('1000');
-    await dlg.getByText('Non affecté').count();
+    await dlg.getByLabel('Montant reçu').fill('825,50');
+    await dlg.getByLabel('Mois concerné').selectOption(months[0]);
     await dlg.getByRole('button', { name: 'Enregistrer le paiement' }).click();
-    await page.getByText('Paiement enregistré.').waitFor();
-    const rows = page.locator('table.dt-table tbody tr');
-    await page.locator('.status', { hasText: /^Payée$/ }).first().waitFor();
-    // le paiement fait foi : il règle le mois de sa date, l'excédent reste en avance (pas de loyer d'un autre mois)
-    assert.equal(await rows.filter({ has: page.locator('.status', { hasText: /^Payée$/ }) }).count(), 1);
-    assert.equal(await rows.filter({ has: page.locator('.status', { hasText: /^Partiel/ }) }).count(), 0);
-    // paiement partiel confirmé sur un mois précédent
-    await rows.filter({ has: page.locator('.status', { hasText: /^Impayée$/ }) }).first().getByRole('button', { name: 'Confirmer le paiement' }).click();
-    await dlg.getByLabel('Montant reçu').fill('300');
-    await dlg.getByRole('button', { name: 'Confirmer le paiement' }).click();
-    await page.getByText('Paiement confirmé.').first().waitFor();
-    await rows.filter({ has: page.locator('.status', { hasText: /^Partiel/ }) }).first().waitFor();
-    assert.equal(await page.getByRole('button', { name: 'Émettre la quittance' }).count(), 1, 'quittance proposée uniquement pour la période réglée');
+    await page.getByText(/^Paiement enregistré sur/).first().waitFor();
+    await rowOf(months[0]).locator('.status', { hasText: /^Réglé$/ }).waitFor();
+    // deux paiements partiels du même mois s'additionnent dans « Réglé »
+    for (const amount of ['100', '200']) {
+      await page.getByRole('button', { name: 'Enregistrer un paiement' }).first().click();
+      await dlg.getByLabel('Montant reçu').fill(amount);
+      await dlg.getByLabel('Mois concerné').selectOption(months[1]);
+      await dlg.getByRole('button', { name: 'Enregistrer le paiement' }).click();
+      await dlg.getByRole('button', { name: 'Enregistrer quand même' }).click({ timeout: 2000 }).catch(() => undefined);
+      await page.locator('dialog[open]').waitFor({ state: 'detached' });
+    }
+    const prev = rowOf(months[1]);
+    await prev.locator('.status', { hasText: /^Partiel reporté$/ }).waitFor();
+    assert.match((await prev.innerText()).replace(/[  ]/g, ' '), /300,00 €/, 'réglé = somme des paiements du mois');
+    assert.match((await rowOf(months[2]).innerText()).replace(/[  ]/g, ' '), new RegExp(`Reste dû ${mm(months[1])} 525,50 €`), 'seul le reste dû du mois précédent est reporté');
+    assert.equal(await page.getByRole('button', { name: 'Émettre la quittance' }).count(), 1, 'quittance proposée uniquement pour le mois réglé');
   });
 
   await step('quittance : émission unique, aperçu et PDF réel', async () => {
@@ -559,20 +573,23 @@ async function main() {
     assert.equal(await page.locator('dialog[open]').count(), 0, 'la fenêtre de la quittance se ferme après l’envoi');
     assert.equal(await page.getByRole('button', { name: 'Émettre la quittance' }).count(), 0);
     await page.getByRole('button', { name: /Quittance Q-/ }).waitFor();
-    await page.getByRole('button', { name: 'Reçu partiel' }).click();
+    // reçu partiel du mois partiellement réglé (menu de la ligne)
+    await rowOf(months[1]).getByLabel('Actions').click();
+    await page.getByRole('menuitem', { name: 'Émettre un reçu partiel' }).click();
     await page.locator('dialog[open]').getByRole('heading', { name: /Reçu R-\d{4}-0001/ }).waitFor();
     await page.locator('dialog[open]').getByRole('button', { name: 'Fermer' }).click();
   });
 
   await step('confirmation : date du jour proposée par défaut et signalée', async () => {
-    // le paiement du mois a réglé l'échéance du mois en cours : on confirme l'échéance impayée suivante
-    await page.locator('table.dt-table tbody tr', { has: page.locator('.status', { hasText: /^Impayée$/ }) }).first().getByRole('button', { name: 'Confirmer le paiement' }).click();
+    await rowOf(months[2]).getByRole('button', { name: 'Paiement reçu' }).click();
     const dlg = page.locator('dialog[open]');
     await dlg.getByText('Date du jour proposée par défaut').waitFor();
     await dlg.getByText(/sans confirmation, le loyer reste impayé/).waitFor();
+    await dlg.getByLabel('Montant reçu').fill('825,50');
     await dlg.getByRole('button', { name: 'Confirmer le paiement' }).click();
-    await page.getByText('Paiement confirmé.').waitFor();
-    // tableau unique : le paiement et sa mention « date par défaut » figurent sur la ligne de l'échéance
+    await dlg.getByRole('button', { name: 'Enregistrer quand même' }).click({ timeout: 2000 }).catch(() => undefined);
+    await page.getByText(/^Paiement confirmé sur/).first().waitFor();
+    // tableau unique : le paiement et sa mention « date par défaut » figurent sur la ligne du mois
     await page.getByText('date par défaut').first().waitFor();
     await page.screenshot({ path: join(out, '14-paiements.png'), fullPage: true });
   });
@@ -583,7 +600,7 @@ async function main() {
     const dlg = page.locator('dialog[open]');
     const body = await dlg.getByLabel('Message').inputValue();
     assert.match(body, /Léa Martin/);
-    assert.match(body.replace(/[\u202f\u00a0]/g, ' '), /525,50 €/, 'reste dû du mois partiellement payé');
+    assert.match(body.replace(/[  ]/g, ' '), /525,50 €/, 'reste dû compté une seule fois (report réglé, loyer du mois partiel)');
     assert.doesNotMatch(body, /pénalit/i);
     await dlg.getByRole('button', { name: 'Envoyer par e-mail' }).click();
     await page.getByText(/Relance mise en file/).waitFor();
@@ -595,11 +612,11 @@ async function main() {
     await page.getByLabel('Montant', { exact: true }).fill('780');
     await page.getByRole('button', { name: 'Ajouter le mouvement' }).click();
     await page.locator('.kv').getByText('780,00').first().waitFor();
-    const balance = (await page.locator('.figure', { hasText: 'Solde du locataire' }).innerText()).replace(/[\u202f\u00a0]/g, ' ');
-    assert.match(balance, /-351,00 €/, 'dépôt exclu du solde des loyers (2 125,50 reçus − 2 476,50 dus)');
+    const balance = (await page.locator('.figure', { hasText: 'Solde du locataire' }).innerText()).replace(/[  ]/g, ' ');
+    assert.match(balance, /-525,50 €/, 'dépôt exclu du solde des loyers (1 951,00 reçus − 2 476,50 dus, reports non comptés deux fois)');
   });
 
-  await step('rappel de charges 2025, import de loyers Excel et quittance avec rappel', async () => {
+  await step('rappel de charges 2025, import d’un relevé et quittance avec les autres sommes du mois', async () => {
     await page.goto(leaseUrl);
     await page.getByRole('tab', { name: /^Loyers et paiements/ }).click();
     await page.getByRole('button', { name: 'Ajouter une somme due' }).click();
@@ -609,40 +626,37 @@ async function main() {
     await dlg.getByLabel('Montant').fill('120');
     await dlg.getByRole('button', { name: 'Ajouter' }).click();
     await page.getByText(/Rappel de charges ajouté/).waitFor();
-    // import d'un loyer collé depuis Excel : réparti sur ce qui reste dû, rappel compris
+    assert.match((await rowOf(months[2]).innerText()), new RegExp(`Rappel de charges ${lastYear}`), 'rappel dans « Autre somme due » du mois');
+    // import d'un relevé collé depuis Excel : remplit « Réglé » de la ligne du mois de la date
     const today = await page.evaluate(() => new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris' }).format(new Date()));
-    const text = `Date\tMontant\tLocataire\tMoyen\tRéférence\n${today}\t3 000,00 €\tLéa Martin\tVirement\tVIR LOYER`;
+    const text = `Date\tMontant\tLocataire\tMoyen\tRéférence\n${today}\t645,50 €\tLéa Martin\tVirement\tVIR LOYER`;
     await page.goto(url + '#/loyers');
-    await page.getByRole('button', { name: 'Importer des loyers (Excel)' }).click();
+    await page.getByRole('button', { name: 'Importer un relevé (Excel, CSV)' }).click();
     dlg = page.locator('dialog[open]');
     await dlg.getByLabel(/collez les lignes/).fill(text);
     await dlg.getByRole('button', { name: 'Analyser le texte collé' }).click();
     await dlg.getByText('1 prête(s)').waitFor();
-    // paiements additionnés par mois, document du mois proposé
-    await dlg.getByText('Récapitulatif par mois et quittances proposées').waitFor();
+    await dlg.getByText('Aperçu par mois').waitFor();
+    assert.ok(await dlg.getByRole('checkbox', { name: /^Quittance de / }).isChecked(), 'quittance proposée : le mois est intégralement réglé');
     await page.screenshot({ path: join(out, '25-import-loyers.png'), fullPage: true });
-    await dlg.getByRole('button', { name: 'Importer 1 paiement(s)' }).click();
-    await page.getByText('1 loyer(s) importé(s)').waitFor();
-    await page.getByRole('button', { name: 'Importer des loyers (Excel)' }).click();
+    await dlg.getByRole('button', { name: 'Importer 1 paiement(s) et émettre 1 document(s)' }).click();
+    await page.getByText(/^1 paiement\(s\) importé\(s\) depuis le texte collé ; 1 quittance\(s\)/).waitFor();
+    await page.getByRole('button', { name: 'Importer un relevé (Excel, CSV)' }).click();
     await dlg.getByLabel(/collez les lignes/).fill(text);
     await dlg.getByRole('button', { name: 'Analyser le texte collé' }).click();
     await dlg.getByText('1 déjà importée(s)').waitFor();
     await dlg.getByRole('button', { name: 'Fermer' }).first().click();
-    // quittance d'un loyer réglé : le rappel est proposé
+    // la quittance du mois reprend le reste dû réglé et le rappel sur des lignes distinctes
     await page.goto(leaseUrl);
     await page.getByRole('tab', { name: /^Loyers et paiements/ }).click();
-    await page.locator('table.dt-table tbody tr').filter({ hasNotText: 'Rappel' }).getByRole('button', { name: 'Émettre la quittance' }).first().click();
+    await rowOf(months[2]).getByRole('button', { name: /^Quittance Q-/ }).click();
     dlg = page.locator('dialog[open]');
-    await dlg.getByRole('heading', { name: 'Rappel de charges' }).waitFor();
-    assert.ok(await dlg.getByRole('checkbox', { name: new RegExp(`Rappel de charges ${lastYear}`) }).isChecked());
-    await dlg.getByRole('button', { name: 'Émettre avec le rappel' }).click();
-    await page.getByText('Quittance émise avec le rappel de charges.').waitFor();
-    await page.locator('dialog[open]').getByText(`Rappel de charges inclus : Rappel de charges ${lastYear}`).waitFor();
+    const note = (await dlg.getByText(/^Autres sommes incluses/).innerText()).replace(/[  ]/g, ' ');
+    assert.match(note, new RegExp(`Reste dû ${mm(months[1])} réglé \\(525,50 €\\)`));
+    assert.match(note, new RegExp(`Rappel de charges ${lastYear} \\(120,00 €\\)`));
     await page.screenshot({ path: join(out, '26-quittance-rappel.png'), fullPage: true });
-    await page.locator('dialog[open]').getByRole('button', { name: 'Fermer' }).click();
-    // le rappel n'est plus proposé seul
-    const rappelRow = page.locator('table.dt-table tbody tr', { hasText: `Rappel de charges ${lastYear}` });
-    assert.equal(await rappelRow.getByRole('button', { name: 'Émettre la quittance' }).count(), 0);
+    await dlg.getByRole('button', { name: 'Fermer' }).click();
+    assert.equal(await page.getByRole('button', { name: 'Émettre la quittance' }).count(), 0, 'rien d’autre à quittancer');
   });
 
   await step('révision IRL : activation dans le bail, prochaine date affichée', async () => {
@@ -794,19 +808,20 @@ async function main() {
     await page.getByRole('heading', { name: 'Tableau de bord' }).waitFor();
   });
 
-  await step('loyers : tableau unique (échéance, paiements, quittance), réédition de quittance, paiement modifié, suppression', async () => {
+  await step('loyers : tableau unique (une ligne par mois, réglé, reçu, écart, quittance), réédition de quittance, paiement modifié, suppression', async () => {
     await page.goto(url + '#/loyers');
     await page.getByLabel('Filtrer par bail').selectOption({ index: 1 });
     await page.getByLabel('Afficher').selectOption('toutes');
     // un seul tableau : plus d'onglets Échéances / Paiements / Quittances et reçus
     assert.equal(await page.getByRole('tab', { name: /^(Paiements|Quittances et reçus)/ }).count(), 0, 'onglets supprimés');
     const heads = (await page.locator('table.dt-table thead').first().innerText()).replace(/\s+/g, ' ');
-    for (const h of ['Période', 'Dû', 'Paiements', 'Réglé', 'Statut', 'Quittance / reçu']) assert.ok(heads.includes(h), `colonne ${h}`);
+    for (const h of ['Période', 'Loyer dû (HC)', 'Charges dues', 'Autre somme due', 'Total dû', 'Réglé', 'Date de règlement', 'Reçu', 'Écart', 'Statut', 'Quittance']) assert.ok(heads.includes(h), `colonne ${h}`);
+    assert.equal(await page.getByRole('button', { name: /Mettre en cohérence|Répartir les paiements par mois/ }).count(), 0, 'commandes de remise en ordre supprimées');
     const rows = page.locator('table.dt-table tbody tr');
     const withQ = rows.filter({ has: page.getByRole('button', { name: /^Quittance Q-/ }) });
-    assert.ok(await withQ.count() >= 1, 'quittances visibles dans les lignes des échéances');
+    assert.ok(await withQ.count() >= 1, 'quittances visibles dans les lignes des mois');
     const first = withQ.first();
-    assert.ok(await first.locator('.pay-line').count() >= 1, 'paiements de l’échéance sur la même ligne');
+    assert.ok(await first.locator('.pay-line').count() >= 1, 'paiements du mois sur la même ligne');
     const period = (await first.locator('td').nth(2).innerText()).trim();
     const row = () => rows.filter({ hasText: period }).first();
     const oldNumber = (await first.getByRole('button', { name: /^Quittance Q-/ }).innerText()).replace('Quittance ', '').trim();
@@ -858,7 +873,7 @@ async function main() {
     await page.screenshot({ path: join(out, '35-loyers-quittances.png'), fullPage: true });
   });
 
-  await step('paiements et dépenses : doublons signalés, suppression multiple, modification en grille, mise en cohérence des quittances', async () => {
+  await step('paiements et dépenses : doublons signalés, suppression multiple, modification en grille, quittance réémise', async () => {
     await page.goto(url + '#/loyers');
     await page.getByLabel('Filtrer par bail').selectOption({ index: 1 });
     await page.getByLabel('Afficher').selectOption('toutes');
@@ -876,8 +891,8 @@ async function main() {
     await dlg.getByRole('button', { name: 'Enregistrer le paiement' }).click();
     await dlg.getByText('Doublon probable.').waitFor();
     await dlg.getByRole('button', { name: 'Enregistrer quand même' }).click();
-    await page.getByText('Paiement enregistré.').first().waitFor();
-    await page.getByText(/semble en double/).waitFor();
+    await page.getByText(/^Paiement enregistré sur/).first().waitFor();
+    await page.getByText(/(semble|semblent) en double/).waitFor();
     await page.getByRole('button', { name: /Supprimer les doublons/ }).click();
     dlg = page.locator('dialog[open]');
     await dlg.getByRole('heading', { name: /Supprimer le paiement|Supprimer \d+ paiements/ }).waitFor();
@@ -894,25 +909,23 @@ async function main() {
     await page.getByText(/1 paiement modifié/).first().waitFor();
     await page.getByRole('button', { name: 'Fermer la grille' }).click().catch(() => undefined);
     await page.locator('tbody tr', { hasText: 'GRILLE-01' }).first().waitFor();
-    // mise en cohérence : une quittance supprimée est réémise depuis les paiements déjà reçus
+    // une quittance supprimée se réémet depuis la ligne du mois, toujours réglé
     const qRow = page.locator('table.dt-table tbody tr').filter({ has: page.getByRole('button', { name: /^Quittance Q-/ }) }).first();
     const qn = (await qRow.getByRole('button', { name: /^Quittance Q-/ }).innerText()).replace('Quittance ', '').trim();
+    const qPeriod = (await qRow.locator('td').nth(2).innerText()).split('\n')[0]!.trim();
     await qRow.getByLabel('Actions').click();
     await qRow.getByRole('menuitem', { name: `Supprimer la quittance ${qn}` }).click();
     dlg = page.locator('dialog[open]');
-    await dlg.getByLabel('Motif de la suppression').fill('Test de cohérence');
+    await dlg.getByLabel('Motif de la suppression').fill('Test de réémission');
     await dlg.getByRole('button', { name: 'Supprimer le document' }).click();
     await page.getByText('Document supprimé (annulé).').first().waitFor();
-    await page.getByRole('button', { name: /^Mettre en cohérence paiements et quittances \(\d+\)/ }).click();
-    dlg = page.locator('dialog[open]');
-    await dlg.getByRole('heading', { name: 'Mettre en cohérence paiements et quittances' }).waitFor();
-    await dlg.getByText('Le paiement fait foi').first().waitFor();
-    await dlg.getByRole('button', { name: /^Mettre en cohérence et émettre \d+ quittances?$/ }).click();
-    await page.getByText(/^Paiements et quittances en cohérence : \d+ quittances? émises?/).first().waitFor();
-    assert.equal(await page.getByRole('button', { name: /^Mettre en cohérence paiements et quittances \(/ }).count(), 0, 'plus rien à quittancer');
-    // échéances en grille : une échéance quittancée est verrouillée
+    const again = page.locator('table.dt-table tbody tr').filter({ hasText: qPeriod }).first();
+    await again.getByRole('button', { name: 'Émettre la quittance' }).click();
+    await page.locator('dialog[open]').getByRole('heading', { name: /^Quittance Q-/ }).waitFor();
+    await page.locator('dialog[open]').getByRole('button', { name: 'Fermer' }).click();
+    // lignes en grille : une ligne quittancée est verrouillée
     await page.getByLabel('Afficher').selectOption('toutes');
-    await page.getByRole('button', { name: 'Modifier les échéances en grille' }).click();
+    await page.getByRole('button', { name: 'Modifier les lignes en grille' }).click();
     await page.locator('.grid-table').getByText(/^Quittance .* : supprimez-la pour modifier$/).first().waitFor();
     await page.getByRole('button', { name: 'Fermer la grille' }).click();
     await page.screenshot({ path: join(out, '36-paiements-grille.png'), fullPage: true });
@@ -952,97 +965,98 @@ async function main() {
     await page.getByLabel('Rechercher dans le tableau').fill('');
   });
 
-  await step('échéances : modifier le montant, aligner sur le payé, annuler le paiement, annuler puis réactiver', async () => {
+  await step('lignes : modifier le montant, aligner sur le payé, annuler le paiement, annuler puis réactiver', async () => {
     await page.goto(leaseUrl);
     await page.getByRole('tab', { name: /^Loyers et paiements/ }).click();
     const rows = page.locator('table.dt-table tbody tr');
-    const paidRow = rows.filter({ has: page.locator('.status', { hasText: /^Payée$/ }) }).filter({ hasNotText: 'Rappel' }).first();
+    const paidRow = rows.filter({ has: page.locator('.status', { hasText: /^Réglé$/ }) }).filter({ hasNotText: 'Rappel' }).first();
     const period = (await paidRow.locator('td:not(.dt-check)').first().innerText()).split('\n')[0]!.trim();
-    // tableau unique : la ligne de l'échéance, pas celle d'une avance du même mois
-    const row = () => rows.filter({ hasText: period }).filter({ hasNotText: 'Avance' }).first();
-    // montant relevé : la quittance est annulée, l'échéance devient partiellement payée
+    const row = () => rows.filter({ hasText: period }).first();
+    // montant relevé : la quittance est annulée, le reste dû est reporté sur le mois suivant
     await row().getByRole('button', { name: 'Modifier', exact: true }).click();
     let dlg = page.locator('dialog[open]');
-    await dlg.getByRole('heading', { name: `Modifier l’échéance de ${period}` }).waitFor();
+    await dlg.getByRole('heading', { name: `Modifier la ligne de ${period}` }).waitFor();
     const charges = dlg.getByLabel('Charges', { exact: true });
     const before = Number((await charges.inputValue()).replace(/\s/g, '').replace(',', '.'));
     await charges.fill(String(before + 10).replace('.', ','));
     await dlg.getByRole('button', { name: 'Enregistrer' }).click();
-    await page.getByText(new RegExp(`Échéance de ${period} modifiée`)).first().waitFor();
-    await row().locator('.status', { hasText: /^Partiel/ }).waitFor();
-    // le paiement fait foi : l'échéance est ramenée au montant payé
+    await page.getByText(new RegExp(`Ligne de ${period} modifiée`)).first().waitFor();
+    await row().locator('.status', { hasText: /^Partiel reporté$/ }).waitFor();
+    // le paiement fait foi : la ligne est ramenée au montant payé, le report disparaît
     await row().getByRole('button', { name: 'Modifier', exact: true }).click();
     dlg = page.locator('dialog[open]');
     await dlg.getByRole('button', { name: /^Aligner sur le montant payé/ }).click();
     await dlg.getByRole('button', { name: 'Enregistrer' }).click();
-    await row().locator('.status', { hasText: /^Payée$/ }).waitFor();
-    // annuler le paiement : l'échéance redevient due
+    await row().locator('.status', { hasText: /^Réglé$/ }).waitFor();
+    // annuler le paiement : le mois redevient dû
     await row().getByRole('button', { name: 'Annuler le paiement' }).click();
     dlg = page.locator('dialog[open]');
-    await dlg.getByText(/L’échéance redevient due/).waitFor();
+    await dlg.getByText(/Le mois redevient dû/).waitFor();
     await dlg.getByRole('button', { name: 'Annuler le paiement' }).click();
-    await page.getByText(/L’échéance est de nouveau due/).first().waitFor();
+    await page.getByText(/Le mois est de nouveau dû/).first().waitFor();
     assert.equal(await row().getByRole('button', { name: 'Annuler le paiement' }).count(), 0);
-    // annuler l'échéance, puis la réactiver
+    // annuler la ligne, puis la réactiver
     await row().getByRole('button', { name: 'Annuler', exact: true }).click();
     dlg = page.locator('dialog[open]');
     await dlg.getByLabel('Motif d’annulation').fill('Test réactivation');
-    await dlg.getByRole('button', { name: 'Annuler l’échéance' }).click();
-    await page.getByText('Annulée : Test réactivation').first().waitFor();
+    await dlg.getByRole('button', { name: 'Annuler la ligne' }).click();
+    await page.getByText('Annulé : Test réactivation').first().waitFor();
     await row().getByRole('button', { name: 'Réactiver' }).click();
     dlg = page.locator('dialog[open]');
-    await dlg.getByRole('heading', { name: 'Réactiver l’échéance' }).waitFor();
+    await dlg.getByRole('heading', { name: 'Réactiver la ligne' }).waitFor();
     await dlg.getByRole('button', { name: 'Réactiver' }).click();
     await page.getByText(/réactivée : elle est de nouveau due/).first().waitFor();
-    assert.equal(await page.getByText('Annulée : Test réactivation').count(), 0);
-    // paiement de nouveau confirmé, quittance au montant payé
-    await row().getByRole('button', { name: /Confirmer le paiement|Paiement anticipé/ }).click();
+    assert.equal(await page.getByText('Annulé : Test réactivation').count(), 0);
+    // paiement reçu pour ce mois, saisi plus tard depuis sa ligne
+    await row().getByRole('button', { name: /^(Paiement reçu|Enregistrer un paiement)$/ }).click();
     dlg = page.locator('dialog[open]');
     await dlg.getByRole('button', { name: /^(Confirmer le paiement|Enregistrer le paiement)$/ }).click();
     // même montant que le paiement annulé de ce mois : doublon signalé, enregistré quand même
     await dlg.getByRole('button', { name: 'Enregistrer quand même' }).click({ timeout: 3000 }).catch(() => undefined);
-    await row().locator('.status', { hasText: /^Payée$/ }).waitFor();
-    // depuis Loyers et paiements : menu d'actions de la ligne et filtre « Annulées »
+    await row().locator('.status', { hasText: /^Réglé$/ }).waitFor();
+    // depuis Loyers et paiements : menu d'actions de la ligne et filtre « Annulés »
     await page.goto(url + '#/loyers');
     await page.getByLabel('Afficher').selectOption('toutes');
     await page.locator('table.dt-table tbody tr').first().getByLabel('Actions').click();
-    await page.getByRole('menuitem', { name: 'Modifier l’échéance' }).first().waitFor();
+    await page.getByRole('menuitem', { name: 'Modifier la ligne' }).first().waitFor();
     await page.keyboard.press('Escape');
     await page.getByLabel('Afficher').selectOption('annulee');
     await page.screenshot({ path: join(out, '38-echeances-actions.png'), fullPage: true });
   });
 
-  await step('paiements historiques inférieurs au loyer : le paiement fait foi dans les quittances', async () => {
-    // paiement du mois le plus ancien saisi pour moins que l'échéance (ancien loyer)
+  await step('excédent : autre somme due, trop-perçu à qualifier puis reporté en avance', async () => {
     await page.goto(leaseUrl);
     await page.getByRole('tab', { name: /^Loyers et paiements/ }).click();
-    const rows = page.locator('table.dt-table tbody tr');
-    const last = rows.filter({ hasNotText: 'Rappel' }).last();
-    const period = (await last.locator('td:not(.dt-check)').first().innerText()).split('\n')[0]!.trim();
-    const row = () => rows.filter({ hasText: period }).first();
-    if (await row().getByRole('button', { name: 'Annuler le paiement' }).count()) {
-      await row().getByRole('button', { name: 'Annuler le paiement' }).click();
-      await page.locator('dialog[open]').getByRole('button', { name: 'Annuler le paiement' }).click();
-      await page.getByText(/L’échéance est de nouveau due/).first().waitFor();
-    }
-    await row().getByRole('button', { name: /Confirmer le paiement|Paiement anticipé/ }).click();
+    // 50 € de plus sur le mois réglé : qualifiés en autre somme due
+    await page.getByRole('button', { name: 'Enregistrer un paiement' }).first().click();
     let dlg = page.locator('dialog[open]');
-    await dlg.getByLabel('Montant reçu').fill('500');
-    await dlg.getByRole('button', { name: /^(Confirmer le paiement|Enregistrer le paiement)$/ }).click();
-    await dlg.getByRole('button', { name: 'Enregistrer quand même' }).click({ timeout: 3000 }).catch(() => undefined);
-    await row().locator('.status', { hasText: /^Partiel/ }).waitFor();
-    await page.getByRole('button', { name: /^Mettre en cohérence paiements et quittances \(\d+\)/ }).click();
+    await dlg.getByLabel('Montant reçu').fill('50');
+    await dlg.getByLabel('Mois concerné').selectOption(months[0]);
+    await dlg.getByLabel(/^Nature de l’excédent/).selectOption('autre');
+    await dlg.getByLabel('Libellé de la somme due').fill('Remplacement badge');
+    await dlg.getByRole('button', { name: 'Enregistrer le paiement' }).click();
+    await dlg.getByRole('button', { name: 'Enregistrer quand même' }).click({ timeout: 2000 }).catch(() => undefined);
+    await page.getByText(/^Paiement enregistré sur/).first().waitFor();
+    const row = rowOf(months[0]);
+    await row.getByText(/Remplacement badge/).first().waitFor();
+    await row.locator('.status', { hasText: /^Réglé$/ }).waitFor();
+    // 30 € de plus, laissés « à qualifier plus tard » : l'écart est signalé
+    await page.getByRole('button', { name: 'Enregistrer un paiement' }).first().click();
     dlg = page.locator('dialog[open]');
-    await dlg.getByText('Payé moins', { exact: true }).first().waitFor();
-    assert.ok(await dlg.getByRole('checkbox', { name: new RegExp(`^Aligner ${period} sur 500,00`) }).isChecked(), 'mois échu proposé à l’alignement');
-    await page.screenshot({ path: join(out, '39-coherence-paiement-source.png'), fullPage: true });
-    await dlg.getByRole('button', { name: /^Mettre en cohérence/ }).click();
-    await page.getByText(/alignées? sur le montant payé/).first().waitFor();
-    await row().locator('.status', { hasText: /^Payée$/ }).waitFor();
-    assert.match((await row().innerText()).replace(/[\u202f\u00a0]/g, ' '), /500,00 €/, 'échéance ramenée au montant payé');
-    await row().getByRole('button', { name: /^Quittance Q-/ }).click();
-    await page.locator('dialog[open]').getByRole('heading', { name: /Quittance Q-/ }).waitFor();
-    await page.locator('dialog[open]').getByRole('button', { name: 'Fermer' }).last().click();
+    await dlg.getByLabel('Montant reçu').fill('30');
+    await dlg.getByLabel('Mois concerné').selectOption(months[0]);
+    await dlg.getByRole('button', { name: 'Enregistrer le paiement' }).click();
+    await dlg.getByRole('button', { name: 'Enregistrer quand même' }).click({ timeout: 2000 }).catch(() => undefined);
+    await row.getByText('à qualifier').waitFor();
+    assert.match((await row.innerText()).replace(/[  ]/g, ' '), /\+30,00 €/, 'écart positif sur la ligne');
+    await row.getByRole('button', { name: 'Qualifier l’écart' }).click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByLabel(/^Nature de l’excédent/).selectOption('trop_percu');
+    await dlg.getByRole('checkbox', { name: 'Reporter en avance sur le mois suivant' }).check();
+    await dlg.getByRole('button', { name: 'Enregistrer' }).click();
+    await page.getByText('Trop-perçu reporté en avance sur le mois suivant.').first().waitFor();
+    await row.getByText(new RegExp(`30,00[\s\u202f\u00a0]€ en avance sur ${mm(months[1])}`)).waitFor();
+    await page.screenshot({ path: join(out, '39-excedent-avance.png'), fullPage: true });
   });
 
   await step('déclaration fiscale : 2044 au réel et cases de la 2042', async () => {
@@ -1229,7 +1243,7 @@ async function main() {
     await panel.waitFor({ state: 'detached' });
   });
 
-  await step('bail : date de début erronée (1990) signalée, puis corrigée avec suppression confirmée des échéances', async () => {
+  await step('bail : date de début erronée (1990) signalée, puis corrigée avec suppression confirmée des lignes', async () => {
     await page.goto(url + '#/locataires');
     await page.getByRole('button', { name: 'Nouveau bail' }).click();
     await page.getByLabel('Bien', { exact: true }).selectOption({ label: 'Parking détenu' });
@@ -1242,12 +1256,13 @@ async function main() {
     let dlg = page.locator('dialog[open]');
     await dlg.getByRole('heading', { name: 'Vérifiez la date de début' }).waitFor();
     await dlg.getByRole('button', { name: 'La date est correcte, enregistrer' }).click();
-    await page.getByRole('tab', { name: /^Loyers et paiements \(\d{3} échéances/ }).waitFor();
+    await page.getByRole('tab', { name: /^Loyers et paiements \(\d{3} mois/ }).waitFor({ timeout: 120000 });
     // un vrai paiement règle l'échéance de son mois, jamais mars 1990
     await page.getByRole('button', { name: 'Enregistrer un paiement' }).first().click();
     await page.locator('dialog[open]').getByLabel('Montant reçu').fill('100');
     await page.locator('dialog[open]').getByRole('button', { name: 'Enregistrer le paiement' }).click();
-    await page.getByText('Paiement enregistré.').waitFor();
+    await page.locator('dialog[open]').getByRole('button', { name: 'Enregistrer quand même' }).click({ timeout: 2000 }).catch(() => undefined);
+    await page.getByText(/^Paiement enregistré sur/).first().waitFor({ timeout: 120000 });
     {
       const snap = await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!));
       const month = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()).slice(0, 7);
@@ -1266,11 +1281,12 @@ async function main() {
     await dlg.getByText(/supprimer définitivement \d+ échéances/).waitFor();
     await dlg.getByText(/Aucune n’a reçu de paiement/).waitFor();
     await dlg.getByRole('button', { name: /^Supprimer \d+ échéances et enregistrer$/ }).click();
-    await page.getByRole('tab', { name: /^Loyers et paiements \(2 échéances, 1 paiement\)/ }).waitFor();
+    await page.getByRole('tab', { name: /^Loyers et paiements \(2 mois, 1 paiement\)/ }).waitFor({ timeout: 120000 });
     const db = await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!));
     const leaseId = page.url().split('/baux/')[1]!.split(/[/?]/)[0];
     const ids = new Set(db.rent_charges.filter((c: { lease_id: string }) => c.lease_id === leaseId).map((c: { id: string }) => c.id));
-    assert.equal(db.payment_allocations.filter((a: { charge_id: string }) => ids.has(a.charge_id)).reduce((t: number, a: { amount: number }) => t + a.amount, 0), 100, 'paiement réaffecté aux nouvelles échéances');
+    assert.equal(db.payment_allocations.filter((a: { charge_id: string }) => ids.has(a.charge_id)).reduce((t: number, a: { amount: number }) => t + a.amount, 0), 100, 'paiement rangé dans son mois');
+    assert.ok(!db.rent_charges.some((c: { lease_id: string; period_start: string }) => c.lease_id === leaseId && c.period_start < '2000-01-01'), 'aucune ligne de 1990 restante (loyers ni reports)');
   });
 
   await step('rendu mobile (390 px) sans défilement horizontal', async () => {

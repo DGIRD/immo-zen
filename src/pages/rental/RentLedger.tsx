@@ -3,35 +3,40 @@ import { useStore } from '../../data/store.tsx';
 import type { Payment, Receipt } from '../../data/types.ts';
 import { downloadBlob, stamp, toCsv, toXlsx, type ExportColumn } from '../../domain/exporting.ts';
 import { date, money2 } from '../../domain/format.ts';
-import { CHARGE_STATUS_LABELS, monthLabel, PAYMENT_METHOD_LABELS, type ChargeView } from '../../domain/rental.ts';
+import { ledgerRows, ledgerSettings, mmYYYY, monthQuittance, ROW_STATUS_LABELS, type LedgerRow, type RowStatus } from '../../domain/ledger.ts';
+import { monthLabel, PAYMENT_METHOD_LABELS, type ChargeView } from '../../domain/rental.ts';
 import { round2 } from '../../domain/simulator.ts';
 import { chargeDuplicates, paymentDuplicates } from '../../domain/duplicates.ts';
 import { DataTable, type Column, type RowAction } from '../../ui/DataTable.tsx';
 import { GridEditor, type GridColumn } from '../../ui/GridEditor.tsx';
-import { Button, EmptyState, Section, useConfirm } from '../../ui/components.tsx';
+import { Button, EmptyState, Section } from '../../ui/components.tsx';
 import { navigate } from '../../ui/router.ts';
 import { useChargeEditing } from './ChargeEdit.tsx';
-import { applyPaymentEdit, ChargeActions, ChargeBadge, METHODS, PaymentDialog, paymentAllocated, periodLabel, ReceiptDialog, sendLabel, usePaymentActions, useReceiptActions, useRental } from './common.tsx';
+import { applyPaymentEdit, METHODS, PaymentDialog, ReceiptDialog, sendLabel, usePaymentActions, useReceiptActions, useRental } from './common.tsx';
+import { syncLedgerWith } from './ledgerSync.ts';
+import { issueMonthDocs, useExcessDialog } from './monthActions.tsx';
 
-export type Filter = 'a_traiter' | 'impayee' | 'partielle' | 'payee' | 'a_venir' | 'annulee' | 'avances' | 'doublons' | 'toutes';
+export type Filter = 'a_traiter' | 'impayee' | 'partielle' | 'reportee' | 'reglee' | 'a_venir' | 'ecarts' | 'annulee' | 'hors_periode' | 'doublons' | 'toutes';
 
 export const DupPill = ({ title }: { title: string }) => <span className="pill pill-warn dup-flag" title={title}>doublon possible</span>;
 
-/**
- * Une ligne du tableau unique : une échéance avec ses paiements et ses documents (quittance, reçus),
- * ou la part d'un paiement restée en avance (affectée à aucune échéance).
- */
-export type Row =
-  | { key: string; type: 'echeance'; lease_id: string; v: ChargeView; pays: { p: Payment; amount: number }[]; docs: Receipt[]; cancelledDocs: Receipt[] }
-  | { key: string; type: 'avance'; lease_id: string; p: Payment; free: number };
+const TONE: Record<RowStatus, string> = { reglee: 'won', partielle: 'hot', reportee: 'closed', impayee: 'bad', a_venir: 'early', annulee: 'closed', hors_periode: 'closed' };
+const RECEIVED_LABELS = { oui: 'Oui', partiel: 'Partiel', non: 'Non' } as const;
 
-const isEch = (r: Row): r is Extract<Row, { type: 'echeance' }> => r.type === 'echeance';
-export const rowMonth = (r: Row) => (isEch(r) ? r.v.charge.period_start : r.p.paid_on).slice(0, 7);
-const rowPayments = (r: Row) => (isEch(r) ? r.pays.map((x) => x.p) : [r.p]);
+export function RowBadge({ r }: { r: LedgerRow }) {
+  const title = r.status === 'reportee' ? `${money2(r.carriedOut)} reportés sur ${mmYYYY(addMonth(r.month))}` : r.status === 'hors_periode' ? 'Paiement daté d’un mois sans loyer (avant le point de départ ou hors du bail)' : undefined;
+  const label = r.status === 'reportee' && r.allocated === 0 ? 'Impayé reporté' : ROW_STATUS_LABELS[r.status];
+  return <span className={`status status-${TONE[r.status]}`} title={title}>{label}</span>;
+}
+const addMonth = (m: string) => { const y = Number(m.slice(0, 4)); const n = Number(m.slice(5, 7)); return n === 12 ? `${y + 1}-01` : `${y}-${String(n + 1).padStart(2, '0')}`; };
+
+/** Libellés des autres sommes dues du mois (rappel, régularisation, reste dû reporté). */
+const otherLabels = (r: LedgerRow) => [...(r.report ? [`${r.report.label ?? 'Reste dû reporté'} ${money2(r.carryIn)}`] : []), ...r.others.map((c) => `${c.label ?? (c.kind === 'regularisation' ? 'Régularisation de charges' : 'Autre somme due')} ${money2(c.rent_amount + c.charges_amount)}`)];
 
 /**
- * Tableau unique « Loyers et paiements » : une ligne par échéance avec ses paiements et sa quittance ou ses reçus,
- * plus les avances non affectées. Utilisé par l'écran Loyers et paiements (tous les baux) et par la fiche du bail.
+ * Tableau unique « Loyers et paiements » : une ligne par bail et par mois, avec le dû (loyer, charges, autres sommes,
+ * reste dû reporté), le réglé (paiements du mois), le reçu, l'écart, le statut et la quittance.
+ * Utilisé par l'écran Loyers et paiements (tous les baux) et par la fiche du bail.
  */
 export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false, figures = true, toolbarExtra, initialFilter = 'a_traiter', inlineEdit = false }: {
   /** Bail affiché ('' : tous les baux). */
@@ -43,155 +48,179 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
   figures?: boolean;
   toolbarExtra?: ReactNode;
   initialFilter?: Filter;
-  /** Boutons Modifier / Annuler le paiement / Annuler visibles sur chaque échéance (fiche du bail). */
+  /** Boutons Modifier / Annuler visibles sur chaque ligne (fiche du bail). */
   inlineEdit?: boolean;
 }) {
-  const { views, leaseById, leaseLabel, quittanceFor } = useRental();
+  const { viewById, leaseById, leaseLabel, today } = useRental();
   const [filter, setFilter] = useState<Filter>(initialFilter);
   const [month, setMonth] = useState('');
-  const [pay, setPay] = useState<{ chargeId?: string; leaseId?: string; mode: 'saisie' | 'confirmation' } | null>(null);
+  const [pay, setPay] = useState<{ leaseId?: string; month?: string; mode: 'saisie' | 'confirmation' } | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
-  const [grid, setGrid] = useState<null | 'echeances' | 'paiements'>(null);
+  const [grid, setGrid] = useState<null | 'lignes' | 'paiements'>(null);
   const store = useStore();
-  const { ask, dialog } = useConfirm();
   const chargeEdit = useChargeEditing();
   const payActions = usePaymentActions();
   const docActions = useReceiptActions(setReceipt);
+  const excess = useExcessDialog();
 
   const data = store.data;
+  const settings = ledgerSettings(data.settings?.rental_settings);
   const labelOfLease = (id: string) => { const l = leaseById.get(id); return l ? leaseLabel(l) : '—'; };
 
-  // ----- lignes : échéances + paiements affectés + documents ; avances à part
-  const allRows = useMemo<Row[]>(() => {
-    const payById = new Map(data.payments.map((p) => [p.id, p]));
-    const byCharge = new Map<string, { p: Payment; amount: number }[]>();
-    for (const a of data.allocations) {
-      const p = payById.get(a.payment_id);
-      if (!p) continue;
-      const cur = byCharge.get(a.charge_id) ?? [];
-      const same = cur.find((x) => x.p.id === p.id);
-      if (same) same.amount = round2(same.amount + a.amount); else cur.push({ p, amount: a.amount });
-      byCharge.set(a.charge_id, cur);
-    }
-    const covers = (r: Receipt, id: string) => r.charge_id === id || (r.extra_lines ?? []).some((x) => x.charge_id === id);
-    const out: Row[] = views.map((v) => {
-      const docs = data.receipts.filter((r) => covers(r, v.charge.id)).sort((a, b) => b.issued_on.localeCompare(a.issued_on) || b.number.localeCompare(a.number));
-      return {
-        key: v.charge.id, type: 'echeance', lease_id: v.charge.lease_id, v,
-        pays: (byCharge.get(v.charge.id) ?? []).sort((a, b) => a.p.paid_on.localeCompare(b.p.paid_on)),
-        docs: docs.filter((r) => !r.cancelled_at), cancelledDocs: docs.filter((r) => r.cancelled_at),
-      };
-    });
-    for (const p of data.payments) {
-      const free = round2(p.amount - paymentAllocated(p, data.allocations));
-      if (free > 0) out.push({ key: `avance:${p.id}`, type: 'avance', lease_id: p.lease_id, p, free });
-    }
-    return out;
-  }, [views, data.payments, data.allocations, data.receipts]);
-
-  const months = useMemo(() => [...new Set(allRows.map(rowMonth))].sort().reverse(), [allRows]);
-  const dupCharges = useMemo(() => chargeDuplicates(data.charges), [data.charges]);
+  const allRows = useMemo(() => ledgerRows(data, settings, today), [data, today]); // eslint-disable-line react-hooks/exhaustive-deps
+  const months = useMemo(() => [...new Set(allRows.map((r) => r.month))].sort().reverse(), [allRows]);
+  const dupCharges = useMemo(() => chargeDuplicates(data.charges.filter((c) => c.kind !== 'report')), [data.charges]);
   const dupPays = useMemo(() => paymentDuplicates(data.payments), [data.payments]);
-  const isDupRow = (r: Row) => (isEch(r) && dupCharges.ids.has(r.v.charge.id)) || rowPayments(r).some((p) => dupPays.ids.has(p.id));
+  const isDupRow = (r: LedgerRow) => (!!r.loyer && dupCharges.ids.has(r.loyer.id)) || r.payments.some((p) => dupPays.ids.has(p.id));
+  const canQuittance = (r: LedgerRow) => !!monthQuittance(r, data.allocations, data.receipts);
+  const overdue = (r: LedgerRow) => (r.status === 'impayee' || r.status === 'partielle' || r.status === 'reportee') && (r.month < today.slice(0, 7) || (r.loyer?.due_date ?? '') <= today);
   const rows = allRows.filter((r) => {
     if (leaseFilter && r.lease_id !== leaseFilter) return false;
-    if (month && rowMonth(r) !== month) return false;
-    if (filter === 'doublons') return isDupRow(r);
-    if (filter === 'toutes') return true;
-    if (filter === 'avances') return r.type === 'avance';
-    if (!isEch(r)) return false;
-    const v = r.v;
-    if (filter === 'a_traiter') return v.overdue || (v.status === 'payee' && !quittanceFor(v.charge.id) && !v.charge.cancelled_at);
-    return v.status === filter;
+    if (month && r.month !== month) return false;
+    switch (filter) {
+      case 'toutes': return true;
+      case 'doublons': return isDupRow(r);
+      case 'a_traiter': return (overdue(r) && r.status !== 'reportee') || r.toConfirm || r.excessToQualify || canQuittance(r) || r.status === 'hors_periode';
+      case 'ecarts': return r.excessToQualify || (r.gap !== 0 && r.status !== 'reportee' && r.status !== 'a_venir' && r.status !== 'annulee');
+      default: return r.status === filter;
+    }
   });
-  const echRows = rows.filter(isEch);
-  const totals = echRows.reduce((t, { v }) => ({ due: round2(t.due + (v.charge.cancelled_at ? 0 : v.total)), paid: round2(t.paid + v.paid), rest: round2(t.rest + v.remaining) }), { due: 0, paid: 0, rest: 0 });
-  // paiements du périmètre affiché (bail, mois) : grille et doublons
-  const scopePayments = data.payments.filter((p) => (!leaseFilter || p.lease_id === leaseFilter) && (!month || p.paid_on.startsWith(month)));
+  const scope = allRows.filter((r) => !leaseFilter || r.lease_id === leaseFilter);
+  const totals = rows.reduce((t, r) => ({
+    due: round2(t.due + r.due), paid: round2(t.paid + r.paid),
+    rest: round2(t.rest + (r.status === 'reportee' || r.status === 'a_venir' ? 0 : Math.max(0, r.due - r.allocated))),
+    over: round2(t.over + (r.excessToQualify || r.loyer?.excess_mode === 'trop_percu' ? Math.max(0, r.gap) : 0)),
+  }), { due: 0, paid: 0, rest: 0, over: 0 });
+  const scopePayments = data.payments.filter((p) => (!leaseFilter || p.lease_id === leaseFilter) && (!month || rows.some((r) => r.payments.includes(p))));
   const scopeDupExtra = dupPays.extra.filter((p) => scopePayments.includes(p));
-  const scopeViews = views.filter((v) => !leaseFilter || v.charge.lease_id === leaseFilter);
-  const toConfirm = scopeViews.filter((v) => v.overdue).length;
-  const toReceipt = scopeViews.filter((v) => v.status === 'payee' && !v.charge.cancelled_at && !quittanceFor(v.charge.id)).length;
-  const advanceTotal = round2(allRows.filter((r): r is Extract<Row, { type: 'avance' }> => r.type === 'avance' && (!leaseFilter || r.lease_id === leaseFilter)).reduce((s, r) => s + r.free, 0));
+  const toConfirm = scope.filter((r) => (overdue(r) && r.status !== 'reportee') || r.toConfirm).length;
+  const toReceipt = scope.filter(canQuittance).length;
+  const toQualify = scope.filter((r) => r.excessToQualify).length;
 
-  const payText = (p: Payment, amount: number) => `${date(p.paid_on)} ${money2(amount)}${amount !== p.amount ? ` (sur ${money2(p.amount)})` : ''} ${PAYMENT_METHOD_LABELS[p.method]}${p.reference ? ` ${p.reference}` : ''}`;
-  const payLine = (p: Payment, amount: number) => (
+  const loyerView = (r: LedgerRow): ChargeView | null => (r.loyer ? viewById.get(r.loyer.id) ?? null : null);
+  const issueQuittances = async (list: LedgerRow[]) => {
+    const months = list.filter(canQuittance).map((r) => ({ lease_id: r.lease_id, month: r.month, kind: 'quittance' as const }));
+    if (!months.length) { store.notify('Aucun mois sélectionné n’est intégralement réglé sans quittance.', 'error'); return false; }
+    const n = await store.call((repo) => issueMonthDocs(repo, months));
+    if (n) store.notify(n.q > 1 ? `${n.q} quittances émises.` : 'Quittance émise.');
+    if (n && list.length === 1 && n.issued[0]) setReceipt(n.issued[0]);
+    return !!n;
+  };
+  const issueRecu = async (r: LedgerRow) => {
+    const n = await store.call((repo) => issueMonthDocs(repo, [{ lease_id: r.lease_id, month: r.month, kind: 'recu' }]));
+    if (n?.r) { store.notify('Reçu partiel émis.'); if (n.issued[0]) setReceipt(n.issued[0]); }
+  };
+  const confirmReceived = async (list: LedgerRow[]) => {
+    const targets = list.filter((r) => r.toConfirm && r.loyer);
+    if (!targets.length) return false;
+    const ok = await store.call(async (repo) => {
+      const snap = await repo.loadAll();
+      for (const r of targets) {
+        const c = snap.charges.find((x) => x.id === r.loyer!.id);
+        if (c) await repo.update('rent_charges', c.id, c.version, { received_at: new Date().toISOString() });
+      }
+      return true;
+    }, targets.length > 1 ? `${targets.length} réceptions confirmées.` : 'Réception confirmée.');
+    return !!ok;
+  };
+
+  const payText = (p: Payment) => `${date(p.paid_on)} ${money2(p.amount)} ${PAYMENT_METHOD_LABELS[p.method]}${p.reference ? ` ${p.reference}` : ''}`;
+  const payLine = (p: Payment) => (
     <div key={p.id} className="pay-line">
-      <button type="button" className="link" title="Modifier le paiement" onClick={() => payActions.edit(p)}>{date(p.paid_on)} · {money2(amount)}</button>
-      {amount !== p.amount && <span className="muted small"> sur {money2(p.amount)}</span>}
+      <button type="button" className="link" title="Modifier le paiement" onClick={() => payActions.edit(p)}>{date(p.paid_on)} · {money2(p.amount)}</button>
       <span className="muted small"> · {PAYMENT_METHOD_LABELS[p.method]}{p.reference ? ` · ${p.reference}` : ''}</span>
+      {p.period_month && p.period_month.slice(0, 7) !== p.paid_on.slice(0, 7) && <span className="pill pill-neutral" title="Paiement rattaché à ce mois, reçu un autre mois">déplacé</span>}
       {p.date_defaulted && <span className="pill pill-warn" title="Date du jour utilisée par défaut lors de la confirmation">date par défaut</span>}
       {dupPays.ids.has(p.id) && <DupPill title="Même bail, même montant, à quelques jours d’un autre paiement" />}
       <button type="button" className="icon-btn row-delete" aria-label={`Supprimer le paiement du ${date(p.paid_on)} (${money2(p.amount)})`} title="Supprimer le paiement" onClick={() => payActions.remove(p)}>🗑</button>
     </div>
   );
   const docLabel = (r: Receipt) => `${r.kind === 'quittance' ? 'Quittance' : 'Reçu'} ${r.number}`;
+  const gapNote = (r: LedgerRow) => (r.status === 'reportee' ? `reporté sur ${mmYYYY(addMonth(r.month))}`
+    : r.advanceOut > 0 ? `${money2(r.advanceOut)} en avance sur ${mmYYYY(addMonth(r.month))}`
+    : r.advanceIn > 0 ? `dont avance ${money2(r.advanceIn)}`
+    : r.excessToQualify ? 'à qualifier'
+    : r.gap > 0 && r.loyer?.excess_mode === 'trop_percu' ? 'trop-perçu' : '');
 
-  const allColumns: Column<Row>[] = [
+  const allColumns: Column<LedgerRow>[] = [
     { id: 'lease', label: 'Bail', value: (r) => labelOfLease(r.lease_id), primary: true },
-    { id: 'period', label: 'Période', value: (r) => (isEch(r) ? r.v.charge.period_start : r.p.paid_on),
-      render: (r) => (isEch(r) ? <>{periodLabel(r.v.charge)}{r.v.charge.cancelled_at && r.v.charge.cancel_reason ? <small className="muted block">Annulée : {r.v.charge.cancel_reason}</small> : null}</> : <>Avance <span className="muted small">({monthLabel(r.p.paid_on)})</span></>), mobile: true },
-    { id: 'due', label: 'Échéance', value: (r) => (isEch(r) ? r.v.charge.due_date : r.p.paid_on), kind: 'date', render: (r) => (isEch(r) ? date(r.v.charge.due_date) : '—'), mobile: true },
-    { id: 'total', label: 'Dû', value: (r) => (isEch(r) ? r.v.total : null), kind: 'money', align: 'right', render: (r) => (isEch(r) ? money2(r.v.total) : '—') },
-    { id: 'payments', label: 'Paiements', value: (r) => (isEch(r) ? r.pays.map((x) => payText(x.p, x.amount)).join(' ; ') : payText(r.p, r.free)), sortable: false,
-      render: (r) => (isEch(r)
-        ? (r.pays.length ? <div className="pay-lines">{r.pays.map((x) => payLine(x.p, x.amount))}</div> : <span className="muted">—</span>)
-        : <div className="pay-lines">{payLine(r.p, r.free)}</div>), mobile: true },
-    { id: 'paid', label: 'Réglé', value: (r) => (isEch(r) ? r.v.paid : r.free), kind: 'money', align: 'right', render: (r) => money2(isEch(r) ? r.v.paid : r.free) },
-    { id: 'rest', label: 'Reste', value: (r) => (isEch(r) ? r.v.remaining : null), kind: 'money', align: 'right',
-      render: (r) => (isEch(r) ? <span className={r.v.overdue ? 'neg' : ''}>{money2(r.v.remaining)}</span> : '—'), mobile: true },
-    { id: 'status', label: 'Statut', value: (r) => (isEch(r) ? CHARGE_STATUS_LABELS[r.v.status] : 'Avance'),
-      render: (r) => (isEch(r)
-        ? <><ChargeBadge v={r.v} />{dupCharges.ids.has(r.v.charge.id) && <DupPill title="Une autre échéance du même bail couvre la même période (ou le même montant à la même date)" />}</>
-        : <span className="status status-early" title="Montant reçu non affecté à une échéance, conservé au crédit du locataire">Avance</span>), mobile: true },
-    { id: 'document', label: 'Quittance / reçu', value: (r) => (isEch(r) ? r.docs.map(docLabel).join(' ; ') || null : null),
-      render: (r) => (!isEch(r) ? '—' : <div className="doc-lines">
-        {r.docs.map((d) => <div key={d.id}><button type="button" className="link" onClick={() => setReceipt(d)}>{docLabel(d)}</button> <span className="muted small">{sendLabel(d)}</span></div>)}
+    { id: 'period', label: 'Période', value: (r) => r.month, mobile: true,
+      render: (r) => <>{monthLabel(`${r.month}-01`)}{r.loyer && !r.loyer.period_start.endsWith('-01') && <small className="muted block">à partir du {date(r.loyer.period_start)}</small>}
+        {r.loyer?.cancelled_at && r.loyer.cancel_reason ? <small className="muted block">Annulé : {r.loyer.cancel_reason}</small> : null}</> },
+    { id: 'rent', label: 'Loyer dû (HC)', value: (r) => r.rent, kind: 'money', align: 'right', render: (r) => (r.loyer ? money2(r.rent) : '—') },
+    { id: 'charges', label: 'Charges dues', value: (r) => r.charges, kind: 'money', align: 'right', render: (r) => (r.loyer ? money2(r.charges) : '—') },
+    { id: 'other', label: 'Autre somme due', value: (r) => round2(r.other + r.carryIn), kind: 'money', align: 'right',
+      render: (r) => (r.other + r.carryIn > 0 ? <span title={otherLabels(r).join('\n')}>{money2(round2(r.other + r.carryIn))}{otherLabels(r).map((l) => <small key={l} className="muted block">{l}</small>)}</span> : <span className="muted">—</span>) },
+    { id: 'due', label: 'Total dû', value: (r) => r.due, kind: 'money', align: 'right', render: (r) => <strong>{money2(r.due)}</strong>, mobile: true },
+    { id: 'paid', label: 'Réglé', value: (r) => r.paid, kind: 'money', align: 'right', mobile: true,
+      render: (r) => <>{money2(r.paid)}{r.payments.length > 0 && <div className="pay-lines">{r.payments.map(payLine)}</div>}</> },
+    { id: 'payments', label: 'Paiements (détail)', value: (r) => r.payments.map(payText).join(' ; ') || null, defaultHidden: true, sortable: false },
+    { id: 'paid_on', label: 'Date de règlement', value: (r) => r.lastPaidOn, kind: 'date', render: (r) => (r.lastPaidOn ? date(r.lastPaidOn) : '—') },
+    { id: 'received', label: 'Reçu', value: (r) => RECEIVED_LABELS[r.received], mobile: true,
+      render: (r) => <>{RECEIVED_LABELS[r.received]}{r.toConfirm && <Button size="sm" variant="ghost" onClick={() => void confirmReceived([r])}>Confirmer</Button>}</> },
+    { id: 'gap', label: 'Écart', value: (r) => r.gap, kind: 'money', align: 'right', mobile: true,
+      render: (r) => <><span className={r.gap < 0 && r.status !== 'reportee' && r.status !== 'a_venir' ? 'neg' : r.gap > 0 ? 'pos' : ''}>{r.gap > 0 ? '+' : ''}{money2(r.gap)}</span>{gapNote(r) && <small className="muted block">{gapNote(r)}</small>}</> },
+    { id: 'status', label: 'Statut', value: (r) => ROW_STATUS_LABELS[r.status], mobile: true,
+      render: (r) => <><RowBadge r={r} />{isDupRow(r) && <DupPill title="Paiement ou ligne en double possible" />}</> },
+    { id: 'document', label: 'Quittance', value: (r) => [r.quittance, ...r.recus].filter(Boolean).map((d) => docLabel(d!)).join(' ; ') || null, mobile: true,
+      render: (r) => <div className="doc-lines">
+        {[...(r.quittance ? [r.quittance] : []), ...r.recus].map((d) => <div key={d.id}><button type="button" className="link" onClick={() => setReceipt(d)}>{docLabel(d)}</button> <span className="muted small">{sendLabel(d)}</span></div>)}
         {r.cancelledDocs.length > 0 && <button type="button" className="link muted small" title={r.cancelledDocs.map((d) => `${docLabel(d)} : ${d.cancel_reason ?? 'annulé'}`).join('\n')} onClick={() => setReceipt(r.cancelledDocs[0]!)}>
           {r.cancelledDocs.length} document{r.cancelledDocs.length > 1 ? 's' : ''} annulé{r.cancelledDocs.length > 1 ? 's' : ''}</button>}
-        {!r.docs.length && !r.cancelledDocs.length && <span className="muted">—</span>}
-      </div>), mobile: true },
-    { id: 'actions', label: 'Actions', value: () => null, sortable: false, searchable: false,
-      render: (r) => (!isEch(r) ? null : r.v.charge.cancelled_at
-        ? <Button size="sm" onClick={() => chargeEdit.restore(r.v)} title={r.v.charge.cancel_reason ? `Annulée : ${r.v.charge.cancel_reason}` : 'Annulée'}>Réactiver</Button>
-        : <div className="row">
-          <ChargeActions v={r.v} hideIssued onPay={(x) => setPay({ chargeId: x.charge.id, leaseId: x.charge.lease_id, mode: 'saisie' })} onConfirm={(x) => setPay({ chargeId: x.charge.id, leaseId: x.charge.lease_id, mode: 'confirmation' })} onReceipt={setReceipt} />
-          {inlineEdit && <>
-            <Button size="sm" variant="ghost" onClick={() => chargeEdit.edit(r.v)}>Modifier</Button>
-            {r.v.paid > 0 && <Button size="sm" variant="ghost" onClick={() => chargeEdit.unpay(r.v)}>Annuler le paiement</Button>}
-            {r.v.paid === 0 && <Button size="sm" variant="ghost" onClick={() => chargeEdit.cancel(r.v)}>Annuler</Button>}
+        {!r.quittance && !r.recus.length && !r.cancelledDocs.length && (canQuittance(r) ? <span className="muted">à émettre</span> : <span className="muted">—</span>)}
+      </div> },
+    { id: 'actions', label: 'Actions', value: () => null, sortable: false, searchable: false, mobile: true,
+      render: (r) => {
+        const v = loyerView(r);
+        if (r.loyer?.cancelled_at && !r.others.length && !r.report) return v ? <Button size="sm" onClick={() => chargeEdit.restore(v)}>Réactiver</Button> : null;
+        return <div className="row">
+          {(r.status === 'impayee' || r.status === 'partielle' || r.status === 'reportee' || r.status === 'a_venir') && r.loyer && <Button size="sm" onClick={() => setPay({ leaseId: r.lease_id, month: r.month, mode: overdue(r) ? 'confirmation' : 'saisie' })}>{overdue(r) ? 'Paiement reçu' : 'Enregistrer un paiement'}</Button>}
+          {canQuittance(r) && <Button size="sm" variant="primary" onClick={() => void issueQuittances([r])}>Émettre la quittance</Button>}
+          {r.excessToQualify && <Button size="sm" onClick={() => excess.open(r)}>Qualifier l’écart</Button>}
+          {inlineEdit && v && <>
+            <Button size="sm" variant="ghost" onClick={() => chargeEdit.edit(v)}>Modifier</Button>
+            {r.paid > 0 && <Button size="sm" variant="ghost" onClick={() => chargeEdit.unpay(v)}>Annuler le paiement</Button>}
+            {r.paid === 0 && r.allocated === 0 && <Button size="sm" variant="ghost" onClick={() => chargeEdit.cancel(v)}>Annuler</Button>}
           </>}
-        </div>), mobile: true },
+        </div>;
+      } },
   ];
-
   const columns = fixedLease ? allColumns.filter((c) => c.id !== 'lease') : allColumns;
 
-  const rowActions = (r: Row): RowAction<Row>[] => {
-    const payItems = rowPayments(r).flatMap((p): RowAction<Row>[] => [
+  const rowActions = (r: LedgerRow): RowAction<LedgerRow>[] => {
+    const v = loyerView(r);
+    const out: RowAction<LedgerRow>[] = [];
+    if (r.loyer && !r.loyer.cancelled_at) out.push({ label: 'Enregistrer un paiement pour ce mois', onSelect: () => setPay({ leaseId: r.lease_id, month: r.month, mode: 'saisie' }) });
+    if (canQuittance(r)) out.push({ label: 'Émettre la quittance', onSelect: () => void issueQuittances([r]) });
+    if (r.loyer && !r.quittance && r.allocated > 0 && r.status !== 'reglee') out.push({ label: 'Émettre un reçu partiel', onSelect: () => void issueRecu(r) });
+    if (r.excessToQualify || (r.gap > 0 && r.loyer?.excess_mode)) out.push({ label: 'Qualifier l’écart', onSelect: () => excess.open(r) });
+    if (r.toConfirm) out.push({ label: 'Confirmer la réception', onSelect: () => void confirmReceived([r]) });
+    if (v) out.push(...chargeEdit.actionsFor(v));
+    for (const p of r.payments) out.push(
       { label: `Modifier le paiement du ${date(p.paid_on)}`, onSelect: () => payActions.edit(p) },
       { label: `Supprimer le paiement du ${date(p.paid_on)}`, danger: true, onSelect: () => payActions.remove(p) },
-    ]);
-    const lease: RowAction<Row>[] = fixedLease ? [] : [{ label: 'Voir le bail', onSelect: () => navigate(`/baux/${r.lease_id}`) }];
-    if (!isEch(r)) return [...payItems, ...lease];
-    const docItems = r.docs.flatMap((d): RowAction<Row>[] => [
+    );
+    for (const d of [...(r.quittance ? [r.quittance] : []), ...r.recus]) out.push(
       { label: `Ouvrir ${docLabel(d)}`, onSelect: () => setReceipt(d) },
       { label: `Modifier ${d.kind === 'quittance' ? 'la quittance' : 'le reçu'} ${d.number}`, onSelect: () => docActions.edit(d) },
       { label: `Rééditer ${d.kind === 'quittance' ? 'la quittance' : 'le reçu'} ${d.number}`, onSelect: () => void docActions.reissue(d) },
       { label: `Supprimer ${d.kind === 'quittance' ? 'la quittance' : 'le reçu'} ${d.number}`, danger: true, onSelect: () => docActions.remove(d) },
-    ]);
-    const cancelled = r.cancelledDocs.map((d): RowAction<Row> => ({ label: `Voir ${docLabel(d)} (annulé)`, onSelect: () => setReceipt(d) }));
-    return [...chargeEdit.actionsFor(r.v), ...payItems, ...docItems, ...cancelled, ...lease];
+    );
+    for (const d of r.cancelledDocs) out.push({ label: `Voir ${docLabel(d)} (annulé)`, onSelect: () => setReceipt(d) });
+    if (!fixedLease) out.push({ label: 'Voir le bail', onSelect: () => navigate(`/baux/${r.lease_id}`) });
+    return out;
   };
 
+  // grille : loyer et charges dus des lignes affichées
+  const gridRows = rows.map(loyerView).filter((v): v is ChargeView => !!v && !v.charge.cancelled_at);
   const chargeGrid: GridColumn<ChargeView>[] = [
     { id: 'lease', label: 'Bail', type: 'text', get: () => null, fixed: (v) => labelOfLease(v.charge.lease_id) },
-    { id: 'period', label: 'Période', type: 'text', get: () => null, fixed: (v) => periodLabel(v.charge) },
+    { id: 'period', label: 'Période', type: 'text', get: () => null, fixed: (v) => monthLabel(v.charge.period_start) },
     { id: 'due_date', label: 'Échéance', type: 'date', get: (v) => v.charge.due_date, validate: (x) => (x ? null : 'Date obligatoire') },
-    { id: 'rent_amount', label: 'Loyer', type: 'money', get: (v) => v.charge.rent_amount,
+    { id: 'rent_amount', label: 'Loyer dû (HC)', type: 'money', get: (v) => v.charge.rent_amount,
       validate: (x, v, all) => (x === null || (x as number) < 0 ? 'Montant positif ou nul' : round2((x as number) + Number(all.charges_amount ?? 0)) < v.paid ? `Inférieur au déjà réglé (${money2(v.paid)})` : null) },
-    { id: 'charges_amount', label: 'Charges', type: 'money', get: (v) => v.charge.charges_amount,
+    { id: 'charges_amount', label: 'Charges dues', type: 'money', get: (v) => v.charge.charges_amount,
       validate: (x) => (x === null || (x as number) < 0 ? 'Montant positif ou nul' : null) },
-    { id: 'label', label: 'Libellé', type: 'text', get: (v) => v.charge.label, fixed: (v) => (v.charge.kind === 'loyer' ? <span className="muted">loyer du mois</span> : false) },
   ];
   async function saveCharges(changes: { row: ChargeView; values: Record<string, string | number | null> }[]) {
     let n = 0;
@@ -200,25 +229,28 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
       if ('due_date' in values) patch.due_date = values.due_date;
       if ('rent_amount' in values) patch.rent_amount = round2(Number(values.rent_amount));
       if ('charges_amount' in values) patch.charges_amount = round2(Number(values.charges_amount));
-      if ('label' in values) patch.label = values.label;
-      if (await store.update('rent_charges', row.charge, patch, `L’échéance de ${periodLabel(row.charge)}`)) n++;
+      if (await store.update('rent_charges', row.charge, patch, `La ligne de ${monthLabel(row.charge.period_start)}`)) n++;
     }
-    if (n) store.notify(`${n} échéance${n > 1 ? 's' : ''} modifiée${n > 1 ? 's' : ''}.`);
+    if (n) { await store.call((r) => syncLedgerWith(r, { leaseIds: [...new Set(changes.map((c) => c.row.charge.lease_id))] })); store.notify(`${n} ligne${n > 1 ? 's' : ''} modifiée${n > 1 ? 's' : ''}.`); }
     return n;
   }
-  /** Annule les échéances sélectionnées comme doublons : seulement celles sans paiement ni quittance. */
-  async function cancelDuplicates(sel: ChargeView[]) {
-    const ok = sel.filter((v) => v.paid === 0 && !v.charge.cancelled_at && !quittanceFor(v.charge.id));
-    const kept = sel.length - ok.length;
-    if (!ok.length) { store.notify('Les échéances sélectionnées ont reçu des paiements : retirez ou déplacez d’abord les paiements.', 'error'); return false; }
-    if (!(await ask('Annuler comme doublons', <>{ok.length} échéance{ok.length > 1 ? 's' : ''} ser{ok.length > 1 ? 'ont annulées' : 'a annulée'} avec le motif « Doublon » et ne ser{ok.length > 1 ? 'ont' : 'a'} plus due{ok.length > 1 ? 's' : ''}.{kept > 0 && <> {kept} autre{kept > 1 ? 's' : ''}, déjà réglée{kept > 1 ? 's' : ''} ou quittancée{kept > 1 ? 's' : ''}, ser{kept > 1 ? 'ont conservées' : 'a conservée'}.</>}</>, 'Annuler les échéances'))) return false;
-    let n = 0;
-    for (const v of ok) if (await store.update('rent_charges', v.charge, { cancelled_at: new Date().toISOString(), cancel_reason: 'Doublon' }, 'L’échéance')) n++;
-    if (n) store.notify(`${n} échéance${n > 1 ? 's' : ''} annulée${n > 1 ? 's' : ''} (doublon).`);
-    return n > 0;
-  }
 
-  const exportCols: ExportColumn<Row>[] = columns.filter((c) => c.id !== 'actions').map((c) => ({ label: c.label, value: c.value, kind: c.kind }));
+  const exportCols: ExportColumn<LedgerRow>[] = [
+    ...(fixedLease ? [] : [{ label: 'Bail', value: (r: LedgerRow) => labelOfLease(r.lease_id) }]),
+    { label: 'Période', value: (r) => monthLabel(`${r.month}-01`) },
+    { label: 'Loyer dû (HC)', value: (r) => r.rent, kind: 'money' },
+    { label: 'Charges dues', value: (r) => r.charges, kind: 'money' },
+    { label: 'Autre somme due', value: (r) => round2(r.other + r.carryIn), kind: 'money' },
+    { label: 'Détail autre somme due', value: (r) => otherLabels(r).join(' ; ') || null },
+    { label: 'Total dû', value: (r) => r.due, kind: 'money' },
+    { label: 'Réglé', value: (r) => r.paid, kind: 'money' },
+    { label: 'Paiements', value: (r) => r.payments.map(payText).join(' ; ') || null },
+    { label: 'Date de règlement', value: (r) => r.lastPaidOn, kind: 'date' },
+    { label: 'Reçu', value: (r) => RECEIVED_LABELS[r.received] },
+    { label: 'Écart', value: (r) => r.gap, kind: 'money' },
+    { label: 'Statut', value: (r) => ROW_STATUS_LABELS[r.status] },
+    { label: 'Quittance', value: (r) => [r.quittance, ...r.recus].filter(Boolean).map((d) => docLabel(d!)).join(' ; ') || null },
+  ];
   const exp = async (f: 'xlsx' | 'csv') => {
     const name = `immo-zen-loyers-${stamp()}`;
     if (f === 'csv') downloadBlob(new Blob([toCsv(exportCols, rows)], { type: 'text/csv;charset=utf-8' }), `${name}.csv`);
@@ -231,83 +263,87 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
 
   return (
     <>
-      {dialog}
       {chargeEdit.ui}
       {payActions.ui}
       {docActions.ui}
+      {excess.ui}
       {figures && (
         <div className="figures">
-            <button type="button" className="figure link-figure" onClick={() => setFilter('impayee')}>
-              <span className="figure-label">Paiements à confirmer</span><span className={`figure-value ${toConfirm ? 'neg' : ''}`}>{toConfirm}</span><span className="figure-hint">échéances passées non réglées</span>
-            </button>
-            <button type="button" className="figure link-figure" onClick={() => setFilter('payee')}>
-              <span className="figure-label">Quittances à émettre</span><span className="figure-value">{toReceipt}</span><span className="figure-hint">périodes intégralement réglées</span>
-            </button>
-            <div className="figure"><span className="figure-label">Dû (sélection)</span><span className="figure-value">{money2(totals.due)}</span><span className="figure-hint">réglé {money2(totals.paid)}</span></div>
-            <div className="figure"><span className="figure-label">Reste dû (sélection)</span><span className={`figure-value ${totals.rest ? 'neg' : ''}`}>{money2(totals.rest)}</span>
-              {advanceTotal > 0 && <button type="button" className="figure-hint link" onClick={() => setFilter('avances')}>avances non affectées : {money2(advanceTotal)}</button>}</div>
-          </div>
+          <button type="button" className="figure link-figure" onClick={() => setFilter('a_traiter')}>
+            <span className="figure-label">Paiements à confirmer</span><span className={`figure-value ${toConfirm ? 'neg' : ''}`}>{toConfirm}</span><span className="figure-hint">mois échus non réglés{settings.receivedMode === 'confirmation' ? ', réceptions à confirmer' : ''}</span>
+          </button>
+          <button type="button" className="figure link-figure" onClick={() => setFilter('reglee')}>
+            <span className="figure-label">Quittances à émettre</span><span className="figure-value">{toReceipt}</span><span className="figure-hint">mois intégralement réglés</span>
+          </button>
+          <div className="figure"><span className="figure-label">Total dû (sélection)</span><span className="figure-value">{money2(totals.due)}</span><span className="figure-hint">réglé {money2(totals.paid)}</span></div>
+          <div className="figure"><span className="figure-label">Reste dû (sélection)</span><span className={`figure-value ${totals.rest ? 'neg' : ''}`}>{money2(totals.rest)}</span>
+            {toQualify > 0 ? <button type="button" className="figure-hint link" onClick={() => setFilter('ecarts')}>{toQualify} excédent{toQualify > 1 ? 's' : ''} à qualifier</button>
+              : totals.over > 0 ? <span className="figure-hint">trop-perçu {money2(totals.over)}</span> : null}</div>
+        </div>
       )}
-          {scopeDupExtra.length > 0 && !grid && (
-            <p className="note note-warn">{scopeDupExtra.length} paiement{scopeDupExtra.length > 1 ? 's semblent' : ' semble'} en double (même bail, même montant, à quelques jours d’écart).{' '}
-              <button type="button" className="link" onClick={() => setFilter('doublons')}>Afficher les doublons</button>{' · '}
-              <button type="button" className="link" onClick={() => payActions.removeMany(scopeDupExtra)}>Supprimer les doublons (garder le premier enregistré)</button></p>
-          )}
-          <p className="muted small">L’absence de réponse à l’e-mail de confirmation ne vaut jamais paiement : une échéance reste impayée tant que vous n’avez pas confirmé ou saisi le paiement.</p>
+      {scopeDupExtra.length > 0 && !grid && (
+        <p className="note note-warn">{scopeDupExtra.length} paiement{scopeDupExtra.length > 1 ? 's semblent' : ' semble'} en double (même bail, même montant, à quelques jours d’écart).{' '}
+          <button type="button" className="link" onClick={() => setFilter('doublons')}>Afficher les doublons</button>{' · '}
+          <button type="button" className="link" onClick={() => payActions.removeMany(scopeDupExtra)}>Supprimer les doublons (garder le premier enregistré)</button></p>
+      )}
+      {fixedLease && <p className="muted small">Une ligne par mois : le réglé additionne les paiements du mois. Un mois échu partiellement réglé reporte son reste dû dans « Autre somme due » du mois suivant. L’absence de réponse à l’e-mail de confirmation ne vaut jamais paiement.</p>}
       {onLeaseFilter && (
-          <div className="row lease-filter">
-            <label className="inline-select">Bail
-              <select value={leaseFilter} onChange={(e) => onLeaseFilter!(e.target.value)} aria-label="Filtrer par bail">
-                <option value="">Tous les baux</option>
-                {[...data.leases].sort((a, b) => leaseLabel(a).localeCompare(leaseLabel(b))).map((l) => <option key={l.id} value={l.id}>{leaseLabel(l)}</option>)}
-              </select></label>
-          </div>
+        <div className="row lease-filter">
+          <label className="inline-select">Bail
+            <select value={leaseFilter} onChange={(e) => onLeaseFilter!(e.target.value)} aria-label="Filtrer par bail">
+              <option value="">Tous les baux</option>
+              {[...data.leases].sort((a, b) => leaseLabel(a).localeCompare(leaseLabel(b))).map((l) => <option key={l.id} value={l.id}>{leaseLabel(l)}</option>)}
+            </select></label>
+        </div>
       )}
-          {grid === 'echeances' ? (
-            <GridEditor rows={echRows.map((r) => r.v).filter((v) => !v.charge.cancelled_at)} columns={chargeGrid} rowKey={(v) => v.charge.id} rowLabel={(v) => periodLabel(v.charge)}
-              lock={(v) => { const q = quittanceFor(v.charge.id); return q ? `Quittance ${q.number} : supprimez-la pour modifier` : null; }}
-              flag={(v) => (dupCharges.ids.has(v.charge.id) ? <DupPill title="Doublon possible" /> : null)}
-              note="Échéances affichées selon les filtres. Une échéance quittancée n’est pas modifiable ; le montant dû ne peut pas descendre sous ce qui est déjà réglé."
-              onSave={saveCharges} onClose={() => setGrid(null)} />
-          ) : grid === 'paiements' ? (
-            <PaymentsGrid payments={scopePayments} dupIds={dupPays.ids} onClose={() => setGrid(null)} />
-          ) : (
-            <DataTable id={fixedLease ? 'loyers-bail' : 'loyers'} rows={rows} columns={columns} rowKey={(r) => r.key} initialSort={{ id: 'due', dir: 'desc' }}
-              onOpen={fixedLease ? undefined : (r) => navigate(`/baux/${r.lease_id}`)}
-              rowActions={rowActions}
-              bulkActions={(sel, clear) => {
-                const charges = sel.filter(isEch).map((r) => r.v);
-                const pays = [...new Map(sel.flatMap(rowPayments).map((p) => [p.id, p])).values()];
-                return <>
-                  {charges.length > 0 && <Button size="sm" variant="danger" onClick={async () => { if (await cancelDuplicates(charges)) clear(); }}>Annuler comme doublons ({charges.length})</Button>}
-                  {pays.length > 0 && <Button size="sm" variant="danger" onClick={() => payActions.removeMany(pays, clear)}>Supprimer les paiements ({pays.length})</Button>}
-                </>;
-              }}
-              toolbar={<>
-                <label className="inline-select">Afficher
-                  <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
-                    <option value="a_traiter">À traiter</option><option value="impayee">Impayées</option><option value="partielle">Partiellement payées</option>
-                    <option value="payee">Payées</option><option value="a_venir">À venir</option><option value="annulee">Annulées</option>
-                    <option value="avances">Avances non affectées</option>
-                    <option value="doublons">Doublons possibles ({allRows.filter(isDupRow).length})</option><option value="toutes">Toutes</option>
-                  </select></label>
-                <label className="inline-select">Mois
-                  <select value={month} onChange={(e) => setMonth(e.target.value)}>
-                    <option value="">Tous</option>{months.map((m) => <option key={m} value={m}>{monthLabel(`${m}-01`)}</option>)}
-                  </select></label>
-                <Button size="sm" onClick={() => setGrid('echeances')} disabled={!echRows.length}>Modifier les échéances en grille</Button>
-                <Button size="sm" onClick={() => setGrid('paiements')} disabled={!scopePayments.length}>Modifier les paiements en grille</Button>
-                {toolbarExtra}
-              </>}
-              empty={<EmptyState title={filter === 'a_traiter' ? 'Rien à traiter' : filter === 'doublons' ? 'Aucun doublon' : filter === 'avances' ? 'Aucune avance' : 'Aucune ligne'}>
-                {filter === 'a_traiter' ? 'Aucun impayé échu et aucune quittance en attente.' : filter === 'doublons' ? 'Aucune échéance ni aucun paiement ne fait doublon.' : filter === 'avances' ? 'Tous les paiements sont affectés à une échéance.' : 'Aucune échéance ne correspond.'}</EmptyState>} />
-          )}
-          <div className="export-row">
-            <span className="muted">Exporter :</span>
-            <Button size="sm" onClick={() => void exp('xlsx')}>Excel (.xlsx)</Button>
-            <Button size="sm" onClick={() => void exp('csv')}>CSV</Button>
-          </div>
-      <PaymentDialog open={!!pay} onClose={() => setPay(null)} leaseId={pay?.leaseId} chargeId={pay?.chargeId} mode={pay?.mode} />
+      {grid === 'lignes' ? (
+        <GridEditor rows={gridRows} columns={chargeGrid} rowKey={(v) => v.charge.id} rowLabel={(v) => monthLabel(v.charge.period_start)}
+          lock={(v) => { const q = allRows.find((r) => r.loyer?.id === v.charge.id)?.quittance; return q ? `Quittance ${q.number} : supprimez-la pour modifier` : null; }}
+          flag={(v) => (dupCharges.ids.has(v.charge.id) ? <DupPill title="Doublon possible" /> : null)}
+          note="Lignes affichées selon les filtres. Une ligne quittancée n’est pas modifiable ; le montant dû ne peut pas descendre sous ce qui est déjà réglé."
+          onSave={saveCharges} onClose={() => setGrid(null)} />
+      ) : grid === 'paiements' ? (
+        <PaymentsGrid payments={scopePayments} dupIds={dupPays.ids} onClose={() => setGrid(null)} />
+      ) : (
+        <DataTable id={fixedLease ? 'loyers-bail-v2' : 'loyers-v2'} rows={rows} columns={columns} rowKey={(r) => r.key} initialSort={{ id: 'period', dir: 'desc' }}
+          onOpen={fixedLease ? undefined : (r) => navigate(`/baux/${r.lease_id}`)}
+          rowActions={rowActions}
+          bulkActions={(sel, clear) => {
+            const pays = [...new Map(sel.flatMap((r) => r.payments).map((p) => [p.id, p])).values()];
+            const q = sel.filter(canQuittance);
+            const c = sel.filter((r) => r.toConfirm);
+            return <>
+              {q.length > 0 && <Button size="sm" variant="primary" onClick={async () => { if (await issueQuittances(q)) clear(); }}>Émettre les quittances ({q.length})</Button>}
+              {c.length > 0 && <Button size="sm" onClick={async () => { if (await confirmReceived(c)) clear(); }}>Marquer comme reçu ({c.length})</Button>}
+              {pays.length > 0 && <Button size="sm" variant="danger" onClick={() => payActions.removeMany(pays, clear)}>Supprimer les paiements ({pays.length})</Button>}
+            </>;
+          }}
+          toolbar={<>
+            <label className="inline-select">Afficher
+              <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
+                <option value="a_traiter">À traiter</option><option value="impayee">Impayés</option><option value="partielle">Partiels</option>
+                <option value="reportee">Partiels reportés</option><option value="reglee">Réglés</option><option value="a_venir">À venir</option>
+                <option value="ecarts">Écarts ({allRows.filter((r) => r.excessToQualify).length} à qualifier)</option>
+                <option value="annulee">Annulés</option><option value="hors_periode">Hors période</option>
+                <option value="doublons">Doublons possibles ({allRows.filter(isDupRow).length})</option><option value="toutes">Tous</option>
+              </select></label>
+            <label className="inline-select">Mois
+              <select value={month} onChange={(e) => setMonth(e.target.value)}>
+                <option value="">Tous</option>{months.map((m) => <option key={m} value={m}>{monthLabel(`${m}-01`)}</option>)}
+              </select></label>
+            <Button size="sm" onClick={() => setGrid('lignes')} disabled={!gridRows.length}>Modifier les lignes en grille</Button>
+            <Button size="sm" onClick={() => setGrid('paiements')} disabled={!scopePayments.length}>Modifier les paiements en grille</Button>
+            {toolbarExtra}
+          </>}
+          empty={<EmptyState title={filter === 'a_traiter' ? 'Rien à traiter' : filter === 'doublons' ? 'Aucun doublon' : 'Aucune ligne'}>
+            {filter === 'a_traiter' ? 'Aucun impayé échu, aucun écart à qualifier et aucune quittance en attente.' : filter === 'doublons' ? 'Aucune ligne ni aucun paiement ne fait doublon.' : 'Aucune ligne ne correspond.'}</EmptyState>} />
+      )}
+      <div className="export-row">
+        <span className="muted">Exporter :</span>
+        <Button size="sm" onClick={() => void exp('xlsx')}>Excel (.xlsx)</Button>
+        <Button size="sm" onClick={() => void exp('csv')}>CSV</Button>
+      </div>
+      <PaymentDialog open={!!pay} onClose={() => setPay(null)} leaseId={pay?.leaseId} month={pay?.month} mode={pay?.mode} />
       <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} onReplaced={setReceipt} />
     </>
   );
@@ -316,6 +352,7 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
 function paymentExport(labelOf: (leaseId: string) => string | null): ExportColumn<Payment>[] {
   return [
     { label: 'Date', value: (p) => p.paid_on, kind: 'date' },
+    { label: 'Mois concerné', value: (p) => monthLabel(p.period_month ?? p.paid_on) },
     { label: 'Bail', value: (p) => labelOf(p.lease_id) },
     { label: 'Montant', value: (p) => p.amount, kind: 'money' },
     { label: 'Moyen', value: (p) => PAYMENT_METHOD_LABELS[p.method] },
@@ -339,7 +376,6 @@ function receiptExport(labelOf: (leaseId: string) => string | null): ExportColum
 /** Modification en grille des paiements du périmètre affiché (bail, mois). */
 function PaymentsGrid({ payments, dupIds, onClose }: { payments: Payment[]; dupIds: Set<string>; onClose: () => void }) {
   const store = useStore();
-  const { data } = store;
   const { leaseById, leaseLabel, today } = useRental();
   const labelOf = (p: Payment) => { const l = leaseById.get(p.lease_id); return l ? leaseLabel(l) : '—'; };
   const gridCols: GridColumn<Payment>[] = [
@@ -355,8 +391,7 @@ function PaymentsGrid({ payments, dupIds, onClose }: { payments: Payment[]; dupI
     let n = 0;
     const msgs: string[] = [];
     for (const { row, values } of changes) {
-      // les modifications de montant refont la répartition : on repart des données à jour à chaque ligne
-      const snap = 'amount' in values ? await store.repo.loadAll().catch(() => null) : data;
+      const snap = await store.repo.loadAll().catch(() => null);
       if (!snap) { store.notify('Données indisponibles : réessayez.', 'error'); break; }
       const current = snap.payments.find((p) => p.id === row.id);
       if (!current) continue;
@@ -373,7 +408,7 @@ function PaymentsGrid({ payments, dupIds, onClose }: { payments: Payment[]; dupI
     <Section>
       <GridEditor rows={[...payments].sort((a, b) => b.paid_on.localeCompare(a.paid_on))} columns={gridCols} rowKey={(p) => p.id} rowLabel={(p) => `paiement du ${date(p.paid_on)}`}
         flag={(p) => (dupIds.has(p.id) ? <DupPill title="Doublon possible" /> : null)}
-        note="Paiements du bail et du mois sélectionnés. Un montant modifié refait la répartition sur les échéances ; les quittances concernées sont annulées puis rééditées si la période reste réglée."
+        note="Paiements du bail et du mois sélectionnés. Une date ou un montant modifié range de nouveau le paiement dans son mois ; les quittances concernées sont annulées puis réémises si le mois reste réglé."
         onSave={saveGrid} onClose={onClose} />
     </Section>
   );

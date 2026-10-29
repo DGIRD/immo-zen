@@ -110,7 +110,9 @@ export function yearAmounts(p: Property, year: number, d: FiscalData, inputs: Ta
     for (const a of allocs) {
       const c = charges.get(a.charge_id);
       const total = c ? c.rent_amount + c.charges_amount : 0;
-      const share = c && total > 0 ? c.rent_amount / total : 1;
+      // reste dû reporté d'un mois précédent : réparti comme le loyer et les charges du bail
+      const l = c?.kind === 'report' ? d.leases.find((x) => x.id === c.lease_id) : undefined;
+      const share = l && l.rent_hc + l.charges_amount > 0 ? l.rent_hc / (l.rent_hc + l.charges_amount) : c && total > 0 ? c.rent_amount / total : 1;
       rentsHC += a.amount * share;
       chargesCollected += a.amount * (1 - share);
     }

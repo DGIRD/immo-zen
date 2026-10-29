@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSuggestions } from '../src/domain/address.ts';
 import { parseDelimited } from '../src/domain/importing.ts';
-import { buildRentImportRows, matchMethod, planAllocations, rentRowStatus, toPayment } from '../src/domain/rentImport.ts';
+import { buildRentImportRows, importMonths, matchMethod, rentRowStatus, toPayment } from '../src/domain/rentImport.ts';
+import { ledgerRows, ledgerSettings } from '../src/domain/ledger.ts';
 import { receiptLines } from '../supabase/functions/_shared/receiptPdf.ts';
 
 const L = (id: string, property_id: string, start_date = '2025-01-01', end_date: string | null = null) => ({ id, property_id, start_date, end_date, label: null }) as never;
@@ -28,23 +29,17 @@ test('import de loyers : bail retrouvé par locataire ou par adresse, moyens de 
   assert.equal(matchMethod('CAF'), 'caf');
 });
 
-test('import de loyers : chaque paiement règle le mois de sa date, quittance proposée par mois', async () => {
-  const { chargeViews } = await import('../src/domain/rental.ts');
-  const { monthProposals } = await import('../src/domain/rentImport.ts');
+test('import de loyers : paiements additionnés par mois, mois déplacé, excédent et quittance proposés', () => {
   const c = (id: string, start: string, total: number) => ({ id, lease_id: 'l1', kind: 'loyer', period_start: start, period_end: start, due_date: start, rent_amount: total, charges_amount: 0, cancelled_at: null }) as never;
-  const cs = [c('c0', '1990-04-01', 900), c('c9', '2026-09-01', 900), c('c10', '2026-10-01', 900)];
-  const views = chargeViews(cs, [], '2026-10-27');
-  const plans = planAllocations([{ key: 'b', amount: 900, paid_on: '2026-10-06' }, { key: 'a', amount: 900, paid_on: '2026-09-04' }], views, '2024-09-01');
-  assert.deepEqual(plans.get('a'), [{ charge_id: 'c9', amount: 900 }]);
-  assert.deepEqual(plans.get('b'), [{ charge_id: 'c10', amount: 900 }], 'pas de répartition sur 1990');
-  const row = (ref: string, date: string, amount: number) => ({ line: 2, date, amount, rawTenant: null, rawProperty: null, leaseId: 'l1', method: 'virement', reference: null, comment: null, ref, errors: [] }) as never;
-  const props = monthProposals([row('1', '2026-09-04', 600), row('2', '2026-09-20', 300), row('3', '2026-10-06', 850)], views, [], [{ id: 'l1', start_date: '2024-09-01' }], '2026-10-27');
-  assert.deepEqual(props.map((m) => [m.month, m.received, m.paidAfter, m.action, m.past]), [['2026-09', 900, 900, 'quittance', true], ['2026-10', 850, 850, 'aligner', false]]);
-  // le paiement fait foi : un mois passé payé moins que l'échéance est proposé à l'alignement (quittance du payé)
-  const old = monthProposals([row('4', '2026-09-05', 800)], views, [], [{ id: 'l1', start_date: '2024-09-01' }], '2026-10-27');
-  assert.deepEqual([old[0]!.action, old[0]!.past, old[0]!.paidAfter], ['aligner', true, 800]);
-  const done = monthProposals([row('1', '2026-09-04', 900)], views, [{ charge_id: 'c9', kind: 'quittance', cancelled_at: null, extra_lines: [] }], [{ id: 'l1', start_date: '2024-09-01' }]);
-  assert.equal(done[0]!.action, 'deja');
+  const ledger = ledgerRows({ charges: [c('c9', '2026-09-01', 900), c('c10', '2026-10-01', 900)], payments: [], allocations: [], receipts: [], leases: [{ id: 'l1', start_date: '2026-09-01', end_date: null }] }, ledgerSettings({}), '2026-10-27');
+  const row = (ref: string, date: string, amount: number, month: string | null = null) => ({ line: 2, date, amount, rawTenant: null, rawProperty: null, leaseId: 'l1', method: 'virement', reference: null, comment: null, month, ref, errors: [] }) as never;
+  const ms = importMonths([row('1', '2026-09-04', 600), row('2', '2026-09-20', 300), row('3', '2026-10-06', 1000), row('4', '2026-11-02', 50, '2026-10')], ledger);
+  assert.deepEqual(ms.map((m) => [m.month, m.received, m.count, m.after, m.over, m.settles]), [['2026-09', 900, 2, 900, 0, true], ['2026-10', 1050, 2, 1050, 150, true]]);
+  // le paiement du 2 novembre, déplacé sur octobre, y est rattaché
+  assert.equal(toPayment(row('4', '2026-11-02', 50, '2026-10')).period_month, '2026-10-01');
+  assert.equal(toPayment(row('1', '2026-09-04', 600)).period_month, '2026-09-01');
+  const partial = importMonths([row('5', '2026-09-05', 800)], ledger);
+  assert.deepEqual([partial[0]!.after, partial[0]!.settles], [800, false]);
 });
 
 test('adresses : suggestions de la Base Adresse Nationale', () => {
