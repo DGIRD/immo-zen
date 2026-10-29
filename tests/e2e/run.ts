@@ -925,9 +925,24 @@ async function main() {
     await page.locator('dialog[open]').getByRole('button', { name: 'Fermer' }).click();
     // lignes en grille : une ligne quittancée est verrouillée
     await page.getByLabel('Afficher').selectOption('toutes');
-    await page.getByRole('button', { name: 'Modifier les lignes en grille' }).click();
+    await page.getByRole('button', { name: 'Modifier en grille' }).click();
     await page.locator('.grid-table').getByText(/^Quittance .* : supprimez-la pour modifier$/).first().waitFor();
-    await page.getByRole('button', { name: 'Fermer la grille' }).click();
+    const gridHeads = (await page.locator('.grid-table thead').innerText()).replace(/\s+/g, ' ');
+    for (const h of ['Période', 'Échéance', 'Loyer dû (HC)', 'Charges dues', 'Autre somme due', 'Total dû', 'Réglé', 'Date de règlement', 'Reçu', 'Écart', 'Statut', 'Quittance']) assert.ok(gridHeads.includes(h), `grille : colonne ${h}`);
+    // autre somme due saisie dans la grille, puis retirée (0)
+    for (const v of ['15', '0']) {
+      const cell = page.getByLabel(/^Autre somme due – /).first();
+      const rowName = ((await cell.getAttribute('aria-label')) ?? '').replace('Autre somme due – ', '');
+      await cell.fill(v);
+      await page.getByRole('button', { name: 'Enregistrer (1)' }).click();
+      await page.getByText('1 ligne modifiée.').first().waitFor();
+      if (v === '15') {
+        await page.getByRole('button', { name: 'Fermer la grille' }).click().catch(() => undefined);
+        assert.ok(await page.locator('table.dt-table tbody tr', { hasText: 'Autre somme due' }).count() >= 1, `somme ajoutée sur ${rowName}`);
+        await page.getByRole('button', { name: 'Modifier en grille' }).click();
+      }
+    }
+    await page.getByRole('button', { name: 'Fermer la grille' }).click({ timeout: 3000 }).catch(() => undefined);
     await page.screenshot({ path: join(out, '36-paiements-grille.png'), fullPage: true });
 
     // dépenses : doublon à l'ajout rapide, suppression des doublons, grille

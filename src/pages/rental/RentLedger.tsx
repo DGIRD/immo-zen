@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useStore } from '../../data/store.tsx';
-import type { Payment, Receipt } from '../../data/types.ts';
+import type { Payment, Receipt, RentCharge } from '../../data/types.ts';
 import { downloadBlob, stamp, toCsv, toXlsx, type ExportColumn } from '../../domain/exporting.ts';
 import { date, money2 } from '../../domain/format.ts';
 import { ledgerRows, ledgerSettings, mmYYYY, monthQuittance, ROW_STATUS_LABELS, type LedgerRow, type RowStatus } from '../../domain/ledger.ts';
@@ -12,7 +12,8 @@ import { GridEditor, type GridColumn } from '../../ui/GridEditor.tsx';
 import { Button, EmptyState, Section } from '../../ui/components.tsx';
 import { navigate } from '../../ui/router.ts';
 import { useChargeEditing } from './ChargeEdit.tsx';
-import { applyPaymentEdit, METHODS, PaymentDialog, ReceiptDialog, sendLabel, usePaymentActions, useReceiptActions, useRental } from './common.tsx';
+import { applyPaymentEdit, METHODS, PaymentDialog, ReceiptDialog, receiptsCovering, sendLabel, usePaymentActions, useReceiptActions, useRental } from './common.tsx';
+import { RepoError } from '../../data/repo.ts';
 import { syncLedgerWith } from './ledgerSync.ts';
 import { issueMonthDocs, useExcessDialog } from './monthActions.tsx';
 
@@ -211,28 +212,96 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
     return out;
   };
 
-  // grille : loyer et charges dus des lignes affichées
-  const gridRows = rows.map(loyerView).filter((v): v is ChargeView => !!v && !v.charge.cancelled_at);
-  const chargeGrid: GridColumn<ChargeView>[] = [
-    { id: 'lease', label: 'Bail', type: 'text', get: () => null, fixed: (v) => labelOfLease(v.charge.lease_id) },
-    { id: 'period', label: 'Période', type: 'text', get: () => null, fixed: (v) => monthLabel(v.charge.period_start) },
-    { id: 'due_date', label: 'Échéance', type: 'date', get: (v) => v.charge.due_date, validate: (x) => (x ? null : 'Date obligatoire') },
-    { id: 'rent_amount', label: 'Loyer dû (HC)', type: 'money', get: (v) => v.charge.rent_amount,
-      validate: (x, v, all) => (x === null || (x as number) < 0 ? 'Montant positif ou nul' : round2((x as number) + Number(all.charges_amount ?? 0)) < v.paid ? `Inférieur au déjà réglé (${money2(v.paid)})` : null) },
-    { id: 'charges_amount', label: 'Charges dues', type: 'money', get: (v) => v.charge.charges_amount,
-      validate: (x) => (x === null || (x as number) < 0 ? 'Montant positif ou nul' : null) },
+  // grille : toutes les colonnes du tableau ; sont modifiables l'échéance, le loyer, les charges, l'autre somme due
+  // (une seule par mois), le réglé et la date de règlement (un seul paiement dans le mois) et la réception confirmée
+  const gridRows = rows.filter((r) => r.loyer && !r.loyer.cancelled_at);
+  const allocOf = (id: string) => round2(data.allocations.filter((a) => a.charge_id === id).reduce((t, a) => t + a.amount, 0));
+  const oneOther = (r: LedgerRow) => (r.others.length === 1 ? r.others[0]! : null);
+  const muted = (t: ReactNode) => <span className="muted">{t}</span>;
+  const lineGrid: GridColumn<LedgerRow>[] = [
+    ...(fixedLease ? [] : [{ id: 'lease', label: 'Bail', type: 'text' as const, get: () => null, fixed: (r: LedgerRow) => labelOfLease(r.lease_id) }]),
+    { id: 'period', label: 'Période', type: 'text', get: () => null, fixed: (r) => monthLabel(`${r.month}-01`) },
+    { id: 'due_date', label: 'Échéance', type: 'date', get: (r) => r.loyer!.due_date, validate: (x) => (x ? null : 'Date obligatoire') },
+    { id: 'rent', label: 'Loyer dû (HC)', type: 'money', get: (r) => r.rent,
+      validate: (x, r, all) => (x === null || (x as number) < 0 ? 'Montant positif ou nul'
+        : round2((x as number) + Number(all.charges ?? r.charges)) < allocOf(r.loyer!.id) ? `Inférieur au déjà réglé (${money2(allocOf(r.loyer!.id))})` : null) },
+    { id: 'charges', label: 'Charges dues', type: 'money', get: (r) => r.charges, validate: (x) => (x === null || (x as number) < 0 ? 'Montant positif ou nul' : null) },
+    { id: 'other', label: 'Autre somme due', type: 'money', get: (r) => oneOther(r) ? round2(oneOther(r)!.rent_amount + oneOther(r)!.charges_amount) : r.others.length ? null : 0,
+      fixed: (r) => (r.others.length > 1 ? <span title={otherLabels(r).join('\n')}>{money2(r.other)} <small className="muted">({r.others.length} sommes)</small></span> : false),
+      validate: (x, r) => { const o = oneOther(r); return x !== null && (x as number) < 0 ? 'Montant positif ou nul' : o && Number(x ?? 0) < allocOf(o.id) ? `Inférieur au déjà réglé (${money2(allocOf(o.id))})` : null; } },
+    { id: 'other_label', label: 'Libellé autre somme', type: 'text', width: '11rem', get: (r) => oneOther(r)?.label ?? null,
+      fixed: (r) => (r.others.length > 1 ? muted('plusieurs') : false), validate: (x) => (String(x ?? '').length > 200 ? '200 caractères au plus' : null) },
+    { id: 'carry', label: 'Reste dû reporté', type: 'text', get: () => null, fixed: (r) => (r.carryIn ? <span title={r.report?.label ?? ''}>{money2(r.carryIn)}</span> : muted('—')) },
+    { id: 'due', label: 'Total dû', type: 'text', get: () => null, fixed: (r) => <strong>{money2(r.due)}</strong> },
+    { id: 'paid', label: 'Réglé', type: 'money', get: (r) => (r.payments.length <= 1 ? r.paid : null),
+      fixed: (r) => (r.payments.length > 1 ? <span title={r.payments.map(payText).join('\n')}>{money2(r.paid)} <small className="muted">({r.payments.length} paiements)</small></span> : false),
+      validate: (x) => (x !== null && (x as number) < 0 ? 'Montant positif ou nul' : null) },
+    { id: 'paid_on', label: 'Date de règlement', type: 'date', get: (r) => (r.payments.length === 1 ? r.payments[0]!.paid_on : null),
+      fixed: (r) => (r.payments.length > 1 ? (r.lastPaidOn ? date(r.lastPaidOn) : '—') : false),
+      validate: (x) => (x && String(x) > today ? 'Date future' : null) },
+    { id: 'received', label: 'Reçu', type: 'select', options: [['oui', 'Oui'], ['non', 'Non']] as const, get: (r) => (r.loyer!.received_at ? 'oui' : 'non'),
+      fixed: (r) => (settings.receivedMode === 'confirmation' ? false : RECEIVED_LABELS[r.received]) },
+    { id: 'gap', label: 'Écart', type: 'text', get: () => null, fixed: (r) => <span className={r.gap < 0 && r.status !== 'reportee' ? 'neg' : r.gap > 0 ? 'pos' : ''}>{r.gap > 0 ? '+' : ''}{money2(r.gap)}</span> },
+    { id: 'status', label: 'Statut', type: 'text', get: () => null, fixed: (r) => <RowBadge r={r} /> },
+    { id: 'doc', label: 'Quittance', type: 'text', get: () => null, fixed: (r) => [r.quittance, ...r.recus].filter(Boolean).map((d) => docLabel(d!)).join(' ; ') || muted('—') },
   ];
-  async function saveCharges(changes: { row: ChargeView; values: Record<string, string | number | null> }[]) {
+  async function saveLines(changes: { row: LedgerRow; values: Record<string, string | number | null> }[]) {
     let n = 0;
-    for (const { row, values } of changes) {
-      const patch: Record<string, unknown> = {};
-      if ('due_date' in values) patch.due_date = values.due_date;
-      if ('rent_amount' in values) patch.rent_amount = round2(Number(values.rent_amount));
-      if ('charges_amount' in values) patch.charges_amount = round2(Number(values.charges_amount));
-      if (await store.update('rent_charges', row.charge, patch, `La ligne de ${monthLabel(row.charge.period_start)}`)) n++;
-    }
-    if (n) { await store.call((r) => syncLedgerWith(r, { leaseIds: [...new Set(changes.map((c) => c.row.charge.lease_id))] })); store.notify(`${n} ligne${n > 1 ? 's' : ''} modifiée${n > 1 ? 's' : ''}.`); }
-    return n;
+    const ok = await store.call(async (repo) => {
+      for (const { row, values } of changes) {
+        const snap = await repo.loadAll();
+        const loyer = snap.charges.find((c) => c.id === row.loyer!.id);
+        if (!loyer) continue;
+        const label = `la ligne de ${monthLabel(`${row.month}-01`)}`;
+        const upd = async (c: RentCharge, patch: Partial<RentCharge>) => {
+          const res = await repo.update('rent_charges', c.id, c.version, patch);
+          if (res.status !== 'ok') throw new RepoError(`${label[0]!.toUpperCase()}${label.slice(1)} a été modifiée entre-temps : rechargez la page.`);
+        };
+        // loyer, charges, échéance, réception
+        const lp: Partial<RentCharge> = {};
+        if ('due_date' in values) lp.due_date = String(values.due_date);
+        if ('rent' in values) lp.rent_amount = round2(Number(values.rent ?? 0));
+        if ('charges' in values) lp.charges_amount = round2(Number(values.charges ?? 0));
+        if ('received' in values) lp.received_at = values.received === 'oui' ? new Date().toISOString() : null;
+        if (Object.keys(lp).length) await upd(loyer, lp);
+        // autre somme due (une seule par mois) : modifiée, créée ou retirée
+        if ('other' in values || 'other_label' in values) {
+          const o = row.others.length === 1 ? snap.charges.find((c) => c.id === row.others[0]!.id) : undefined;
+          const amount = round2(Number(values.other ?? (o ? o.rent_amount + o.charges_amount : 0)));
+          const text = 'other_label' in values ? (String(values.other_label ?? '').trim() || null) : o?.label ?? null;
+          if (o) {
+            if (amount === 0 && !snap.allocations.some((a) => a.charge_id === o.id)) await repo.remove('rent_charges', o.id);
+            else await upd(o, o.kind === 'regularisation' ? { rent_amount: 0, charges_amount: amount, label: text } : { rent_amount: amount, charges_amount: 0, label: text });
+          } else if (amount > 0) {
+            await repo.insert('rent_charges', { lease_id: loyer.lease_id, kind: 'autre', period_start: loyer.period_start, period_end: loyer.period_end, due_date: loyer.due_date,
+              rent_amount: amount, charges_amount: 0, label: text ?? `Autre somme due ${mmYYYY(row.month)}` });
+          }
+        }
+        // réglé et date de règlement (un seul paiement dans le mois) : paiement modifié, créé ou supprimé
+        if (('paid' in values || 'paid_on' in values) && row.payments.length <= 1) {
+          const p = row.payments[0] ? snap.payments.find((x) => x.id === row.payments[0]!.id) : undefined;
+          const amount = round2(Number(values.paid ?? (p?.amount ?? 0)));
+          const when = String(values.paid_on ?? p?.paid_on ?? (loyer.due_date <= today ? loyer.due_date : today));
+          if (p) {
+            for (const r of receiptsCovering(p, snap)) await repo.cancelReceipt(r.id, 'Paiement modifié');
+            await repo.removeWhere('payment_allocations', { payment_id: p.id });
+            if (amount <= 0) await repo.remove('payments', p.id);
+            else {
+              const cur = (await repo.loadAll()).payments.find((x) => x.id === p.id)!;
+              const res = await repo.update('payments', p.id, cur.version, { amount, paid_on: when, period_month: `${row.month}-01`, date_defaulted: false });
+              if (res.status !== 'ok') throw new RepoError('Le paiement a été modifié entre-temps : rechargez la page.');
+            }
+          } else if (amount > 0) {
+            await repo.insert('payments', { lease_id: loyer.lease_id, amount, paid_on: when, period_month: `${row.month}-01`, method: 'virement', source: 'saisie', date_defaulted: false });
+          }
+        }
+        n++;
+      }
+      await syncLedgerWith(repo, { leaseIds: [...new Set(changes.map((c) => c.row.lease_id))] });
+      return n;
+    });
+    if (ok) store.notify(`${ok} ligne${ok > 1 ? 's' : ''} modifiée${ok > 1 ? 's' : ''}.`);
+    return ok ?? 0;
   }
 
   const exportCols: ExportColumn<LedgerRow>[] = [
@@ -297,11 +366,11 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
         </div>
       )}
       {grid === 'lignes' ? (
-        <GridEditor rows={gridRows} columns={chargeGrid} rowKey={(v) => v.charge.id} rowLabel={(v) => monthLabel(v.charge.period_start)}
-          lock={(v) => { const q = allRows.find((r) => r.loyer?.id === v.charge.id)?.quittance; return q ? `Quittance ${q.number} : supprimez-la pour modifier` : null; }}
-          flag={(v) => (dupCharges.ids.has(v.charge.id) ? <DupPill title="Doublon possible" /> : null)}
-          note="Lignes affichées selon les filtres. Une ligne quittancée n’est pas modifiable ; le montant dû ne peut pas descendre sous ce qui est déjà réglé."
-          onSave={saveCharges} onClose={() => setGrid(null)} />
+        <GridEditor rows={gridRows} columns={lineGrid} rowKey={(r) => r.key} rowLabel={(r) => `${monthLabel(`${r.month}-01`)}${fixedLease ? '' : ` – ${labelOfLease(r.lease_id)}`}`}
+          lock={(r) => (r.quittance ? `Quittance ${r.quittance.number} : supprimez-la pour modifier` : null)}
+          flag={(r) => (isDupRow(r) ? <DupPill title="Doublon possible" /> : null)}
+          note={<>Toutes les colonnes du tableau, selon les filtres. Modifiables : échéance, loyer, charges, autre somme due (une par mois ; 0 la retire), réglé et date de règlement (un seul paiement dans le mois ; un montant saisi sur un mois sans paiement crée le paiement, 0 le supprime){settings.receivedMode === 'confirmation' ? ', reçu' : ''}. Le total, l’écart, le statut et les reports se recalculent à l’enregistrement. Une ligne quittancée n’est pas modifiable.</>}
+          onSave={saveLines} onClose={() => setGrid(null)} />
       ) : grid === 'paiements' ? (
         <PaymentsGrid payments={scopePayments} dupIds={dupPays.ids} onClose={() => setGrid(null)} />
       ) : (
@@ -331,7 +400,7 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
               <select value={month} onChange={(e) => setMonth(e.target.value)}>
                 <option value="">Tous</option>{months.map((m) => <option key={m} value={m}>{monthLabel(`${m}-01`)}</option>)}
               </select></label>
-            <Button size="sm" onClick={() => setGrid('lignes')} disabled={!gridRows.length}>Modifier les lignes en grille</Button>
+            <Button size="sm" onClick={() => setGrid('lignes')} disabled={!gridRows.length}>Modifier en grille</Button>
             <Button size="sm" onClick={() => setGrid('paiements')} disabled={!scopePayments.length}>Modifier les paiements en grille</Button>
             {toolbarExtra}
           </>}
