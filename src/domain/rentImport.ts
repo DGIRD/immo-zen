@@ -1,12 +1,14 @@
 /**
- * Import en masse de loyers encaissés (Excel .xlsx, CSV ou copier-coller).
+ * Import en masse de loyers encaissés : relevé bancaire Excel (.xlsx), CSV ou copier-coller.
  * Colonnes reconnues (ordre libre) : Date · Montant · Locataire · Appartement (ou Bien, Adresse) · Moyen · Référence (ou Libellé) · Commentaire.
- * Chaque ligne devient un paiement du bail retrouvé, affecté à l'échéance du mois de sa date ; les paiements
- * d'un même mois sont additionnés et la quittance de ce mois est proposée.
+ * Chaque ligne devient un paiement du bail retrouvé, rattaché au mois de sa date (ou au mois choisi dans l'aperçu) :
+ * l'import remplit la colonne « Réglé » de la ligne de ce mois. Les paiements d'un même mois sont additionnés ;
+ * un excédent est qualifié par l'utilisateur (autre somme due, loyer supérieur ou trop-perçu).
  */
-import type { Insert, Lease, LeaseTenant, Payment, PaymentMethod, Property, Receipt, Tenant } from '../data/types.ts';
+import type { Insert, Lease, LeaseTenant, Payment, PaymentMethod, Property, Tenant } from '../data/types.ts';
 import { lineHash, matchProperty, norm, parseAmount, parseDate, type Cell } from './importing.ts';
-import { allocateByMonth, applyPlan, eur, leaseTenants, monthlyTotals, tenantName, type ChargeView, type MonthSummary } from './rental.ts';
+import type { LedgerRow } from './ledger.ts';
+import { leaseTenants, tenantName } from './rental.ts';
 import { round2 } from './simulator.ts';
 
 export const RENT_IMPORT_COLUMNS = ['Date', 'Montant', 'Locataire', 'Appartement', 'Moyen', 'Référence', 'Commentaire'] as const;
@@ -54,9 +56,14 @@ export interface RentImportRow {
   method: PaymentMethod;
   reference: string | null;
   comment: string | null;
+  /** Mois choisi dans l'aperçu (AAAA-MM) ; à défaut, le mois de la date. */
+  month?: string | null;
   ref: string;
   errors: string[];
 }
+
+/** Mois de rattachement d'une ligne importée. */
+export const importMonth = (r: Pick<RentImportRow, 'date' | 'month'>) => r.month ?? r.date?.slice(0, 7) ?? null;
 
 interface Ctx { leases: Lease[]; properties: Property[]; links: LeaseTenant[]; tenants: Tenant[] }
 
@@ -122,65 +129,49 @@ export function rentRowStatus(r: RentImportRow, existing: Set<string>): { status
 
 export function toPayment(r: RentImportRow): Insert<Payment> & { import_ref: string } {
   return {
-    lease_id: r.leaseId!, amount: round2(r.amount!), paid_on: r.date!, method: r.method, reference: r.reference,
+    lease_id: r.leaseId!, amount: round2(r.amount!), paid_on: r.date!, period_month: `${importMonth(r)}-01`, method: r.method, reference: r.reference,
     comment: r.comment, source: 'import', date_defaulted: false, import_ref: r.ref,
   };
 }
 
-/**
- * Répartition de plusieurs paiements d'un même bail, du plus ancien au plus récent :
- * chacun règle d'abord l'échéance du mois de sa date, puis les arriérés ; l'excédent reste en avance.
- */
-export function planAllocations(payments: { key: string; amount: number; paid_on: string }[], open: ChargeView[], from?: string): Map<string, { charge_id: string; amount: number }[]> {
-  let views = open;
-  const out = new Map<string, { charge_id: string; amount: number }[]>();
-  for (const p of [...payments].sort((a, b) => a.paid_on.localeCompare(b.paid_on))) {
-    const plan = allocateByMonth(p.amount, p.paid_on, views, from);
-    views = applyPlan(views, plan.allocations);
-    out.set(p.key, plan.allocations);
-  }
-  return out;
+/** Récapitulatif d'un mois après import : la colonne « Réglé » avant et après, l'écart. */
+export interface ImportMonth {
+  lease_id: string;
+  /** AAAA-MM */
+  month: string;
+  /** Somme des lignes importées pour ce mois. */
+  received: number;
+  count: number;
+  row: LedgerRow | null;
+  due: number;
+  /** Réglé avant l'import (avance comprise). */
+  before: number;
+  after: number;
+  /** Excédent après import (réglé − dû), à qualifier. */
+  over: number;
+  /** Mois intégralement réglé après import : quittance proposée. */
+  settles: boolean;
 }
 
-/**
- * quittance : mois intégralement réglé ;
- * aligner : mois réglé pour moins que l'échéance — le paiement fait foi, l'échéance est ramenée
- * au montant payé puis quittancée (ou, au choix, reçu partiel) ;
- * deja : quittance déjà émise ; aucune : rien à émettre.
- */
-export type MonthReceiptAction = 'quittance' | 'aligner' | 'deja' | 'aucune';
-export interface MonthProposal extends MonthSummary {
-  /** Total réglé sur l'échéance du mois après l'import. */
-  paidAfter: number;
-  /** Document proposé pour le mois. */
-  action: MonthReceiptAction;
-  /** Pour « aligner » : mois échu (quittance au montant payé proposée par défaut) ; sinon reçu partiel. */
-  past: boolean;
-  message: string;
-}
-
-/**
- * Après import : paiements additionnés par bail et par mois de paiement, avec la quittance
- * (période intégralement réglée) ou le reçu partiel proposé pour ce mois.
- */
-export function monthProposals(rows: RentImportRow[], views: ChargeView[], receipts: Pick<Receipt, 'charge_id' | 'kind' | 'cancelled_at' | 'extra_lines'>[], leases: Pick<Lease, 'id' | 'start_date'>[], today = new Date().toISOString().slice(0, 10)): MonthProposal[] {
-  const ok = rows.filter((r) => r.leaseId && r.date && r.amount !== null && r.amount > 0);
-  const after = new Map<string, ChargeView[]>();
-  for (const l of leases) {
-    const list = ok.filter((r) => r.leaseId === l.id);
-    if (!list.length) continue;
-    const own = views.filter((v) => v.charge.lease_id === l.id && !v.charge.cancelled_at);
-    const plans = planAllocations(list.map((r) => ({ key: r.ref, amount: r.amount!, paid_on: r.date! })), own.filter((v) => v.remaining > 0), l.start_date);
-    after.set(l.id, applyPlan(own, [...plans.values()].flat()));
+/** Lignes prêtes additionnées par bail et par mois, rapprochées des lignes mensuelles existantes. */
+export function importMonths(rows: RentImportRow[], ledger: LedgerRow[]): ImportMonth[] {
+  const by = new Map<string, ImportMonth>();
+  for (const r of rows) {
+    const month = importMonth(r);
+    if (!r.leaseId || !month || r.amount === null || !(r.amount > 0)) continue;
+    const k = `${r.leaseId}|${month}`;
+    let m = by.get(k);
+    if (!m) {
+      const row = ledger.find((x) => x.lease_id === r.leaseId && x.month === month) ?? null;
+      const before = row ? round2(row.paid + row.advanceIn - row.advanceOut) : 0;
+      m = { lease_id: r.leaseId, month, received: 0, count: 0, row, due: row?.due ?? 0, before, after: before, over: 0, settles: false };
+      by.set(k, m);
+    }
+    m.received = round2(m.received + r.amount);
+    m.count++;
+    m.after = round2(m.before + m.received);
+    m.over = m.row?.loyer ? Math.max(0, round2(m.after - m.due)) : 0;
+    m.settles = !!m.row?.loyer && !m.row.quittance && m.due > 0 && m.after >= m.due;
   }
-  const quittanced = (id: string) => receipts.some((r) => r.kind === 'quittance' && !r.cancelled_at && (r.charge_id === id || (r.extra_lines ?? []).some((x) => x.charge_id === id)));
-  return monthlyTotals(ok.map((r) => ({ lease_id: r.leaseId!, paid_on: r.date!, amount: r.amount! })), views).map((m) => {
-    const v = m.charge ? (after.get(m.lease_id) ?? []).find((x) => x.charge.id === m.charge!.charge.id) ?? m.charge : null;
-    const past = m.month < today.slice(0, 7);
-    if (!v) return { ...m, past, paidAfter: 0, action: 'aucune' as const, message: 'Aucune échéance ce mois-là : montant gardé en avance ou affecté aux arriérés' };
-    if (quittanced(v.charge.id)) return { ...m, past, paidAfter: v.paid, action: 'deja' as const, message: 'Quittance déjà émise' };
-    if (v.remaining <= 0) return { ...m, past, paidAfter: v.paid, action: 'quittance' as const, message: 'Mois intégralement réglé' };
-    if (v.paid > 0) return { ...m, past, paidAfter: v.paid, action: 'aligner' as const, message: `Payé ${eur(v.paid)} € pour ${eur(v.total)} € dus` };
-    return { ...m, past, paidAfter: 0, action: 'aucune' as const, message: 'Échéance du mois non réglée' };
-  });
+  return [...by.values()].sort((a, b) => a.month.localeCompare(b.month) || a.lease_id.localeCompare(b.lease_id));
 }

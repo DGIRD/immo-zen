@@ -2,8 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Expense, Payment, Receipt, RentCharge } from '../src/data/types.ts';
 import { chargeDuplicates, expenseDuplicates, findDuplicates, paymentDuplicates, sameExpense, samePayment } from '../src/domain/duplicates.ts';
-import { receiptBacklog } from '../src/domain/receiptBacklog.ts';
-import { chargeViews } from '../src/domain/rental.ts';
+import { ledgerRows, ledgerSettings, monthQuittance } from '../src/domain/ledger.ts';
 
 const base = { user_id: 'u1', version: 1, updated_at: '2026-10-01T00:00:00Z' };
 const pay = (id: string, o: Partial<Payment>): Payment => ({ ...base, id, created_at: `2026-10-01T00:00:0${id.length}Z`, lease_id: 'l1', amount: 750, paid_on: '2026-10-05',
@@ -40,17 +39,16 @@ test('échéances : deux loyers sur des périodes qui se chevauchent ; échéanc
   assert.deepEqual([...d.ids].sort(), ['a', 'b', 'e', 'f']);
 });
 
-test('mise en cohérence : loyers réglés sans quittance, rappel repris sur la quittance du mois', () => {
+test('quittances à émettre : mois réglés sans quittance, rappel repris sur la ligne du mois où il est exigé', () => {
   const charges = [charge('m8', { period_start: '2026-08-01', period_end: '2026-08-31', due_date: '2026-08-05' }), charge('m9', {}),
     charge('m10', { period_start: '2026-10-01', period_end: '2026-10-31', due_date: '2026-10-05' }),
-    charge('r', { kind: 'regularisation', label: 'Rappel 2025', period_start: '2025-01-01', period_end: '2025-12-31', due_date: '2026-09-10', rent_amount: 0, charges_amount: 60 }),
-    charge('o', { lease_id: 'l2', kind: 'regularisation', period_start: '2025-01-01', period_end: '2025-12-31', rent_amount: 0, charges_amount: 30 })];
-  const allocations = ['m8', 'm9', 'r', 'o'].map((id, i) => ({ id: `a${i}`, user_id: 'u1', payment_id: 'p', charge_id: id, amount: charges.find((c) => c.id === id)!.rent_amount + charges.find((c) => c.id === id)!.charges_amount, created_at: '' }));
+    charge('r', { kind: 'regularisation', label: 'Rappel 2025', period_start: '2025-01-01', period_end: '2025-12-31', due_date: '2026-09-10', rent_amount: 0, charges_amount: 60 })];
+  const allocations = ['m8', 'm9', 'r'].map((id, i) => ({ id: `a${i}`, user_id: 'u1', payment_id: 'p', charge_id: id, amount: charges.find((c) => c.id === id)!.rent_amount + charges.find((c) => c.id === id)!.charges_amount, created_at: '' }));
   const receipts = [{ id: 'q', kind: 'quittance', charge_id: 'm8', cancelled_at: null, extra_lines: [] } as unknown as Receipt];
-  const b = receiptBacklog(chargeViews(charges, allocations, '2026-10-20'), receipts);
-  assert.deepEqual(b.items.map((i) => i.view.charge.id), ['m9'], 'août déjà quittancé, octobre non réglé');
-  assert.deepEqual(b.items[0]!.extras.map((x) => x.charge.id), ['r']);
-  assert.deepEqual(b.orphans.map((x) => x.charge.id), ['o'], 'rappel sans loyer à quittancer sur son bail');
-  assert.equal(b.total, 810);
-  assert.equal(receiptBacklog(chargeViews(charges, allocations, '2026-10-20'), receipts, 'l2').items.length, 0);
+  const rows = ledgerRows({ charges, payments: [], allocations, receipts, leases: [{ id: 'l1', start_date: '2026-08-01', end_date: null }] }, ledgerSettings({}), '2026-10-20');
+  const todo = rows.filter((r) => monthQuittance(r, allocations, receipts));
+  assert.deepEqual(todo.map((r) => r.month), ['2026-09'], 'août déjà quittancé, octobre non réglé');
+  const sep = rows.find((r) => r.month === '2026-09')!;
+  assert.equal(sep.other, 60, 'le rappel figure dans « Autre somme due » de septembre');
+  assert.deepEqual(monthQuittance(sep, allocations, receipts)!.extras, ['r']);
 });

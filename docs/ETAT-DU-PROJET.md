@@ -156,6 +156,26 @@ Cahier de test de 166 cas exécuté (voir le document de recette du projet). Cor
 
 Migration à exécuter sur un autre projet : `20261020000300_corrections_recette.sql` (déjà appliquée sur le projet en ligne). Réglage manuel restant : Authentication → Password security → protection contre les mots de passe compromis.
 
+## Loyers et paiements : un seul tableau (29 octobre 2026)
+
+Expression de besoin du 29/10/2026. Migration à exécuter : `20261029000100_loyers_tableau_unique.sql` (sans elle, un paiement ne peut pas être enregistré).
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Une ligne par bail et par mois : loyer dû (HC), charges dues, autre somme due (avec libellés), total dû, réglé (détail des paiements), date de règlement, reçu, écart, statut, quittance | Implémenté et testé | unitaires + e2e |
+| Lignes de tous les mois passés à la saisie des dates du bail, puis le 1er de chaque mois (serveur, et à l'ouverture de l'écran) ; point de départ au choix (début du bail ou date choisie, réglage général) | Implémenté et testé | SQL + unitaires + e2e |
+| Paiement rattaché au mois de sa date, déplaçable dans l'aperçu ou à la saisie ; paiements d'un même mois additionnés | Implémenté et testé | unitaires + e2e |
+| Reste dû d'un mois échu reporté dans « Autre somme due » du mois suivant (« Reste dû MM/AAAA »), compté une seule fois ; cascade ; dernier mois du bail sans report (solde de sortie avec le dépôt) | Implémenté et testé | unitaires + SQL + e2e |
+| Excédent qualifié : autre somme due, loyer supérieur (option : appliqué au bail), trop-perçu (option : reporté en avance) ; « Qualifier l'écart » a posteriori | Implémenté et testé | unitaires + e2e |
+| Colonne « Reçu » : automatique ou après confirmation (réglage général), confirmation par ligne ou groupée | Implémenté et testé | unitaires + SQL |
+| Quittance du mois avec les autres sommes sur des lignes distinctes, dont « Reste dû MM/AAAA réglé » ; pas de réémission pour le mois d'origine | Implémenté et testé | SQL + e2e |
+| Import d'un relevé : mois par ligne, aperçu par mois (dû, réglé avant/après, écart, excédent, quittance ou reçu partiel) | Implémenté et testé | unitaires + e2e |
+| Colocation : bail solidaire (une ligne) ou baux distincts (une ligne par bail), plusieurs baux par logement | Implémenté (existant) | e2e |
+| Reprise des échéances et paiements existants : validée par l'utilisateur, sauvegarde JSON téléchargée avant | Implémenté et testé (logique) / **non exécuté** sur les données en ligne | unitaires |
+| Commandes « Mettre en cohérence paiements et quittances » et « Répartir les paiements par mois » supprimées (écran et code) | Implémenté et testé | e2e |
+
+Limites : les reports et la répartition sont calculés par l'application (à l'ouverture de Loyers et paiements et après chaque écriture), pas par la tâche serveur du 1er du mois ; en attendant, la dette d'un mois non encore reporté reste comptée sur sa ligne d'origine (jamais deux fois). Une somme déjà quittancée n'est jamais modifiée par la reprise.
+
 ## Restant
 
 Tout le périmètre du cahier des charges est livré. Reste **à configurer** : compte Stripe et fonctions `platform` / `stripe-webhook` ([ABONNEMENTS](ABONNEMENTS.md)), premier administrateur, envoi réel des e-mails (Resend). Pistes ultérieures : vérification de l'abonnement dans les fonctions serveur (quittances, relances), réimport de la gestion locative depuis une sauvegarde, liasse 2031/2033 complète, travaux de rénovation énergétique et déficits antérieurs dans la déclaration.

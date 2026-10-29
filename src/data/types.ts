@@ -181,6 +181,14 @@ export interface RentalSettings {
   landlord_address?: string;
   /** Modèles de relance, niveaux 1 à 3. */
   reminder_templates?: ReminderTemplate[];
+  /** Colonne « Reçu » de Loyers et paiements : cochée automatiquement, ou après confirmation de l'utilisateur. */
+  received_mode?: 'auto' | 'confirmation';
+  /** Point de départ des lignes mensuelles : début de chaque bail, ou une date choisie. */
+  ledger_start_mode?: 'bail' | 'date';
+  /** Date choisie (AAAA-MM-JJ) quand ledger_start_mode = 'date'. */
+  ledger_start_date?: string | null;
+  /** Date de passage au tableau unique (reprise des échéances et paiements existants). */
+  ledger_unified_at?: string | null;
 }
 
 // ---------------------------------------------------------------------
@@ -341,7 +349,8 @@ export interface LeaseTenant {
   created_at: string;
 }
 
-export type ChargeKind = 'loyer' | 'regularisation' | 'autre';
+/** report : reste dû du mois précédent, reporté automatiquement dans « Autre somme due ». */
+export type ChargeKind = 'loyer' | 'regularisation' | 'autre' | 'report';
 export interface RentCharge extends Versioned {
   lease_id: string;
   kind: ChargeKind;
@@ -354,6 +363,14 @@ export interface RentCharge extends Versioned {
   cancelled_at: string | null;
   /** Motif saisi à l'annulation (migration 20261020000300). */
   cancel_reason?: string | null;
+  /** Report : premier mois (AAAA-MM-01) dont le reste dû est repris. */
+  carry_from?: string | null;
+  /** Somme dont le reste dû a été reporté sur le mois suivant (ligne de report). */
+  carried_to?: string | null;
+  /** Loyer : excédent reçu laissé en trop-perçu, ou reporté en avance sur le mois suivant. */
+  excess_mode?: 'trop_percu' | 'avance' | null;
+  /** Loyer : réception confirmée par l'utilisateur (colonne « Reçu » en mode confirmation). */
+  received_at?: string | null;
 }
 
 export type PaymentMethod = 'virement' | 'prelevement' | 'cheque' | 'especes' | 'caf' | 'autre';
@@ -368,6 +385,8 @@ export interface Payment extends Versioned {
   source: 'saisie' | 'confirmation' | 'import';
   /** Empreinte de la ligne importée (anti-doublon). */
   import_ref?: string | null;
+  /** Mois de rattachement (AAAA-MM-01) ; à défaut, le mois de la date du paiement. */
+  period_month?: string | null;
 }
 
 export interface Allocation {

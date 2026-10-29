@@ -7,7 +7,7 @@ import { downloadBlob, stamp } from '../domain/exporting.ts';
 import { dateTime } from '../domain/format.ts';
 import { legacyContacts, legacyInputs, legacyProperty, readLegacyLocal, type LegacySimulation } from '../domain/legacy.ts';
 import { DEFAULT_INPUTS, DEFAULT_SETTING_FIELDS, ENGINE_VERSION, type SimulationInputs } from '../domain/simulator.ts';
-import { Button, Modal, NumberInput, PageHeader, Section, TextArea, TextInput, useConfirm } from '../ui/components.tsx';
+import { Button, Modal, NumberInput, PageHeader, Section, Select, TextArea, TextInput, useConfirm } from '../ui/components.tsx';
 import type { ReminderTemplate } from '../data/types.ts';
 import { DEFAULT_REMINDER_TEMPLATES, TEMPLATE_VARIABLES } from '../domain/rental.ts';
 import { loadSampleData } from './sample.ts';
@@ -215,6 +215,9 @@ function RentalSettingsSection() {
   const [name, setName] = useState(rs.landlord_name ?? '');
   const [address, setAddress] = useState(rs.landlord_address ?? '');
   const [tpls, setTpls] = useState<ReminderTemplate[]>(() => (rs.reminder_templates?.length === 3 ? rs.reminder_templates : DEFAULT_REMINDER_TEMPLATES.map((t) => ({ ...t }))));
+  const [receivedMode, setReceivedMode] = useState<'auto' | 'confirmation'>(rs.received_mode === 'confirmation' ? 'confirmation' : 'auto');
+  const [startMode, setStartMode] = useState<'bail' | 'date'>(rs.ledger_start_mode === 'date' ? 'date' : 'bail');
+  const [startDate, setStartDate] = useState(rs.ledger_start_date ?? '');
   const setTpl = (i: number, k: keyof ReminderTemplate, v: string) => setTpls((x) => x.map((t, j) => (j === i ? { ...t, [k]: v } : t)));
   const LEVELS = ['Niveau 1 – rappel', 'Niveau 2 – second rappel', 'Niveau 3 – dernier rappel amiable'];
   return (
@@ -222,13 +225,26 @@ function RentalSettingsSection() {
       <Button size="sm" onClick={() => setTpls(DEFAULT_REMINDER_TEMPLATES.map((t) => ({ ...t })))}>Modèles d’origine</Button>
       <Button size="sm" variant="primary" onClick={async () => {
         if (tpls.some((t) => !t.subject.trim() || !t.body.trim())) { notify('Chaque modèle doit avoir un objet et un message.', 'error'); return; }
-        if (await saveSettings({ rental_settings: { ...rs, landlord_name: name.trim(), landlord_address: address.trim(), reminder_templates: tpls } })) notify('Paramètres de gestion locative enregistrés.');
+        if (startMode === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) { notify('Indiquez la date à partir de laquelle les lignes mensuelles sont créées.', 'error'); return; }
+        if (await saveSettings({ rental_settings: { ...rs, landlord_name: name.trim(), landlord_address: address.trim(), reminder_templates: tpls,
+          received_mode: receivedMode, ledger_start_mode: startMode, ledger_start_date: startMode === 'date' ? startDate : null } })) notify('Paramètres de gestion locative enregistrés.');
       }}>Enregistrer</Button>
     </>}>
       <p className="muted small">Identité du bailleur proposée pour chaque nouveau bail (elle figure sur les quittances).</p>
       <div className="grid">
         <TextInput label="Nom du bailleur" value={name} onChange={setName} maxLength={200} />
         <TextInput label="Adresse du bailleur" wide value={address} onChange={setAddress} maxLength={500} />
+      </div>
+      <h3>Loyers et paiements</h3>
+      <p className="muted small">Réglages généraux, valables pour tous les baux.</p>
+      <div className="grid">
+        <Select label="Colonne « Reçu »" value={receivedMode} onChange={(v) => setReceivedMode(v ?? 'auto')}
+          options={[['auto', 'Cochée automatiquement d’après le relevé ou la saisie'], ['confirmation', 'Cochée après ma confirmation']] as const}
+          hint="En mode confirmation, l’import remplit « Réglé » et vous validez la réception ligne par ligne ou en groupe." />
+        <Select label="Lignes des mois passés" value={startMode} onChange={(v) => setStartMode(v ?? 'bail')}
+          options={[['bail', 'Depuis le début de chaque bail'], ['date', 'Depuis une date choisie']] as const}
+          hint="À la saisie des dates d’un bail, une ligne est créée pour chaque mois passé ; puis une nouvelle ligne le 1er de chaque mois." />
+        {startMode === 'date' && <TextInput label="À partir du" type="date" value={startDate} onChange={setStartDate} hint="Ex. début d’utilisation d’Immo-Zen : aucune ligne avant ce mois. Les lignes antérieures sans paiement ni quittance sont retirées." />}
       </div>
       <h3>Modèles de relance amiable</h3>
       <p className="muted small">Variables : {TEMPLATE_VARIABLES.join(', ')}. Pas de pénalité ni de formule juridique : ces messages restent des rappels amiables, relus avant chaque envoi.</p>

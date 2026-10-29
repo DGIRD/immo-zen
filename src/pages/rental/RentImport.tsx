@@ -4,12 +4,14 @@ import type { PaymentMethod } from '../../data/types.ts';
 import { downloadBlob, toXlsx } from '../../domain/exporting.ts';
 import { date, money2, todayParis } from '../../domain/format.ts';
 import { parseDelimited, readImportFile, type Cell } from '../../domain/importing.ts';
-import { alignToPaid, monthLabel, PAYMENT_METHOD_LABELS } from '../../domain/rental.ts';
-import { buildRentImportRows, monthProposals, planAllocations, RENT_IMPORT_COLUMNS, rentRowStatus, toPayment, type MonthProposal, type RentImportRow } from '../../domain/rentImport.ts';
-import { RepoError } from '../../data/repo.ts';
+import { ledgerRows, ledgerSettings, mmYYYY } from '../../domain/ledger.ts';
+import { monthLabel, PAYMENT_METHOD_LABELS } from '../../domain/rental.ts';
+import { buildRentImportRows, importMonth, importMonths, RENT_IMPORT_COLUMNS, rentRowStatus, toPayment, type ImportMonth, type RentImportRow } from '../../domain/rentImport.ts';
 import { round2 } from '../../domain/simulator.ts';
 import { Button, Checkbox, Modal, NotAvailable } from '../../ui/components.tsx';
 import { useRental } from './common.tsx';
+import { syncLedgerWith } from './ledgerSync.ts';
+import { applyExcess, ExcessFields, issueMonthDocs, type ExcessDecision } from './monthActions.tsx';
 
 type DocChoice = 'quittance' | 'recu' | 'aucun';
 
@@ -26,16 +28,19 @@ export async function downloadRentTemplate() {
 export function RentImportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const store = useStore();
   const { data } = store;
-  const { views, leaseLabel, leaseById } = useRental();
+  const { leaseLabel, leaseById } = useRental();
+  const today = todayParis();
   const existing = useMemo(() => new Set(data.payments.map((p) => p.import_ref).filter((x): x is string => !!x)), [data.payments]);
   const [rows, setRows] = useState<RentImportRow[] | null>(null);
   const [source, setSource] = useState('');
   const [paste, setPaste] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  /** Document choisi après l'import, par bail et par mois (clé bail|AAAA-MM). */
+  /** Document choisi par bail et par mois (clé bail|AAAA-MM). */
   const [docs, setDocs] = useState<Record<string, DocChoice>>({});
-  const reset = () => { setRows(null); setSource(''); setPaste(''); setError(null); setDocs({}); };
+  /** Nature de l'excédent par bail et par mois. */
+  const [excess, setExcess] = useState<Record<string, ExcessDecision | null>>({});
+  const reset = () => { setRows(null); setSource(''); setPaste(''); setError(null); setDocs({}); setExcess({}); };
   const close = () => { reset(); onClose(); };
 
   function load(cells: Cell[][], name: string) {
@@ -50,57 +55,39 @@ export function RentImportDialog({ open, onClose }: { open: boolean; onClose: ()
   const count = (s: string) => statuses.filter((x) => x.status === s).length;
   const total = ready.reduce((a, r) => a + r.amount!, 0);
   const patch = (i: number, p: Partial<RentImportRow>) => setRows((rs) => rs && rs.map((r, j) => (j === i ? { ...r, ...p } : r)));
-  const proposals = useMemo(() => monthProposals(ready, views, data.receipts, data.leases, todayParis()), [ready, views, data.receipts, data.leases]);
+  const ledger = useMemo(() => ledgerRows(data, ledgerSettings(data.settings?.rental_settings), today), [data, today]);
+  const months = useMemo(() => importMonths(ready, ledger), [ready, ledger]);
   const keyOf = (m: { lease_id: string; month: string }) => `${m.lease_id}|${m.month}`;
-  // le paiement fait foi : quittance par défaut, au montant payé pour un mois échu payé moins que l'échéance
-  const choice = (m: MonthProposal): DocChoice => docs[keyOf(m)] ?? (m.action === 'quittance' || (m.action === 'aligner' && m.past) ? 'quittance' : m.action === 'aligner' ? 'recu' : 'aucun');
-  const toIssue = proposals.filter((m) => (m.action === 'quittance' || m.action === 'aligner') && choice(m) !== 'aucun');
+  // quittance proposée (cochée) pour un mois intégralement réglé ; reçu partiel au choix sinon
+  const choice = (m: ImportMonth): DocChoice => docs[keyOf(m)] ?? (m.settles ? 'quittance' : 'aucun');
+  const toIssue = months.filter((m) => m.row?.loyer && choice(m) !== 'aucun');
 
   async function doImport() {
     setBusy(true);
     try {
-      let n = 0;
-      const byLease = new Map<string, RentImportRow[]>();
-      for (const r of ready) byLease.set(r.leaseId!, [...(byLease.get(r.leaseId!) ?? []), r]);
-      for (const [leaseId, list] of byLease) {
-        list.sort((a, b) => a.date!.localeCompare(b.date!));
-        const created = await store.createMany('payments', list.map(toPayment));
-        if (!created) break;
-        n += created.length;
-        // répartition sur les échéances encore dues du bail, dans l'ordre chronologique
-        const open = views.filter((v) => v.charge.lease_id === leaseId && v.remaining > 0 && !v.charge.cancelled_at);
-        const byRef = new Map(created.map((p) => [p.import_ref ?? '', p]));
-        const plans = planAllocations(list.map((r) => ({ key: r.ref, amount: r.amount!, paid_on: r.date! })), open, leaseById.get(leaseId)?.start_date);
-        const allocs = list.flatMap((r) => (plans.get(r.ref) ?? []).map((a) => ({ payment_id: byRef.get(r.ref)!.id, charge_id: a.charge_id, amount: a.amount })));
-        if (allocs.length && !(await store.createMany('payment_allocations', allocs))) {
-          store.notify('Paiements importés, mais leur répartition a été refusée : reprenez-la depuis le bail.', 'error');
-          break;
+      const out = await store.call(async (repo) => {
+        let n = 0;
+        const byLease = new Map<string, RentImportRow[]>();
+        for (const r of ready) byLease.set(r.leaseId!, [...(byLease.get(r.leaseId!) ?? []), r]);
+        for (const list of byLease.values()) {
+          list.sort((a, b) => a.date!.localeCompare(b.date!));
+          n += (await repo.insertMany('payments', list.map(toPayment))).length;
         }
-      }
-      // quittances (ou reçus partiels) des mois choisis ; le paiement fait foi : une échéance payée
-      // pour moins que son montant est d'abord ramenée au montant payé
-      let q = 0, rc = 0, al = 0;
-      if (n) for (const m of toIssue) {
-        const kind = choice(m) === 'recu' ? 'recu' : 'quittance';
-        const r = await store.call(async (repo) => {
-          if (m.action === 'aligner' && kind === 'quittance') {
-            const snap = await repo.loadAll();
-            const c = snap.charges.find((x) => x.id === m.charge!.charge.id);
-            const paid = round2(snap.allocations.filter((a) => a.charge_id === c?.id).reduce((s, a) => s + a.amount, 0));
-            if (c && paid > 0 && paid < round2(c.rent_amount + c.charges_amount)) {
-              const res = await repo.update('rent_charges', c.id, c.version, alignToPaid(c, paid));
-              if (res.status !== 'ok') throw new RepoError('Échéance modifiée entre-temps : rechargez la page.');
-              al++;
-            }
-          }
-          return repo.issueReceipt(m.charge!.charge.id, kind);
-        });
-        if (r) { if (kind === 'quittance') q++; else rc++; }
-      }
-      await store.refresh();
-      if (n) {
-        const extra = [q && `${q} quittance(s)`, rc && `${rc} reçu(s) partiel(s)`].filter(Boolean).join(' et ');
-        store.notify(`${n} loyer(s) importé(s) depuis ${source}${extra ? ` ; ${extra} émis` : ''}${al ? ` (${al} échéance(s) ramenée(s) au montant payé)` : ''}.`);
+        const leaseIds = [...byLease.keys()];
+        await syncLedgerWith(repo, { leaseIds });
+        // excédents qualifiés : autre somme due, loyer supérieur ou trop-perçu
+        let x = 0;
+        for (const m of months) {
+          const d = excess[keyOf(m)];
+          if (d && m.over > 0 && m.row?.loyer) { await applyExcess(repo, m.row.loyer.id, m.over, d); x++; }
+        }
+        if (x) await syncLedgerWith(repo, { leaseIds });
+        const docsOut = await issueMonthDocs(repo, toIssue.map((m) => ({ lease_id: m.lease_id, month: m.month, kind: choice(m) === 'recu' ? 'recu' as const : 'quittance' as const })));
+        return { n, x, ...docsOut };
+      });
+      if (out?.n) {
+        const extra = [out.q && `${out.q} quittance(s)`, out.r && `${out.r} reçu(s) partiel(s)`, out.x && `${out.x} excédent(s) qualifié(s)`].filter(Boolean);
+        store.notify(`${out.n} paiement(s) importé(s) depuis ${source}${extra.map((e) => ` ; ${e}`).join('')}.`);
         close();
       }
     } finally {
@@ -108,12 +95,17 @@ export function RentImportDialog({ open, onClose }: { open: boolean; onClose: ()
     }
   }
 
+  const monthOptions = (leaseId: string | null, d: string | null) => {
+    const own = [...new Set(ledger.filter((r) => r.lease_id === leaseId && r.loyer).map((r) => r.month))];
+    return [...new Set([...(d ? [d.slice(0, 7)] : []), ...own])].sort().reverse();
+  };
+
   return (
-    <Modal open={open} wide title="Importer des loyers" onClose={close}
+    <Modal open={open} wide title="Importer un relevé de loyers" onClose={close}
       footer={rows ? <><Button onClick={reset}>Autre fichier</Button><Button variant="primary" disabled={busy || !ready.length} onClick={() => void doImport()}>{busy ? 'Import…' : `Importer ${ready.length} paiement(s)${toIssue.length ? ` et émettre ${toIssue.length} document(s)` : ''}`}</Button></> : <Button onClick={close}>Fermer</Button>}>
       {!data.leases.length ? <NotAvailable>Créez d’abord le bail de chaque logement (Locataires et baux) : les loyers importés y sont rattachés.</NotAvailable> : !rows ? (
         <div className="import-start">
-          <p>Fichier Excel (.xlsx) ou CSV avec les colonnes <strong>{RENT_IMPORT_COLUMNS.join(' · ')}</strong>. Seules « Date » et « Montant » sont obligatoires ; le bail est retrouvé d’après le locataire ou le logement, sinon choisi ligne par ligne.</p>
+          <p>Relevé bancaire ou fichier Excel (.xlsx), CSV, avec les colonnes <strong>{RENT_IMPORT_COLUMNS.join(' · ')}</strong>. Seules « Date » et « Montant » sont obligatoires ; le bail est retrouvé d’après le locataire ou le logement, sinon choisi ligne par ligne. Chaque paiement remplit la colonne « Réglé » de la ligne du mois de sa date.</p>
           <div className="row">
             <label className="btn btn-primary file-btn">Choisir un fichier
               <input type="file" accept=".xlsx,.xlsm,.csv,.txt,.xls" aria-label="Fichier de loyers" onChange={async (e) => {
@@ -143,9 +135,10 @@ export function RentImportDialog({ open, onClose }: { open: boolean; onClose: ()
           </div>
           <div className="dt-scroll tall">
             <table className="dt-table compact import-table">
-              <thead><tr><th>Ligne</th><th>Date</th><th className="num">Montant</th><th>Locataire / logement</th><th>Bail</th><th>Moyen</th><th>État</th></tr></thead>
+              <thead><tr><th>Ligne</th><th>Date</th><th className="num">Montant</th><th>Locataire / logement</th><th>Bail</th><th>Mois concerné</th><th>Moyen</th><th>État</th></tr></thead>
               <tbody>{rows.map((r, i) => {
                 const st = statuses[i]!;
+                const m = importMonth(r);
                 return (
                   <tr key={r.ref + i} className={st.status === 'ok' ? '' : st.status === 'doublon' ? 'muted' : 'row-warn'}>
                     <td>{r.line}</td>
@@ -155,6 +148,10 @@ export function RentImportDialog({ open, onClose }: { open: boolean; onClose: ()
                     <td><select aria-label={`Bail ligne ${r.line}`} value={r.leaseId ?? ''} disabled={st.status === 'doublon'} onChange={(e) => patch(i, { leaseId: e.target.value || null })}>
                       <option value="">Choisir…</option>{data.leases.map((l) => <option key={l.id} value={l.id}>{leaseLabel(l)}</option>)}
                     </select></td>
+                    <td>{r.date ? <select aria-label={`Mois concerné ligne ${r.line}`} value={m ?? ''} disabled={st.status === 'doublon'}
+                      onChange={(e) => patch(i, { month: e.target.value === r.date!.slice(0, 7) ? null : e.target.value })}>
+                      {monthOptions(r.leaseId, r.date).map((x) => <option key={x} value={x}>{monthLabel(`${x}-01`)}{x === r.date!.slice(0, 7) ? '' : ' (déplacé)'}</option>)}
+                    </select> : '—'}</td>
                     <td><select aria-label={`Moyen ligne ${r.line}`} value={r.method} onChange={(e) => patch(i, { method: e.target.value as PaymentMethod })}>
                       {(Object.entries(PAYMENT_METHOD_LABELS) as [PaymentMethod, string][]).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                     </select></td>
@@ -164,33 +161,35 @@ export function RentImportDialog({ open, onClose }: { open: boolean; onClose: ()
               })}</tbody>
             </table>
           </div>
-          {proposals.length > 0 && (
+          {months.length > 0 && (
             <div className="month-proposals">
-              <h3>Récapitulatif par mois et quittances proposées</h3>
-              <p className="muted small">Les paiements d’un même mois sont additionnés et réglés sur l’échéance de ce mois (puis, s’il reste un excédent, sur les arriérés). Le paiement fait foi : si un mois passé a été payé moins que l’échéance (ancien loyer), l’échéance est ramenée au montant payé et la quittance reprend ce montant. Choisissez « Reçu partiel » si le locataire doit réellement le reste.</p>
+              <h3>Aperçu par mois</h3>
+              <p className="muted small">Les paiements d’un même mois sont additionnés dans la colonne « Réglé » de la ligne de ce mois. Un paiement reçu un autre mois (loyer payé en retard ou en avance) peut être déplacé ci-dessus. Si le réglé dépasse le dû, précisez la nature de l’excédent ; un mois échu resté partiel reporte son reste dû sur le mois suivant.</p>
               <div className="dt-scroll">
                 <table className="dt-table compact">
-                  <thead><tr><th>Bail</th><th>Mois</th><th className="num">Reçu ce mois</th><th className="num">Dû</th><th className="num">Réglé après import</th><th>Document</th></tr></thead>
-                  <tbody>{proposals.map((m) => {
+                  <thead><tr><th>Bail</th><th>Mois</th><th className="num">Importé</th><th className="num">Dû</th><th className="num">Réglé avant</th><th className="num">Réglé après</th><th className="num">Écart</th><th>Excédent / document</th></tr></thead>
+                  <tbody>{months.map((m) => {
                     const l = leaseById.get(m.lease_id);
                     const ml = monthLabel(`${m.month}-01`);
+                    const gap = round2(m.after - m.due);
                     return (
-                      <tr key={keyOf(m)} className={m.action === 'aucune' || (m.action === 'aligner' && choice(m) !== 'quittance') ? 'row-warn' : ''}>
+                      <tr key={keyOf(m)} className={!m.row?.loyer || (m.over > 0 && !excess[keyOf(m)]) ? 'row-warn' : ''}>
                         <td className="wrap">{l ? leaseLabel(l) : '—'}</td>
-                        <td>{ml}</td>
+                        <td>{ml}{m.count > 1 && <small className="muted block">{m.count} paiements additionnés</small>}</td>
                         <td className="num">{money2(m.received)}</td>
-                        <td className="num">{m.charge ? money2(m.charge.total) : '—'}</td>
-                        <td className="num">{m.charge ? money2(m.paidAfter) : '—'}</td>
-                        <td>{m.action === 'quittance'
-                          ? <Checkbox label={`Quittance de ${ml}`} checked={choice(m) === 'quittance'} onChange={(on) => setDocs((d) => ({ ...d, [keyOf(m)]: on ? 'quittance' : 'aucun' }))} />
-                          : m.action === 'aligner'
-                            ? <select aria-label={`Document de ${ml}`} value={choice(m)} onChange={(e) => setDocs((d) => ({ ...d, [keyOf(m)]: e.target.value as DocChoice }))}>
-                                <option value="quittance">Quittance de {money2(m.paidAfter)} (montant payé)</option>
-                                <option value="recu">Reçu partiel (reste dû {money2(round2(m.charge!.total - m.paidAfter))})</option>
-                                <option value="aucun">Aucun document</option>
-                              </select>
-                            : <span className={`pill pill-${m.action === 'deja' ? 'neutral' : 'warn'}`}>{m.message}</span>}
-                          {m.action === 'aligner' && <small className="muted block">{m.message}</small>}</td>
+                        <td className="num">{m.row?.loyer ? money2(m.due) : '—'}</td>
+                        <td className="num">{money2(m.before)}</td>
+                        <td className="num">{money2(m.after)}</td>
+                        <td className="num"><span className={gap < 0 ? 'neg' : gap > 0 ? 'pos' : ''}>{gap > 0 ? '+' : ''}{money2(gap)}</span></td>
+                        <td>
+                          {!m.row?.loyer ? <span className="pill pill-warn">Aucune ligne de loyer ce mois-là : paiement hors période</span> : <>
+                            {m.over > 0 && <ExcessFields value={excess[keyOf(m)] ?? null} onChange={(d) => setExcess((x) => ({ ...x, [keyOf(m)]: d }))} excess={m.over} month={m.month} allowLater />}
+                            {m.row.quittance ? <span className="pill pill-neutral">Quittance déjà émise</span>
+                              : m.settles ? <Checkbox label={`Quittance de ${ml}`} checked={choice(m) === 'quittance'} onChange={(on) => setDocs((d) => ({ ...d, [keyOf(m)]: on ? 'quittance' : 'aucun' }))} />
+                              : m.after > 0 ? <><Checkbox label={`Reçu partiel de ${ml}`} checked={choice(m) === 'recu'} onChange={(on) => setDocs((d) => ({ ...d, [keyOf(m)]: on ? 'recu' : 'aucun' }))} />
+                                {m.month < today.slice(0, 7) && <small className="muted block">Reste dû {money2(round2(m.due - m.after))} reporté sur {mmYYYY(nextMonth(m.month))}</small>}</> : null}
+                          </>}
+                        </td>
                       </tr>
                     );
                   })}</tbody>
@@ -198,9 +197,11 @@ export function RentImportDialog({ open, onClose }: { open: boolean; onClose: ()
               </div>
             </div>
           )}
-          <p className="muted small">Chaque ligne devient un paiement du bail, à sa date. Un fichier réimporté ne crée pas de doublon. Une quittance reprend toujours le montant réellement payé dans le mois.</p>
+          <p className="muted small">Chaque ligne devient un paiement du bail, à sa date. Un fichier réimporté ne crée pas de doublon. Une quittance n’est émise que pour un mois intégralement réglé.</p>
         </>
       )}
     </Modal>
   );
 }
+
+const nextMonth = (m: string) => { const y = Number(m.slice(0, 4)); const n = Number(m.slice(5, 7)); return n === 12 ? `${y + 1}-01` : `${y}-${String(n + 1).padStart(2, '0')}`; };

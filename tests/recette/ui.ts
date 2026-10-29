@@ -278,14 +278,14 @@ async function main() {
     bai03 += ' ; forfait de charges refusé en location vide';
     await page.getByLabel('Charges', { exact: true }).selectOption('provision');
     await page.getByRole('button', { name: 'Enregistrer' }).first().click();
-    await page.getByRole('tab', { name: /^Loyers et paiements \(3 échéances/ }).waitFor();
+    await page.getByRole('tab', { name: /^Loyers et paiements \(3 mois/ }).waitFor();
     leaseUrl = page.url();
     const d = await db(page);
     const lease = d.leases.find((l: { property_id: string }) => d.properties.find((p: { id: string; title: string }) => p.id === l.property_id)?.title === 'T2 recette');
     const ch = d.rent_charges.filter((x: { lease_id: string }) => x.lease_id === lease.id).sort((a: { due_date: string }, b: { due_date: string }) => a.due_date.localeCompare(b.due_date));
     const first = ch[0];
-    await page.reload(); await page.getByRole('tab', { name: /^Loyers et paiements \(3 échéances/ }).waitFor();
-    return `bail créé (début ${start}), 3 échéances ; 1re proratisée : ${first.rent_amount} € HC + ${first.charges_amount} € ; pas de doublon après rechargement`;
+    await page.reload(); await page.getByRole('tab', { name: /^Loyers et paiements \(3 mois/ }).waitFor();
+    return `bail créé (début ${start}), 3 lignes mensuelles ; 1re proratisée : ${first.rent_amount} € HC + ${first.charges_amount} € ; pas de doublon après rechargement`;
   });
 
   await c('BAI-03', async () => {
@@ -296,15 +296,15 @@ async function main() {
   await c('LOY-02', async () => {
     await page.goto(leaseUrl);
     await page.getByRole('tab', { name: /^Loyers et paiements/ }).click();
-    const row = page.locator('table.dt-table tbody tr').filter({ has: page.getByRole('button', { name: /Confirmer le paiement|Paiement/ }) }).first();
+    const row = page.locator('table.dt-table tbody tr').filter({ has: page.getByRole('button', { name: /^(Paiement reçu|Enregistrer un paiement)$/ }) }).first();
     const due = T(await row.innerText());
-    await row.getByRole('button', { name: /Confirmer le paiement|Paiement/ }).click();
+    await row.getByRole('button', { name: /^(Paiement reçu|Enregistrer un paiement)$/ }).click();
     const dlg = page.locator('dialog[open]');
     const amt = await dlg.getByLabel('Montant reçu').inputValue();
     await dlg.getByRole('button', { name: /Confirmer le paiement|Enregistrer le paiement/ }).click();
-    await page.getByText(/Paiement (confirmé|enregistré)\./).waitFor();
-    await page.locator('.status', { hasText: /^Payée$/ }).first().waitFor();
-    return `échéance « ${due.split('\n')[0]} » : montant proposé ${amt} €, confirmée → statut Payée`;
+    await page.getByText(/Paiement (confirmé|enregistré) sur/).first().waitFor();
+    await page.locator('table.dt-table tbody tr .status', { hasText: /^Réglé$/ }).first().waitFor();
+    return `mois « ${due.split('\n')[0]} » : montant proposé ${amt} € (reste dû reporté compris), confirmé → statut Réglé`;
   });
 
   await c('QUI-04', async () => {
@@ -329,15 +329,15 @@ async function main() {
     await page.goto(leaseUrl);
     await page.getByRole('tab', { name: /^Loyers et paiements/ }).click();
     const txt = T(await page.locator('table.dt-table').innerText());
-    const statuses = [...new Set((txt.match(/À venir|Impayée|Payée|Partiel\w*/g) ?? []))].join(', ');
+    const statuses = [...new Set((txt.match(/À venir|Impayé reporté|Impayé|Réglé|Partiel reporté|Partiel/g) ?? []))].join(', ');
     const row = page.locator('table.dt-table tbody tr').filter({ has: page.getByRole('button', { name: 'Annuler', exact: true }) }).first();
     await row.getByRole('button', { name: 'Annuler', exact: true }).click();
     const dlg = page.locator('dialog[open]');
-    assert.ok(await dlg.getByRole('button', { name: 'Annuler l’échéance' }).isDisabled(), 'annulation possible sans motif');
+    assert.ok(await dlg.getByRole('button', { name: 'Annuler la ligne' }).isDisabled(), 'annulation possible sans motif');
     await dlg.getByLabel('Motif d’annulation').fill('Mois offert (travaux)');
-    await dlg.getByRole('button', { name: 'Annuler l’échéance' }).click();
-    await page.getByText('Annulée : Mois offert (travaux)').first().waitFor();
-    return `statuts : ${statuts(statuses)} ; motif obligatoire, affiché sous la période (« Annulée : Mois offert (travaux) »)`;
+    await dlg.getByRole('button', { name: 'Annuler la ligne' }).click();
+    await page.getByText('Annulé : Mois offert (travaux)').first().waitFor();
+    return `statuts : ${statuts(statuses)} ; motif obligatoire, affiché sous la période (« Annulé : Mois offert (travaux) »)`;
   });
 
   await c('BAI-06', async () => {
@@ -445,7 +445,7 @@ async function main() {
     await page.locator('select', { has: page.locator('option[value=a_traiter]') }).selectOption('a_traiter');
     await page.waitForTimeout(300);
     const txt = T(await page.locator('table.dt-table').first().innerText());
-    return `${all} échéances ; « À traiter » : ${txt.split('\n').length - 1} ligne(s) (impayés échus et périodes payées sans quittance)`;
+    return `${all} lignes mensuelles ; « À traiter » : ${txt.split('\n').length - 1} ligne(s) (impayés échus et périodes payées sans quittance)`;
   });
 
   await c('PRO-08', async () => {

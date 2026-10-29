@@ -4,7 +4,8 @@ import { usePlan, useStore } from '../../data/store.tsx';
 import { PlanLock } from '../../ui/PlanLock.tsx';
 import type { Insert, Lease, Tenant } from '../../data/types.ts';
 import { date, money, money2, todayParis } from '../../domain/format.ts';
-import { LEASE_BACKLOG_WARN, leaseLedger, leaseStartIssue, leaseState, leaseTenants, monthLabel, pastChargeCount, reallocatePayments, startChangeImpact, tenantName, type StartChangeImpact } from '../../domain/rental.ts';
+import { LEASE_BACKLOG_WARN, leaseLedger, leaseStartIssue, leaseState, leaseTenants, monthLabel, pastChargeCount, startChangeImpact, tenantName, type StartChangeImpact } from '../../domain/rental.ts';
+import { syncLedgerWith } from './ledgerSync.ts';
 import { round2 } from '../../domain/simulator.ts';
 import { DataTable, type Column } from '../../ui/DataTable.tsx';
 import { Button, Checkbox, EmptyState, Modal, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
@@ -252,8 +253,8 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
       if (add.length) await store.createMany('lease_tenants', add.map((tenant_id) => ({ lease_id: lease!.id, tenant_id })));
       for (const t of currentTenantIds.filter((x) => !tenantIds.includes(x))) await store.removeWhere('lease_tenants', { lease_id: lease.id, tenant_id: t });
       const n = await store.call((r) => r.generateCharges(lease!.id));
-      if (existing) await reallocateLease(store, lease.id);
-      store.notify(existing ? `Bail enregistré${n ? `, ${n} échéance(s) générée(s)` : ''}.` : `Bail créé${n ? `, ${n} échéance(s) générée(s)` : ''}.`);
+      await reallocateLease(store, lease.id);
+      store.notify(existing ? `Bail enregistré${n ? `, ${n} ligne(s) mensuelle(s) créée(s)` : ''}.` : `Bail créé${n ? `, ${n} ligne(s) mensuelle(s) créée(s)` : ''}.`);
       navigate(`/baux/${lease.id}`);
     } finally {
       setBusy(false);
@@ -383,19 +384,13 @@ export function StartChangeMessage({ from, to, imp }: { from: string; to: string
     <p>Cela va <strong>supprimer définitivement {n} échéance{n > 1 ? 's' : ''}</strong> de loyer
       ({n > 1 ? `de ${monthLabel(first.period_start)} à ${monthLabel(last.period_start)}` : monthLabel(first.period_start)}).</p>
     {imp.paid.length > 0
-      ? <p>{imp.paid.length} de ces échéances ont reçu des paiements : <strong>les paiements sont conservés</strong> et réaffectés aux échéances à partir du {date(to)}, du plus ancien au plus récent.</p>
+      ? <p>{imp.paid.length} de ces échéances ont reçu des paiements : <strong>les paiements sont conservés</strong> et rangés de nouveau dans le mois de leur date.</p>
       : <p>Aucune n’a reçu de paiement.</p>}
     <p>L’échéancier est ensuite recalculé à partir du {date(to)}.</p>
   </>;
 }
 
-/** Réaffecte les paiements non répartis d'un bail sur ses échéances ouvertes les plus anciennes. */
+/** Lignes mensuelles du bail remises en conformité (paiements rangés dans leur mois, reports). */
 export async function reallocateLease(store: ReturnType<typeof useStore>, leaseId: string): Promise<number> {
-  const n = await store.call(async (r) => {
-    const snap = await r.loadAll();
-    const plan = reallocatePayments(leaseId, snap.charges, snap.payments, snap.allocations, todayParis());
-    if (plan.length) await r.insertMany('payment_allocations', plan);
-    return plan.length;
-  });
-  return n ?? 0;
+  return (await store.call((r) => syncLedgerWith(r, { leaseIds: [leaseId] }))) ?? 0;
 }
