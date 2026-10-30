@@ -1302,6 +1302,17 @@ async function main() {
     const ids = new Set(db.rent_charges.filter((c: { lease_id: string }) => c.lease_id === leaseId).map((c: { id: string }) => c.id));
     assert.equal(db.payment_allocations.filter((a: { charge_id: string }) => ids.has(a.charge_id)).reduce((t: number, a: { amount: number }) => t + a.amount, 0), 100, 'paiement rangé dans son mois');
     assert.ok(!db.rent_charges.some((c: { lease_id: string; period_start: string }) => c.lease_id === leaseId && c.period_start < '2000-01-01'), 'aucune ligne de 1990 restante (loyers ni reports)');
+    // grille : statut « Réglé » et date de règlement saisis sur le mois impayé ; date du dernier paiement modifiable
+    await page.getByRole('button', { name: 'Modifier en grille' }).click();
+    const statusCell = page.locator('.grid-table select[aria-label^="Statut – "]').filter({ has: page.locator('option:checked', { hasText: /Impayé|Partiel reporté/ }) }).first();
+    const rowName = ((await statusCell.getAttribute('aria-label')) ?? '').replace('Statut – ', '');
+    await statusCell.selectOption('reglee');
+    const paidDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date());
+    await page.getByLabel(`Date de règlement – ${rowName}`).fill(paidDate);
+    await page.getByRole('button', { name: 'Enregistrer (1)' }).click();
+    await page.getByText('1 ligne modifiée.').first().waitFor();
+    await page.getByRole('button', { name: 'Fermer la grille' }).click({ timeout: 3000 }).catch(() => undefined);
+    await page.locator('table.dt-table tbody tr', { hasText: rowName.split(' – ')[0]! }).locator('.status', { hasText: /^Réglé$/ }).first().waitFor();
   });
 
   await step('rendu mobile (390 px) sans défilement horizontal', async () => {

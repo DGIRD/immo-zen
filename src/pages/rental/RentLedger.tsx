@@ -23,6 +23,8 @@ export const DupPill = ({ title }: { title: string }) => <span className="pill p
 
 const TONE: Record<RowStatus, string> = { reglee: 'won', partielle: 'hot', reportee: 'closed', impayee: 'bad', a_venir: 'early', annulee: 'closed', hors_periode: 'closed' };
 const RECEIVED_LABELS = { oui: 'Oui', partiel: 'Partiel', non: 'Non' } as const;
+/** Statuts proposés dans la grille : Réglé, Impayé et Annulé s'appliquent ; les autres reflètent la ligne. */
+const STATUS_OPTIONS = (['reglee', 'impayee', 'annulee', 'partielle', 'reportee', 'a_venir', 'hors_periode'] as const).map((k) => [k, ROW_STATUS_LABELS[k]] as const);
 
 export function RowBadge({ r }: { r: LedgerRow }) {
   const title = r.status === 'reportee' ? `${money2(r.carriedOut)} reportés sur ${mmYYYY(addMonth(r.month))}` : r.status === 'hors_periode' ? 'Paiement daté d’un mois sans loyer (avant le point de départ ou hors du bail)' : undefined;
@@ -236,13 +238,16 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
     { id: 'paid', label: 'Réglé', type: 'money', get: (r) => (r.payments.length <= 1 ? r.paid : null),
       fixed: (r) => (r.payments.length > 1 ? <span title={r.payments.map(payText).join('\n')}>{money2(r.paid)} <small className="muted">({r.payments.length} paiements)</small></span> : false),
       validate: (x) => (x !== null && (x as number) < 0 ? 'Montant positif ou nul' : null) },
-    { id: 'paid_on', label: 'Date de règlement', type: 'date', get: (r) => (r.payments.length === 1 ? r.payments[0]!.paid_on : null),
-      fixed: (r) => (r.payments.length > 1 ? (r.lastPaidOn ? date(r.lastPaidOn) : '—') : false),
-      validate: (x) => (x && String(x) > today ? 'Date future' : null) },
+    { id: 'paid_on', label: 'Date de règlement', type: 'date', get: (r) => r.lastPaidOn,
+      validate: (x, r, all) => (x && String(x) > today ? 'Date future'
+        : x && !r.payments.length && !(Number(all.paid ?? 0) > 0) && all.status !== 'reglee' ? 'Saisissez aussi le réglé, ou le statut « Réglé »' : null) },
     { id: 'received', label: 'Reçu', type: 'select', options: [['oui', 'Oui'], ['non', 'Non']] as const, get: (r) => (r.loyer!.received_at ? 'oui' : 'non'),
       fixed: (r) => (settings.receivedMode === 'confirmation' ? false : RECEIVED_LABELS[r.received]) },
     { id: 'gap', label: 'Écart', type: 'text', get: () => null, fixed: (r) => <span className={r.gap < 0 && r.status !== 'reportee' ? 'neg' : r.gap > 0 ? 'pos' : ''}>{r.gap > 0 ? '+' : ''}{money2(r.gap)}</span> },
-    { id: 'status', label: 'Statut', type: 'text', get: () => null, fixed: (r) => <RowBadge r={r} /> },
+    { id: 'status', label: 'Statut', type: 'select', options: STATUS_OPTIONS, get: (r) => r.status,
+      validate: (x, r) => (x === r.status || x === 'reglee' || x === 'impayee' ? null
+        : x === 'annulee' ? (r.payments.length ? 'Supprimez d’abord les paiements du mois (statut « Impayé »)' : null)
+        : 'Statut calculé : choisissez Réglé, Impayé ou Annulé, ou saisissez le réglé') },
     { id: 'doc', label: 'Quittance', type: 'text', get: () => null, fixed: (r) => [r.quittance, ...r.recus].filter(Boolean).map((d) => docLabel(d!)).join(' ; ') || muted('—') },
   ];
   async function saveLines(changes: { row: LedgerRow; values: Record<string, string | number | null> }[]) {
@@ -277,8 +282,25 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
               rent_amount: amount, charges_amount: 0, label: text ?? `Autre somme due ${mmYYYY(row.month)}` });
           }
         }
+        const status = 'status' in values ? String(values.status) : null;
+        const monthPays = () => repo.loadAll().then((d) => ({ d, list: d.payments.filter((p) => row.payments.some((x) => x.id === p.id)) }));
+        // statut « Impayé » : les paiements du mois sont supprimés (documents annulés d'abord)
+        if (status === 'impayee') {
+          const { d, list } = await monthPays();
+          for (const r of [...new Map(list.flatMap((p) => receiptsCovering(p, d)).map((r) => [r.id, r])).values()]) await repo.cancelReceipt(r.id, 'Statut passé à Impayé');
+          for (const p of list) await repo.remove('payments', p.id);
+        } else if (row.payments.length > 1 && 'paid_on' in values && values.paid_on) {
+          // plusieurs paiements : la date de règlement est celle du dernier paiement du mois
+          const { d, list } = await monthPays();
+          const last = [...list].sort((a, b) => a.paid_on.localeCompare(b.paid_on) || a.created_at.localeCompare(b.created_at)).at(-1);
+          if (last && last.paid_on !== values.paid_on) {
+            for (const r of receiptsCovering(last, d)) await repo.cancelReceipt(r.id, 'Paiement modifié');
+            const res = await repo.update('payments', last.id, last.version, { paid_on: String(values.paid_on), period_month: `${row.month}-01`, date_defaulted: false });
+            if (res.status !== 'ok') throw new RepoError('Le paiement a été modifié entre-temps : rechargez la page.');
+          }
+        }
         // réglé et date de règlement (un seul paiement dans le mois) : paiement modifié, créé ou supprimé
-        if (('paid' in values || 'paid_on' in values) && row.payments.length <= 1) {
+        if (status !== 'impayee' && ('paid' in values || 'paid_on' in values) && row.payments.length <= 1) {
           const p = row.payments[0] ? snap.payments.find((x) => x.id === row.payments[0]!.id) : undefined;
           const amount = round2(Number(values.paid ?? (p?.amount ?? 0)));
           const when = String(values.paid_on ?? p?.paid_on ?? (loyer.due_date <= today ? loyer.due_date : today));
@@ -294,6 +316,27 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
           } else if (amount > 0) {
             await repo.insert('payments', { lease_id: loyer.lease_id, amount, paid_on: when, period_month: `${row.month}-01`, method: 'virement', source: 'saisie', date_defaulted: false });
           }
+        }
+        // statut « Réglé » : un paiement complète le mois jusqu'au total dû (montants modifiés pris en compte)
+        if (status === 'reglee') {
+          const d = await repo.loadAll();
+          // toutes les sommes du mois, y compris celles dont le reste dû a été reporté sur le mois suivant
+          const own = d.charges.filter((c) => c.lease_id === loyer.lease_id && !c.cancelled_at
+            && (c.kind === 'loyer' || c.kind === 'report' ? c.period_start : c.due_date).slice(0, 7) === row.month);
+          const due = round2(own.reduce((t, c) => t + c.rent_amount + c.charges_amount, 0));
+          const paid = round2(d.payments.filter((p) => p.lease_id === loyer.lease_id && (p.period_month ?? p.paid_on).slice(0, 7) === row.month).reduce((t, p) => t + p.amount, 0) + row.advanceIn - row.advanceOut);
+          const missing = round2(due - paid);
+          const when = String(values.paid_on ?? (loyer.due_date <= today ? loyer.due_date : today));
+          if (missing > 0) await repo.insert('payments', { lease_id: loyer.lease_id, amount: missing, paid_on: when, period_month: `${row.month}-01`, method: 'virement', source: 'saisie', date_defaulted: false });
+          if (settings.receivedMode === 'confirmation' && !('received' in values)) {
+            const c = (await repo.loadAll()).charges.find((x) => x.id === loyer.id)!;
+            if (!c.received_at) await upd(c, { received_at: new Date().toISOString() });
+          }
+        }
+        // statut « Annulé » : la ligne n'est plus due (réactivable depuis le tableau)
+        if (status === 'annulee') {
+          const c = (await repo.loadAll()).charges.find((x) => x.id === loyer.id)!;
+          await upd(c, { cancelled_at: new Date().toISOString(), cancel_reason: 'Annulé depuis la grille' });
         }
         n++;
       }
@@ -369,7 +412,7 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
         <GridEditor rows={gridRows} columns={lineGrid} rowKey={(r) => r.key} rowLabel={(r) => `${monthLabel(`${r.month}-01`)}${fixedLease ? '' : ` – ${labelOfLease(r.lease_id)}`}`}
           lock={(r) => (r.quittance ? `Quittance ${r.quittance.number} : supprimez-la pour modifier` : null)}
           flag={(r) => (isDupRow(r) ? <DupPill title="Doublon possible" /> : null)}
-          note={<>Toutes les colonnes du tableau, selon les filtres. Modifiables : échéance, loyer, charges, autre somme due (une par mois ; 0 la retire), réglé et date de règlement (un seul paiement dans le mois ; un montant saisi sur un mois sans paiement crée le paiement, 0 le supprime){settings.receivedMode === 'confirmation' ? ', reçu' : ''}. Le total, l’écart, le statut et les reports se recalculent à l’enregistrement. Une ligne quittancée n’est pas modifiable.</>}
+          note={<>Toutes les colonnes du tableau, selon les filtres. Modifiables : échéance, loyer, charges, autre somme due (une par mois ; 0 la retire), réglé (un seul paiement dans le mois ; un montant saisi sur un mois sans paiement crée le paiement, 0 le supprime), date de règlement (celle du dernier paiement du mois), statut (« Réglé » ajoute le paiement manquant, « Impayé » supprime les paiements du mois, « Annulé » annule la ligne){settings.receivedMode === 'confirmation' ? ', reçu' : ''}. Le total, l’écart, le statut et les reports se recalculent à l’enregistrement. Une ligne quittancée n’est pas modifiable.</>}
           onSave={saveLines} onClose={() => setGrid(null)} />
       ) : grid === 'paiements' ? (
         <PaymentsGrid payments={scopePayments} dupIds={dupPays.ids} onClose={() => setGrid(null)} />
