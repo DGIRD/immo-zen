@@ -512,9 +512,12 @@ async function main() {
     const rb = await (await p.request.get(site + 'robots.txt')).text();
     await p.goto(site + 'guides/quittance-de-loyer.html');
     const ld = await p.locator('script[type="application/ld+json"]').innerText();
+    const appHtml = await (await p.request.get(site + 'app/')).text();
     await p.close();
-    assert.match(rb, /Disallow: \/app\//); assert.match(ld, /FAQPage/); assert.match(ld, /"Article"/);
-    return `sitemap : ${(sm.match(/<loc>/g) ?? []).length} adresses ; robots.txt exclut /app/ ; données Article et FAQPage présentes (outil Google non utilisé)`;
+    assert.match(rb, /Sitemap: https:\/\/immo-zen\.fr\/sitemap\.xml/); assert.doesNotMatch(rb, /Disallow: \/app\//);
+    assert.match(appHtml, /<meta name="robots" content="noindex/);
+    assert.match(ld, /FAQPage/); assert.match(ld, /"Article"/);
+    return `sitemap : ${(sm.match(/<loc>/g) ?? []).length} adresses ; application en noindex ; données Article et FAQPage présentes (outil Google non utilisé)`;
   });
 
   await c('SIT-04', async () => {
