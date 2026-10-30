@@ -923,15 +923,23 @@ async function main() {
     await again.getByRole('button', { name: 'Émettre la quittance' }).click();
     await page.locator('dialog[open]').getByRole('heading', { name: /^Quittance Q-/ }).waitFor();
     await page.locator('dialog[open]').getByRole('button', { name: 'Fermer' }).click();
-    // lignes en grille : une ligne quittancée est verrouillée
+    // lignes en grille : toutes les colonnes ; une ligne quittancée reste modifiable
     await page.getByLabel('Afficher').selectOption('toutes');
     await page.getByRole('button', { name: 'Modifier en grille' }).click();
-    await page.locator('.grid-table').getByText(/^Quittance .* : supprimez-la pour modifier$/).first().waitFor();
     const gridHeads = (await page.locator('.grid-table thead').innerText()).replace(/\s+/g, ' ');
     for (const h of ['Période', 'Échéance', 'Loyer dû (HC)', 'Charges dues', 'Autre somme due', 'Total dû', 'Réglé', 'Date de règlement', 'Reçu', 'Écart', 'Statut', 'Quittance']) assert.ok(gridHeads.includes(h), `grille : colonne ${h}`);
+    // une ligne quittancée reste modifiable : sa quittance est annulée puis réémise
+    const qGridRow = page.locator('.grid-table tbody tr', { hasText: /Quittance Q-/ }).first();
+    await qGridRow.waitFor();
+    const due = qGridRow.locator('input[aria-label^="Échéance – "]');
+    const dueValue = await due.inputValue();
+    await due.fill(`${dueValue.slice(0, 8)}${dueValue.slice(8) === '02' ? '03' : '02'}`);
+    await page.getByRole('button', { name: 'Enregistrer (1)' }).click();
+    await page.getByText(/^1 ligne modifiée\. \d+ documents? annulés?, \d+ réémis avec un nouveau numéro\./).first().waitFor();
+    if (!(await page.locator('.grid-table').count())) await page.getByRole('button', { name: 'Modifier en grille' }).click();
     // autre somme due saisie dans la grille, puis retirée (0)
     for (const v of ['15', '0']) {
-      const cell = page.getByLabel(/^Autre somme due – /).first();
+      const cell = page.getByLabel(/^Autre somme due – /).last();
       const rowName = ((await cell.getAttribute('aria-label')) ?? '').replace('Autre somme due – ', '');
       await cell.fill(v);
       await page.getByRole('button', { name: 'Enregistrer (1)' }).click();
