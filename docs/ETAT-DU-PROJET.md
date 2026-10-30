@@ -191,7 +191,8 @@ Expression de besoin des 29-30/10/2026, règles : [LOYERS-ET-TAUX](LOYERS-ET-TAU
 | Scénarios loyer bas / central / haut et taux bas / référence / haut | Implémenté et testé | e2e |
 | Renégociation à étudier (biens détenus) | Implémenté et testé (calcul) | unitaires |
 | Administration → Données de marché : Carte des loyers (CSV), plafonds (CSV), barème, taux d'usure, réglages | Implémenté et testé (démonstration) | SQL + e2e |
-| Récupération automatique Banque de France (API Webstat), contours des zones d'encadrement, tendance mensuelle des taux | **Restant** | — |
+| Mise à jour automatique chaque nuit : Carte des loyers, taux d'usure (page de la Banque de France), plafonds de Paris ; rappel mensuel (barème, arrêtés) ; suivi dans l'administration | Implémenté et testé (réponses simulées) / **à activer** (fonction `marche`, planification) | unitaires + SQL + e2e |
+| Contours des zones d'encadrement hors Paris, tendance mensuelle des taux, barème automatique (accord Crédit Logement) | **Restant** | — |
 
 ## Restant
 
