@@ -310,6 +310,73 @@ async function main() {
     assert.match((await row.innerText()).replace(/[\u202f\u00a0]/g, ' '), /250 000 €/, 'prix de présentation repris dans la prospection');
   });
 
+  await step('loyer de marché et taux : fourchette automatique, zone encadrée, plafond légal, reprise dans la simulation, taux de référence et usure', async () => {
+    await page.goto(url + '#/bien/nouveau');
+    const panel = page.locator('.market-rent');
+    const txt = async (l = panel) => (await l.innerText()).replace(/[  ]/g, ' ');
+    await page.getByLabel('Titre du bien *').fill('T2 Montreuil encadré');
+    await page.getByRole('combobox', { name: 'Adresse' }).fill('12 rue de Par');
+    await page.getByRole('option', { name: '12 Rue de Paris 93100 Montreuil' }).click();
+    await page.getByLabel('Surface du logement').fill('45');
+    await page.getByLabel('Pièces').fill('2');
+    await page.getByLabel('Provision sur charges').fill('50');
+    // calcul automatique dès que commune et surface sont connues ; deux zones d'encadrement à Montreuil (démonstration)
+    await panel.getByText('Commune encadrée : choisissez la zone d’encadrement du logement').waitFor();
+    // calcul relancé après chaque saisie (pièces, provision) : la dernière valeur s'affiche
+    for (let i = 0; i < 50 && !/855 €\s*·\s*1 044 €\s*·\s*1 272 €/.test(await txt()); i++) await page.waitForTimeout(100);
+    assert.match(await txt(), /855 €\s*·\s*1 044 €\s*·\s*1 272 €/, `fourchette Carte des loyers × 45 m² : ${(await txt()).slice(0, 400)}`);
+    await panel.getByLabel('Zone d’encadrement').selectOption('1');
+    await panel.getByText(/renseignez l’année de construction/).waitFor();
+    await panel.getByLabel('Année de construction').fill('1930');
+    await panel.getByText('Plafond légal', { exact: true }).waitFor();
+    for (let i = 0; i < 50 && !/1 310 €/.test(await txt()); i++) await page.waitForTimeout(100);
+    const t = await txt();
+    assert.match(t, /1 260 € hors charges \/ mois \(Est Ensemble/, `plafond légal = loyer majoré × surface : ${t}`);
+    assert.match(t, /855 €\s*·\s*1 044 €\s*·\s*1 310 €/, 'le plafond (+ charges) devient le loyer haut');
+    assert.match(t, /Hors charges : 805 € · 994 € · 1 260 €/, 'conversion hors charges avec la provision');
+    assert.match(t, /Estimations ANIL, à partir des données du Groupe SeLoger et de leboncoin/, 'mention de source');
+    // jamais repris sans clic
+    assert.equal(await page.getByLabel('Loyer au m² bas').inputValue(), '0', 'loyer de la simulation non modifié sans action');
+    await panel.getByRole('button', { name: 'Reprendre bas et haut dans la simulation' }).click();
+    assert.equal(await page.getByLabel('Loyer au m² bas').inputValue(), '17,89');
+    assert.equal(await page.getByLabel('Loyer au m² haut').inputValue(), '28');
+    await panel.getByRole('button', { name: 'Utiliser le loyer central' }).click();
+    assert.equal(await page.getByLabel('Loyer hors charges', { exact: true }).inputValue(), '994');
+    await panel.getByText('Loyer de la simulation dans la fourchette de marché.').waitFor();
+    await page.getByLabel('Loyer hors charges', { exact: true }).fill('1300');
+    await panel.getByText(/Loyer de la simulation au-dessus du plafond légal/).waitFor();
+    // meublé : coefficient 1,15 par défaut
+    await panel.getByLabel('Location envisagée').selectOption('meuble');
+    assert.equal(await panel.getByLabel('Coefficient meublé').inputValue(), '1,15');
+    await page.getByLabel('Loyer hors charges', { exact: true }).fill('900');
+    // taux de référence selon la durée, contrôle du taux d'usure
+    await page.getByLabel('Durée', { exact: true }).fill('22');
+    const hint = page.locator('.loan-hint');
+    await hint.getByText(/Taux de référence sur 22 ans/).waitFor();
+    assert.match(await txt(hint), /3,61 %/, 'barème interpolé entre 20 et 25 ans');
+    await hint.getByRole('button', { name: 'Utiliser ce taux' }).click();
+    assert.equal(await page.getByLabel('Taux du crédit').inputValue(), '3,61');
+    const today = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()));
+    if (today <= '2026-12-31') {
+      assert.match(await txt(hint), /TAEG estimé : \d,\d\d % · taux d’usure 5,40 %/, await txt(hint));
+      await hint.getByText('sous le plafond').waitFor();
+      await page.getByLabel('Emprunteur', { exact: true }).selectOption('personne_morale');
+      assert.match(await txt(hint), /taux d’usure 5,83 %/, 'tranche des personnes morales (SCI)');
+    } else await hint.getByText(/Plafond non à jour/).waitFor();
+    // scénarios : loyer bas / central / haut de marché, taux bas / référence / haut
+    const sens = page.locator('.sensitivity');
+    for (const l of ['Loyer bas de marché', 'Loyer central de marché', 'Loyer haut de marché', 'Taux bas', 'Taux de référence', 'Taux haut']) await sens.getByText(l, { exact: true }).waitFor();
+    await page.screenshot({ path: join(out, '40-loyer-marche-taux.png'), fullPage: true });
+    await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+    await page.getByText('Bien « T2 Montreuil encadré » ajouté à la prospection avec sa simulation.').waitFor();
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!).properties.find((p: { title: string }) => p.title === 'T2 Montreuil encadré'));
+    assert.equal(saved.rent_zone, '1');
+    assert.equal(saved.construction_year, 1930);
+    assert.equal(saved.furnished, true);
+    assert.equal(saved.market_rent.source, 'auto');
+    assert.ok(saved.market_rent.cap_hc > 0, 'fourchette et plafond enregistrés avec le bien');
+  });
+
   await step('tableau prospection : rendement, cash-flow, relance', async () => {
     await page.goto(url + '#/prospection');
     const row = page.locator('tbody tr', { hasText: 'T3 test balcon' });
@@ -1196,6 +1263,34 @@ async function main() {
     await page.getByRole('button', { name: 'Retirer l’autorisation' }).waitFor();
   });
 
+  await step('administration : données de marché (Carte des loyers, plafonds, barème, taux d’usure, réglages)', async () => {
+    await page.goto(url + '#/abonnement');
+    await page.getByRole('link', { name: 'Administration' }).click();
+    await page.getByRole('tab', { name: 'Données de marché' }).click();
+    await page.getByRole('heading', { name: 'Carte des loyers' }).waitFor();
+    await page.getByRole('cell', { name: 'Appartements 1 et 2 pièces' }).first().waitFor();
+    await page.getByLabel('Fichiers de la Carte des loyers').setInputFiles({ name: 'pred-app12-mef-dhup.csv', mimeType: 'text/csv', buffer: Buffer.from(
+      '"id_zone";"INSEE_C";"LIBGEO";"EPCI";"DEP";"REG";"loypredm2";"lwr.IPm2";"upr.IPm2";"TYPPRED";"nbobs_com";"nbobs_mail";"R2_adj"\n"1";"94033";"Fontenay-sous-Bois";"";"94";"11";"22,5";"18,1";"27,9";"commune";"500";"500";"0,7"\n') });
+    assert.equal(await page.getByLabel('Segment de pred-app12-mef-dhup.csv').inputValue(), 'appart_t1t2', 'segment reconnu d’après le nom du fichier');
+    await page.getByRole('button', { name: 'Charger le millésime 2025' }).click();
+    await page.getByLabel('Fichiers de la Carte des loyers').waitFor();
+    await page.getByRole('cell', { name: 'Est Ensemble (démonstration)' }).waitFor();
+    await page.getByLabel('Fichier des plafonds').setInputFiles({ name: 'plafonds.csv', mimeType: 'text/csv', buffer: Buffer.from(
+      'territoire;code_insee;zone;pieces;annee_min;annee_max;meuble;loyer_reference;loyer_majore;loyer_minore;debut;fin\nBordeaux;33063;A;2;;1945;non;15;18;10,5;2026-07-15;\n') });
+    await page.getByText(/1 plafonds lus \(Bordeaux\)/).waitFor();
+    await page.locator('section', { hasText: 'Plafonds d’encadrement' }).getByRole('button', { name: 'Enregistrer', exact: true }).last().click();
+    await page.getByText('1 plafonds enregistrés.').waitFor();
+    await page.getByRole('cell', { name: 'Bordeaux' }).waitFor();
+    await page.getByLabel('20 ans').fill('3,6');
+    await page.getByRole('button', { name: 'Enregistrer le barème' }).click();
+    await page.getByText(/Barème du .* enregistré\./).waitFor();
+    await page.getByLabel('Trimestre').fill('2027-Q1');
+    await page.locator('.usury-pair', { hasText: 'Taux fixe, 20 ans et plus' }).first().getByLabel('Usure').fill('5,5');
+    await page.getByRole('button', { name: 'Enregistrer les taux d’usure' }).click();
+    await page.getByText('Taux d’usure du 2027, trimestre 1 enregistrés.').waitFor();
+    await page.screenshot({ path: join(out, '41-administration-donnees-marche.png'), fullPage: true });
+  });
+
   await step('formule Découverte : limites appliquées, données existantes conservées', async () => {
     await page.goto(url + '#/abonnement');
     await page.getByText('Biens détenus', { exact: true }).waitFor();
@@ -1226,6 +1321,35 @@ async function main() {
     await page.goto(url + '#/declaration');
     await page.getByRole('heading', { name: 'Déclaration fiscale' }).waitFor();
     assert.equal(await page.getByText('Déclaration fiscale non incluse').count(), 0, 'toutes les fonctions rouvertes');
+  });
+
+  await step('nouveau bail : loyer de marché pour la relocation, repris sur clic', async () => {
+    await page.goto(url + '#/biens');
+    await page.getByRole('button', { name: 'Ajouter un bien détenu' }).first().click();
+    await page.getByLabel('Titre *').fill('T2 Fontenay détenu');
+    await page.getByRole('combobox', { name: 'Adresse' }).fill('12 rue de Par');
+    await page.getByRole('option', { name: '12 Rue de Paris 93100 Montreuil' }).click();
+    await page.getByLabel('Surface', { exact: true }).fill('40');
+    await page.getByLabel('Pièces').fill('2');
+    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    await page.getByRole('heading', { name: 'T2 Fontenay détenu' }).waitFor();
+    // fiche : loyer de marché calculé sur demande et enregistré avec le bien
+    await page.getByRole('button', { name: 'Calculer le loyer de marché' }).click();
+    await page.locator('.market-rent').getByText(/Fiabilité/).waitFor();
+    await page.goto(url + '#/locataires');
+    await page.getByRole('button', { name: 'Nouveau bail' }).click();
+    await page.getByLabel('Bien', { exact: true }).selectOption({ label: 'T2 Fontenay détenu' });
+    const sec = page.locator('section', { hasText: 'Loyer de marché pour cette location' });
+    await sec.getByText(/Loyer de marché, charges comprises/).waitFor();
+    await sec.getByText(/En zone tendue, le loyer d’un nouveau bail/).waitFor();
+    await page.getByLabel('Provision sur charges').fill('40');
+    const btn = sec.getByRole('button', { name: /Utiliser le loyer central/ });
+    await btn.waitFor();
+    const label = (await btn.innerText()).replace(/[  ]/g, ' ');
+    await btn.click();
+    const v = Number((await page.getByLabel('Loyer hors charges').inputValue()).replace(/\s/g, '').replace(',', '.'));
+    assert.ok(v > 0 && label.includes(String(v).replace('.', ',')), `loyer central repris dans le bail : ${v} (${label})`);
+    await page.getByRole('button', { name: 'Annuler' }).first().click();
   });
 
   await step('amortissement : durée personnalisée sur une dépense, reprise dans la déclaration', async () => {

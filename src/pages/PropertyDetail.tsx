@@ -6,6 +6,8 @@ import { CHANNEL_LABELS, EVENT_LABELS, OCCUPATION_LABELS, OWNERSHIP_LABELS, STAT
 import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, dpeAlerts, isOwned, loanInfo, metrics, ownedCashflow, rentWithCharges, scenarioResult, primaryScenario } from '../domain/property.ts';
 import { cfTitle } from './propertyShared.tsx';
 import { EstimatePanel } from '../ui/EstimatePanel.tsx';
+import { MarketRentPanel } from '../ui/MarketRentPanel.tsx';
+import { RenegotiationHint } from '../ui/LoanRateHint.tsx';
 import { normalizeInputs, simulate, simulatedCashflow } from '../domain/simulator.ts';
 import { Button, EmptyState, KeyValue, PageHeader, Section, StatusBadge, Tabs, TextInput, useConfirm } from '../ui/components.tsx';
 import { href, navigate } from '../ui/router.ts';
@@ -36,7 +38,10 @@ export function PropertyDetailPage({ id }: { id: string }) {
   const openTasks = tasks.filter((t) => !t.done_at).length;
   const r = m.result;
   const today = todayParis();
-  const cf = owned ? ownedCashflow(p, propertyRentalSummary(p.id, Number(today.slice(0, 4)), today, data).activeLeases, r, today) : null;
+  const activeLeases = owned ? propertyRentalSummary(p.id, Number(today.slice(0, 4)), today, data).activeLeases : [];
+  const cf = owned ? ownedCashflow(p, activeLeases, r, today) : null;
+  const activeLease = activeLeases[0];
+  const simCharges = r && r.monthlyRentWithCharges > r.monthlyRent ? Math.round((r.monthlyRentWithCharges - r.monthlyRent) * 100) / 100 : null;
   const loan = owned ? loanInfo(p, today) : null;
 
   const tabs: [Tab, string][] = [
@@ -139,6 +144,7 @@ export function PropertyDetailPage({ id }: { id: string }) {
               ] as [string, React.ReactNode][]),
               ...(p.legacy_ref ? [['Origine', `Reprise de l’ancienne version (${p.legacy_ref})`] as [string, string]] : []),
             ]} />
+            {owned && loan && !loan.finished && <RenegotiationHint rate={p.loan_rate} years={p.loan_years} start={p.loan_start_date} />}
           </Section>
           <div>
             {(p.vigilance.length > 0 || dpeAlerts(p.dpe, todayParis()).length > 0) && (
@@ -153,6 +159,12 @@ export function PropertyDetailPage({ id }: { id: string }) {
               <EstimatePanel value={p} input={p} onChange={async (patch) => { await update('properties', p, patch, `Le bien « ${p.title} »`); }}
                 compareTo={owned ? (p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null) : (r?.offerFai ?? p.offer_price)}
                 compareLabel={owned ? 'Coût d’acquisition' : 'Prix proposé (frais d’agence inclus)'} />
+            </Section>
+            <Section title={owned ? 'Loyer de marché (relocation)' : 'Loyer de marché'}>
+              <MarketRentPanel auto={false} value={p.market_rent}
+                input={{ ...p, furnished: activeLease ? activeLease.furnished : p.furnished, chargesMonthly: owned ? (activeLease?.charges_amount ?? p.charges_provision ?? null) : simCharges }}
+                onChange={async (m) => { await update('properties', p, { market_rent: m }, `Le bien « ${p.title} »`); }}
+                rentHc={owned ? activeLease?.rent_hc ?? null : r?.monthlyRent || null} rentLabel={owned ? 'Loyer du bail en cours' : 'Loyer de la simulation'} />
             </Section>
             <Section title="Commentaires">
               {p.comments ? <p className="prewrap">{p.comments}</p> : <p className="muted">Aucun commentaire.</p>}

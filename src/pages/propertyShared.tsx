@@ -51,6 +51,13 @@ export function cfTitle(cf: CashflowEstimate | null): string {
   return `Loyer CC ${money(cf.income)} − charges ${money(cf.charges)} − crédit ${money(cf.loan)}${cf.loanSource === 'simulation' ? ' (simulation)' : ''}, par mois, avant impôts`;
 }
 
+/** Écart (%) entre le loyer hors charges du bien et le loyer central de marché hors charges (charges comprises à défaut). */
+export function marketRentGap(p: Property): number | null {
+  const m = p.market_rent;
+  const ref = m?.hc?.mid ?? m?.mid;
+  if (!m?.high || !ref || !p.estimated_rent) return null;
+  return Math.round(((p.estimated_rent - ref) / ref) * 1000) / 10;
+}
 export const estimateMid = (p: Property) => p.estimate_median ?? (p.estimate_low != null && p.estimate_high != null ? Math.round((p.estimate_low + p.estimate_high) / 2) : null);
 export const estimateRange = (p: Property) => (p.estimate_low != null && p.estimate_high != null ? `${money(p.estimate_low)} – ${money(p.estimate_high)}` : '—');
 export function estimateGap(price: number | null | undefined, p: Property): number | null {
@@ -79,6 +86,10 @@ export function prospectColumns(): Column<PropertyRow>[] {
       render: (r) => { const g = estimateGap(r.m.result?.offerFai ?? r.p.offer_price, r.p); return g === null ? '—' : <span className={g > 5 ? 'neg' : g < -5 ? 'pos' : ''}>{g > 0 ? '+' : ''}{pct(g)}</span>; } },
     { id: 'works', label: 'Travaux', value: (r) => r.p.works_budget, kind: 'money', align: 'right', render: (r) => money(r.p.works_budget), defaultHidden: true },
     { id: 'rent', label: 'Loyer hors charges', value: (r) => r.p.estimated_rent, kind: 'money', align: 'right', render: (r) => money(r.p.estimated_rent), defaultHidden: true },
+    { id: 'marketrent', label: 'Loyer de marché central (CC)', value: (r) => (r.p.market_rent?.high ? r.p.market_rent.mid : null), kind: 'money', align: 'right',
+      render: (r) => (r.p.market_rent?.high ? <span title={`Bas ${money(r.p.market_rent.low)}, haut ${money(r.p.market_rent.high)}${r.p.market_rent.cap_hc != null ? ' (plafond légal)' : ''}`}>{money(r.p.market_rent.mid)}</span> : '—'), defaultHidden: true },
+    { id: 'rentgap', label: 'Écart loyer / marché', value: (r) => marketRentGap(r.p), kind: 'percent', align: 'right', defaultHidden: true,
+      render: (r) => { const g = marketRentGap(r.p); return g === null ? '—' : <span className={g > 10 ? 'neg' : ''}>{g > 0 ? '+' : ''}{pct(g)}</span>; } },
     { id: 'yield', label: 'Rendement brut', value: (r) => r.m.result?.grossYield ?? null, kind: 'percent', align: 'right', render: (r) => pct(r.m.result?.grossYield), mobile: true },
     { id: 'cashflow', label: 'Cash-flow / mois', value: (r) => simulatedCashflow(r.m.result), kind: 'money', align: 'right',
       render: (r) => { const cf = simulatedCashflow(r.m.result); return cf === null ? <span className="muted" title="Renseignez le loyer au m² pour lancer la simulation">—</span> : <span className={tone(cf)}>{money(cf)}</span>; }, mobile: true },

@@ -160,6 +160,14 @@ Enregistrez. L'application relit l'abonnement à chaque changement : la nouvelle
 3. Supabase → Authentication → URL Configuration : l'adresse de l'application doit figurer dans les Redirect URLs (déjà fait si vous avez suivi la partie 1), pour que le locataire revienne sur son espace après avoir confirmé son compte.
 4. Offre Découverte : la migration règle l'essai sur 30 jours en formule Découverte. Elle ne s'applique qu'une fois « Appliquer les limites des formules » activé dans Administration ; ensuite, un compte de plus de 30 jours sans abonnement passe en consultation seule.
 
+## 6 bis. Loyers de marché et taux de crédit
+
+1. Supabase SQL Editor : exécutez `supabase/migrations/20261030000100_loyers_marche_taux.sql` (taux d'usure du 4e trimestre 2026 inclus).
+2. Téléchargez les 4 fichiers CSV de la [Carte des loyers 2025](https://www.data.gouv.fr/datasets/carte-des-loyers-indicateurs-de-loyers-dannonce-par-commune-en-2025/), puis Administration → Données de marché → Carte des loyers : sélectionnez-les ensemble, vérifiez le segment de chacun, « Charger le millésime 2025 ». À refaire chaque décembre.
+3. Plafonds d'encadrement : remplissez le modèle `docs/modeles/plafonds-encadrement.csv` d'après les arrêtés préfectoraux (Paris : jeu « Logement – Encadrement des loyers » de data.gouv.fr), puis chargez-le. Si la prolongation de l'encadrement est adoptée, prolongez la validité de chaque territoire.
+4. Barème des taux : saisissez chaque mois les taux à 10, 15, 20 et 25 ans.
+5. Taux d'usure : saisissez ceux du trimestre suivant dès leur publication par la Banque de France (fin mars, juin, septembre, décembre).
+
 ## 7. Assistant conversationnel (facultatif)
 
 Sans réglage, l'assistant répond à partir de l'aide intégrée (gratuit). Pour des réponses aux questions libres :

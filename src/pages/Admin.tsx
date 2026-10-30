@@ -6,10 +6,11 @@ import { date, dateTime, todayParis } from '../domain/format.ts';
 import { Button, Checkbox, EmptyState, Modal, NotAvailable, NumberInput, PageHeader, Pill, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../ui/components.tsx';
 import { planPrice } from './Subscription.tsx';
 import { TIERS, tierDef, type TierCode } from '../domain/plans.ts';
+import { MarketAdmin } from './MarketAdmin.tsx';
 
 const TIER_OPTIONS = TIERS.map((t) => [t.code, t.label] as const);
 
-type Tab = 'comptes' | 'offres' | 'acces' | 'incidents' | 'journal' | 'prospects';
+type Tab = 'comptes' | 'offres' | 'acces' | 'marche' | 'incidents' | 'journal' | 'prospects';
 const LEAD_STATUS: [Lead['status'], string][] = [['nouveau', 'Nouveau'], ['contacte', 'Contacté'], ['demo', 'Démonstration'], ['converti', 'Converti'], ['perdu', 'Perdu']];
 
 export function AdminPage() {
@@ -27,10 +28,11 @@ export function AdminPage() {
   return (
     <>
       <PageHeader title="Administration" subtitle="Comptes, offres, contrôle d’accès, incidents et journal. Aucune donnée immobilière des abonnés n’est visible ici." />
-      <Tabs tabs={[['comptes', 'Comptes'], ['offres', 'Offres et tarifs'], ['acces', 'Application des formules'], ['incidents', 'Incidents'], ['journal', 'Journal'], ['prospects', 'Prospects commerciaux']]} value={tab} onChange={setTab} />
+      <Tabs tabs={[['comptes', 'Comptes'], ['offres', 'Offres et tarifs'], ['acces', 'Application des formules'], ['marche', 'Données de marché'], ['incidents', 'Incidents'], ['journal', 'Journal'], ['prospects', 'Prospects commerciaux']]} value={tab} onChange={setTab} />
       {tab === 'comptes' && <Users run={run} api={api} />}
       {tab === 'offres' && <Plans plans={platform.plans} run={run} onSaved={refreshPlatform} api={api} />}
       {tab === 'acces' && <AccessConfig run={run} onSaved={refreshPlatform} api={api} />}
+      {tab === 'marche' && <MarketAdmin run={run} />}
       {tab === 'incidents' && <Incidents run={run} api={api} />}
       {tab === 'journal' && <Journal run={run} api={api} />}
       {tab === 'prospects' && <Leads run={run} api={api} />}

@@ -7,6 +7,8 @@ import { RepoError } from './repo.ts';
 import type { DvfEstimate, DvfType } from '../../supabase/functions/_shared/dvf.ts';
 import type { ListingData } from '../../supabase/functions/_shared/listing.ts';
 import { demoPlan, type PlanInfo, type TierCode } from '../domain/plans.ts';
+import { createDemoMarket, createSupabaseMarket, type MarketApi } from './market.ts';
+import { todayParis } from '../domain/format.ts';
 
 export type SubscriptionStatus = 'none' | 'trialing' | 'active' | 'past_due' | 'unpaid' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'paused';
 
@@ -73,6 +75,8 @@ export interface PlatformApi {
   /** Lien de téléchargement (PDF) d'une facture du compte. */
   invoiceUrl(id: string): Promise<string>;
   setSupportAccess(until: string | null): Promise<void>;
+  /** Données de marché : loyers (Carte des loyers, encadrement) et taux de crédit. */
+  market: MarketApi;
   admin: {
     users(): Promise<AdminUser[]>;
     setManualAccess(userId: string, until: string | null, note: string, tier?: TierCode): Promise<void>;
@@ -186,6 +190,7 @@ export function createSupabasePlatform(sb: SupabaseClient): PlatformApi {
       if (until) check(await sb.from('support_access').upsert({ user_id: uid, granted_until: until }));
       else check(await sb.from('support_access').delete().eq('user_id', uid));
     },
+    market: createSupabaseMarket(sb),
     admin: {
       async users() { return check(await sb.rpc('iz_admin_users')) as AdminUser[]; },
       async setManualAccess(userId, until, note, tier = 'pro') { check(await sb.rpc('iz_admin_set_manual_access', { p_user: userId, p_until: until, p_note: note, p_tier: tier })); },
@@ -255,6 +260,7 @@ export function createDemoPlatform(storage: Storage, userId: () => string | null
     portal: async () => noPay(),
     invoiceUrl: async () => noPay(),
     async setSupportAccess(until) { const d = read(); d.supportUntil = until; write(d); },
+    market: createDemoMarket(storage, () => todayParis()),
     admin: {
       async users() {
         const id = userId() ?? 'demo';
