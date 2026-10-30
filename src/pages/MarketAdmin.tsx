@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useStore } from '../data/store.tsx';
-import type { IndicatorStat, MarketConfig, StoredCap } from '../data/market.ts';
-import { date, todayParis } from '../domain/format.ts';
+import type { IndicatorStat, MarketConfig, StoredCap, SyncRow } from '../data/market.ts';
+import { date, dateTime, todayParis } from '../domain/format.ts';
 import { downloadBlob } from '../domain/exporting.ts';
 import {
   CAPS_HEADER, ENCADREMENT_END, parseRentCapsCsv, parseRentIndicatorsCsv, RENT_SEGMENTS, SEGMENT_LABELS, segmentFromFileName, type RentCap, type RentIndicator, type RentSegment,
@@ -32,15 +32,17 @@ export function MarketAdmin({ run }: { run: Run }) {
   const [stats, setStats] = useState<IndicatorStat[] | null>(null);
   const [caps, setCaps] = useState<StoredCap[] | null>(null);
   const [loan, setLoan] = useState<{ benchmarks: RateBenchmark[]; usury: UsuryRate[]; config: MarketConfig } | null>(null);
+  const [sync, setSync] = useState<SyncRow[] | null | undefined>(undefined);
   const reload = useCallback(async () => {
     resetMarketRentCache(); resetLoanData();
-    const [s, c, l] = await Promise.all([run(() => api.admin.indicatorStats()), run(() => api.admin.caps()), run(() => api.loanData())]);
-    setStats(s); setCaps(c); setLoan(l);
+    const [s, c, l, y] = await Promise.all([run(() => api.admin.indicatorStats()), run(() => api.admin.caps()), run(() => api.loanData()), run(() => api.admin.syncStatus())]);
+    setStats(s); setCaps(c); setLoan(l); setSync(y);
   }, [api, run]);
   useEffect(() => { void reload(); }, [reload]);
   return (
     <>
       <p className="note">Données publiques communes à tous les comptes, utilisées par la fiche du bien, le simulateur et les nouveaux baux. Une mise à jour ne modifie pas les fourchettes déjà enregistrées avec les biens.</p>
+      <AutoSync rows={sync} demo={repo.mode === 'demo'} />
       <RentIndicators stats={stats} run={run} onDone={reload} />
       <RentCaps caps={caps} run={run} onDone={reload} />
       <Benchmarks loan={loan} run={run} onDone={reload} />
@@ -265,9 +267,47 @@ function Settings({ loan, run, onDone }: { loan: { config: MarketConfig } | null
           hint="Écart entre loyer haut et bas, rapporté au loyer central : fiabilité « Faible » au-delà" />
         <NumberInput label="Coefficient meublé par défaut" value={c.furnished_coef} onChange={(v) => setC({ ...c, furnished_coef: v ?? 1.15 })} hint="1,15 = loyer d’une location vide + 15 %" />
         <NumberInput label="Écart de renégociation" suffix="point" value={c.renegotiation_gap} onChange={(v) => setC({ ...c, renegotiation_gap: v ?? 0.7 })} hint="Crédit d’un bien détenu au-dessus du barème : « Renégociation à étudier »" />
+        {c.encadrement_end !== undefined && (
+          <TextInput label="Fin de l’encadrement des loyers" type="date" value={c.encadrement_end ?? ''} onChange={(v) => setC({ ...c, encadrement_end: v || null })}
+            hint="Appliquée aux plafonds chargés automatiquement (Paris). À reporter si la loi prolonge l’encadrement." />
+        )}
       </div>
       <Button onClick={async () => { if (await run(() => repo.platform.market.admin.saveConfig(c), 'Réglages enregistrés.') !== null) onDone(); }}>Enregistrer les réglages</Button>
     </Section>
   );
 }
 
+
+const SOURCE_LABEL = (k: string): string => {
+  const c = /^carte:(\d{4}):(.+)$/.exec(k);
+  if (c) return `Carte des loyers ${c[1]} – ${SEGMENT_LABELS[c[2] as RentSegment] ?? c[2]}`;
+  const u = /^usure:(\d{4})-Q(\d)$/.exec(k);
+  if (u) return `Taux d’usure ${u[1]}, trimestre ${u[2]}`;
+  const p = /^paris:(\d{4})$/.exec(k);
+  if (p) return `Plafonds de Paris ${p[1]}-${Number(p[1]) + 1}`;
+  return k === 'derniere-erreur' ? 'Dernière erreur signalée' : k;
+};
+
+/** Chargements automatiques de la nuit (fonction serveur « marche »). */
+function AutoSync({ rows, demo }: { rows: SyncRow[] | null | undefined; demo: boolean }) {
+  if (rows === undefined) return null;
+  return (
+    <Section title="Mises à jour automatiques">
+      <p className="small">Chaque nuit, Immo-Zen vérifie et charge dès leur publication : la Carte des loyers (data.gouv.fr, en décembre), les taux d’usure (Banque de France, chaque trimestre) et les plafonds de Paris (Ville de Paris, au 1er juillet). Le 1er de chaque mois, un e-mail rappelle à l’adresse de support ce qui reste à saisir : le barème des taux et les arrêtés des autres territoires encadrés.</p>
+      {demo ? <p className="muted">Mode démonstration : aucune mise à jour automatique.</p>
+        : rows === null ? <p className="note-warn note">Mises à jour automatiques non installées : exécutez la migration 20261030000200, déployez la fonction « marche » et planifiez-la (supabase/scheduling-marche.sql).</p>
+          : !rows.length ? <p className="muted">Aucun chargement automatique pour l’instant (première exécution la nuit prochaine).</p> : (
+            <div className="dt-scroll"><table className="dt-table compact">
+              <thead><tr><th>Donnée</th><th>Chargée le</th><th>Détail</th></tr></thead>
+              <tbody>{rows.map((r) => (
+                <tr key={r.source} className={r.source === 'derniere-erreur' ? 'neg' : undefined}>
+                  <td>{SOURCE_LABEL(r.source)}</td><td>{dateTime(r.loaded_at)}</td>
+                  <td>{r.source === 'derniere-erreur' ? r.version : Object.entries(r.details).map(([k, v]) => `${k} : ${typeof v === 'number' ? v.toLocaleString('fr-FR') : String(v)}`).join(', ')}</td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          )}
+      <p className="muted small">Un échec de chargement apparaît dans l’onglet Incidents et est signalé par e-mail. Les saisies manuelles ci-dessous restent possibles à tout moment.</p>
+    </Section>
+  );
+}

@@ -1,4 +1,4 @@
-# Déploiement des fonctions serveur Supabase (daily, platform, stripe-webhook, assistant, dvf, annonce) et de leurs secrets.
+# Déploiement des fonctions serveur Supabase (daily, marche, platform, stripe-webhook, assistant, dvf, annonce) et de leurs secrets.
 # Lancement manuel : Actions → « Fonctions serveur Supabase » → Run workflow.
 # À définir dans Settings → Secrets and variables → Actions :
 #   Secret obligatoire : SUPABASE_ACCESS_TOKEN (supabase.com → Account → Access Tokens)
@@ -78,6 +78,8 @@ jobs:
           echo "Modèles d'e-mails en français appliqués."
       - name: Fonction daily (tâches quotidiennes, e-mails)
         run: supabase functions deploy daily --project-ref "$PROJECT_REF" --no-verify-jwt
+      - name: Fonction marche (données de marché, chaque nuit)
+        run: supabase functions deploy marche --project-ref "$PROJECT_REF" --no-verify-jwt
       - name: Fonction stripe-webhook
         run: supabase functions deploy stripe-webhook --project-ref "$PROJECT_REF" --no-verify-jwt
       - name: Fonction platform (paiement, espace client, invitations)

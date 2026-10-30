@@ -62,7 +62,8 @@ export async function lookupMarketRent(i: LookupInput, today: string, deps: {
   if (!picked) throw new MarketRentError(data.indicators.length
     ? 'Pas d’indicateur de loyer pour ce type de logement dans cette commune : saisissez la fourchette à la main.'
     : 'Aucun indicateur de loyer pour cette commune (Carte des loyers non chargée ou commune inconnue) : saisissez la fourchette à la main.');
-  const caps = data.caps.filter((c) => c.insee === insee);
+  // plafonds de l'arrondissement et, à défaut de rattachement, de la commune entière (Paris : 75056)
+  const caps = data.caps.filter((c) => c.insee === insee || (codes.includes(c.insee) && c.insee !== insee && !data.caps.some((x) => x.insee === insee)));
   const found = findCap(caps, { zone: i.rent_zone ?? null, rooms: i.rooms ?? null, year: i.construction_year ?? null, furnished: !!i.furnished, today });
   const mr = computeMarketRent({
     indicator: picked.indicator, fallback: picked.fallback, surface: i.surface!, furnished: !!i.furnished,

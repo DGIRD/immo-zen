@@ -35,9 +35,24 @@ Expression de besoin des 29 et 30 octobre 2026. Calculs : `src/domain/marketRent
 - Scénarios (simulateur) : cash-flow et rendement brut aux loyers bas, central et haut de marché, et aux taux référence − 0,3, référence, référence + 0,3 point.
 - Biens détenus : taux du crédit comparé au barème de la durée restante ; « Renégociation à étudier » au-delà de 0,7 point (réglable).
 
+## Mise à jour automatique (fonction serveur « marche », chaque nuit)
+
+| Donnée | Source interrogée | Publication | Chargement |
+|---|---|---|---|
+| Carte des loyers | API data.gouv.fr, jeu `carte-des-loyers-indicateurs-de-loyers-dannonce-par-commune-en-AAAA` (année en cours, sinon précédente) | Décembre | Automatique : segment par segment dès qu'un fichier est nouveau ou republié (somme de contrôle) ; reprise la nuit suivante si le temps manque (100 s par exécution) |
+| Taux d'usure | Page publique de la Banque de France `taux-dusure-AAAA-qN`, trimestre en cours et suivant | Fin de chaque trimestre | Automatique dès publication ; un trimestre déjà présent (saisi à la main) n'est jamais écrasé |
+| Plafonds de Paris | Données ouvertes de la Ville de Paris (`logement-encadrement-des-loyers`, année) | 1er juillet | Automatique : un plafond par quartier administratif (zone = quartier), rangé sous son arrondissement ; validité du 1er juillet au 30 juin, au plus tard à la fin de l'encadrement (réglage) |
+| Barème des taux par durée | — (Crédit Logement/CSA : reproduction soumise à accord) | Mensuelle | Saisie par l'administrateur ; rappel par e-mail le 1er du mois |
+| Plafonds des 8 autres territoires | — (arrêtés préfectoraux en PDF) | Annuelle | Chargement du modèle CSV ; rappel quand un arrêté a plus d'un an ou expire dans 45 jours |
+
+- Garde-fous : fichier jugé incomplet (moins de 1 000 communes, moins de 500 plafonds de Paris, tableau d'usure incomplet) : rien n'est remplacé ; chaque source est indépendante ; remplacement en une transaction (plafonds) ou par lots ordonnés (Carte).
+- Suivi : Administration → Données de marché → « Mises à jour automatiques » (dernier chargement de chaque source) ; journal `job_runs` (« marche ») ; un échec apparaît dans Incidents et est signalé par e-mail, une fois par semaine au plus pour la même erreur.
+- Rappel du 1er du mois (adresse de support) : barème à saisir, usure du trimestre manquante, millésime ancien, arrêtés à vérifier, fin de l'encadrement dans moins de 45 jours, et ce qui a été chargé ou a échoué.
+- Mise en route : migration `20261030000200_donnees_marche_auto.sql`, workflow « Fonctions serveur Supabase » (fonction `marche`), puis `supabase/scheduling-marche.sql` dans le SQL Editor. Aucune clé d'API.
+
 ## Limites
 
-- Données de marché chargées à la main par l'administrateur (fichiers data.gouv.fr, arrêtés préfectoraux, valeurs de la Banque de France) : pas encore de récupération automatique (l'API Webstat de la Banque de France demande une inscription ; à brancher dans une fonction serveur planifiée).
+- Formats des sources lus d'après leur publication au 30/10/2026, sans accès réseau depuis l'environnement de développement : testés sur des réponses simulées. Un changement de format est détecté (rien n'est remplacé) et signalé.
 - Zone d'encadrement choisie par l'utilisateur, pas déduite de l'adresse (contours non chargés).
 - Pas de tendance mensuelle des taux au tableau de bord (série MIR1 de la Banque de France non chargée).
 - La fourchette ne tient compte ni de l'étage, ni du DPE, ni de l'état, ni des extérieurs.
