@@ -252,8 +252,25 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
   ];
   async function saveLines(changes: { row: LedgerRow; values: Record<string, string | number | null> }[]) {
     let n = 0;
+    /** Documents annulés pour permettre la modification, à réémettre ensuite (mois → type). */
+    const reissue = new Map<string, { lease_id: string; month: string; kind: 'quittance' | 'recu' }>();
+    let cancelled = 0;
     const ok = await store.call(async (repo) => {
       for (const { row, values } of changes) {
+        // quittance ou reçu émis sur ce mois : annulé, puis réémis après la modification si le mois le permet encore
+        {
+          const d = await repo.loadAll();
+          const ids = new Set([row.loyer!.id, ...row.others.map((c) => c.id), ...(row.report ? [row.report.id] : [])]);
+          const pays = d.payments.filter((p) => row.payments.some((x) => x.id === p.id));
+          const docs = d.receipts.filter((r) => !r.cancelled_at && (ids.has(r.charge_id) || (r.extra_lines ?? []).some((x) => ids.has(x.charge_id))));
+          for (const r of [...new Map([...docs, ...pays.flatMap((p) => receiptsCovering(p, d))].map((r) => [r.id, r])).values()]) {
+            await repo.cancelReceipt(r.id, 'Ligne modifiée dans la grille');
+            cancelled++;
+            const m = r.period_start.slice(0, 7);
+            const k = `${r.lease_id}|${m}`;
+            reissue.set(k, { lease_id: r.lease_id, month: m, kind: r.kind === 'quittance' || reissue.get(k)?.kind === 'quittance' ? 'quittance' : 'recu' });
+          }
+        }
         const snap = await repo.loadAll();
         const loyer = snap.charges.find((c) => c.id === row.loyer!.id);
         if (!loyer) continue;
@@ -341,10 +358,12 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
         n++;
       }
       await syncLedgerWith(repo, { leaseIds: [...new Set(changes.map((c) => c.row.lease_id))] });
-      return n;
+      // réémission : quittance si le mois est toujours intégralement réglé, sinon reçu partiel s'il y en avait un
+      const again = reissue.size ? await issueMonthDocs(repo, [...reissue.values()]) : { q: 0, r: 0, issued: [] };
+      return { n, again: again.q + again.r };
     });
-    if (ok) store.notify(`${ok} ligne${ok > 1 ? 's' : ''} modifiée${ok > 1 ? 's' : ''}.`);
-    return ok ?? 0;
+    if (ok) store.notify(`${ok.n} ligne${ok.n > 1 ? 's' : ''} modifiée${ok.n > 1 ? 's' : ''}.${cancelled ? ` ${cancelled} document${cancelled > 1 ? 's' : ''} annulé${cancelled > 1 ? 's' : ''}${ok.again ? `, ${ok.again} réémis avec un nouveau numéro` : ', non réémis (mois plus intégralement réglé)'}.` : ''}`);
+    return ok?.n ?? 0;
   }
 
   const exportCols: ExportColumn<LedgerRow>[] = [
@@ -410,9 +429,8 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
       )}
       {grid === 'lignes' ? (
         <GridEditor rows={gridRows} columns={lineGrid} rowKey={(r) => r.key} rowLabel={(r) => `${monthLabel(`${r.month}-01`)}${fixedLease ? '' : ` – ${labelOfLease(r.lease_id)}`}`}
-          lock={(r) => (r.quittance ? `Quittance ${r.quittance.number} : supprimez-la pour modifier` : null)}
           flag={(r) => (isDupRow(r) ? <DupPill title="Doublon possible" /> : null)}
-          note={<>Toutes les colonnes du tableau, selon les filtres. Modifiables : échéance, loyer, charges, autre somme due (une par mois ; 0 la retire), réglé (un seul paiement dans le mois ; un montant saisi sur un mois sans paiement crée le paiement, 0 le supprime), date de règlement (celle du dernier paiement du mois), statut (« Réglé » ajoute le paiement manquant, « Impayé » supprime les paiements du mois, « Annulé » annule la ligne){settings.receivedMode === 'confirmation' ? ', reçu' : ''}. Le total, l’écart, le statut et les reports se recalculent à l’enregistrement. Une ligne quittancée n’est pas modifiable.</>}
+          note={<>Toutes les colonnes du tableau, selon les filtres. Modifiables : échéance, loyer, charges, autre somme due (une par mois ; 0 la retire), réglé (un seul paiement dans le mois ; un montant saisi sur un mois sans paiement crée le paiement, 0 le supprime), date de règlement (celle du dernier paiement du mois), statut (« Réglé » ajoute le paiement manquant, « Impayé » supprime les paiements du mois, « Annulé » annule la ligne){settings.receivedMode === 'confirmation' ? ', reçu' : ''}. Le total, l’écart, le statut et les reports se recalculent à l’enregistrement. Une ligne quittancée reste modifiable : sa quittance est annulée, puis réémise avec un nouveau numéro si le mois est toujours intégralement réglé (l’ancienne reste dans l’historique).</>}
           onSave={saveLines} onClose={() => setGrid(null)} />
       ) : grid === 'paiements' ? (
         <PaymentsGrid payments={scopePayments} dupIds={dupPays.ids} onClose={() => setGrid(null)} />
