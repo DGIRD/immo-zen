@@ -40,6 +40,7 @@ npm run build && npm run test:e2e   # parcours navigateur bureau et mobile, capt
 | [DECLARATION-FISCALE](docs/DECLARATION-FISCALE.md) | Calcul des cases de la déclaration, sources |
 | [MISE-EN-SERVICE](docs/MISE-EN-SERVICE.md) | OVH, Resend, Stripe : actions à faire |
 | [ABONNEMENTS](docs/ABONNEMENTS.md) | Stripe, accès, administration, mise en service |
+| [LOYERS-ET-TAUX](docs/LOYERS-ET-TAUX.md) | Loyer de marché, encadrement, taux de crédit et usure |
 | [TESTS](docs/TESTS.md) | Ce qui est testé et derniers résultats |
 
 L'ancienne application est conservée, non publiée, dans `legacy/idf-invest/` pour référence.

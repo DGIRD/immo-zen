@@ -39,6 +39,8 @@ export interface SimulationInputs {
   insuranceRate: number;
   deferralMonths: number;
   deferralType: DeferralType;
+  /** Emprunteur : particulier ou personne morale (SCI) ; détermine le taux d'usure applicable. */
+  borrower: 'particulier' | 'personne_morale';
   rentMode: RentMode;
   /** Loyer au m² (hors charges, par mois), fourchette basse et haute. */
   rentM2Low: number;
@@ -88,6 +90,7 @@ export const DEFAULT_INPUTS: SimulationInputs = {
   insuranceRate: 0.3,
   deferralMonths: 0,
   deferralType: 'aucun',
+  borrower: 'particulier',
   rentMode: 'bas',
   rentM2Low: 0,
   rentM2High: 0,
@@ -151,6 +154,7 @@ export function normalizeInputs(partial: Partial<Record<keyof SimulationInputs, 
   if (p.notaryMode === 'percent' || p.notaryMode === 'amount') out.notaryMode = p.notaryMode;
   if (p.deferralType === 'aucun' || p.deferralType === 'partiel' || p.deferralType === 'total') out.deferralType = p.deferralType;
   if (typeof p.useLoan === 'boolean') out.useLoan = p.useLoan;
+  if (p.borrower === 'particulier' || p.borrower === 'personne_morale') out.borrower = p.borrower;
   if (p.rentMode === 'bas' || p.rentMode === 'haut' || p.rentMode === 'manuel') out.rentMode = p.rentMode;
   // Scénario enregistré avant l'ajout du loyer au m² : le loyer saisi est conservé tel quel.
   else if (p.monthlyRent !== undefined) out.rentMode = 'manuel';

@@ -176,6 +176,23 @@ Expression de besoin du 29/10/2026. Migration à exécuter : `20261029000100_loy
 
 Limites : les reports et la répartition sont calculés par l'application (à l'ouverture de Loyers et paiements et après chaque écriture), pas par la tâche serveur du 1er du mois ; en attendant, la dette d'un mois non encore reporté reste comptée sur sa ligne d'origine (jamais deux fois). Une somme déjà quittancée n'est jamais modifiée par la reprise.
 
+## Loyers de marché et taux de crédit (30 octobre 2026)
+
+Expression de besoin des 29-30/10/2026, règles : [LOYERS-ET-TAUX](LOYERS-ET-TAUX.md). Migration à exécuter : `20261030000100_loyers_marche_taux.sql`, puis chargement des données dans Administration → Données de marché.
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Fourchette bas / central / haut (Carte des loyers), CC et HC, segment selon les pièces, arrondissements de Paris, Lyon, Marseille, coefficient meublé 1,15, fiabilité (R², annonces, maille, fourchette large, surface) | Implémenté et testé | unitaires + e2e |
+| Calcul automatique dans la fiche unique, sur demande dans la fiche du bien, photographie enregistrée, nouveau millésime proposé, saisie manuelle | Implémenté et testé | e2e |
+| Plafond légal = loyer haut dans les territoires encadrés (zone, pièces, année, meublé), fin de validité au 23/11/2026 prolongeable, alerte si plafond dépassé | Implémenté et testé (plafonds de démonstration) / **à charger** (arrêtés des 9 territoires) | unitaires + SQL + e2e |
+| Reprise dans la simulation et dans un nouveau bail sur clic seulement ; comparaison au dernier bail (relocation) | Implémenté et testé | e2e |
+| Colonnes de prospection « Loyer de marché central », « Écart loyer / marché » (exportées) | Implémenté | — |
+| Taux de référence selon la durée (barème, interpolation), TAEG estimé, contrôle du taux d'usure (particulier / SCI), « Plafond non à jour » | Implémenté et testé | unitaires + e2e |
+| Scénarios loyer bas / central / haut et taux bas / référence / haut | Implémenté et testé | e2e |
+| Renégociation à étudier (biens détenus) | Implémenté et testé (calcul) | unitaires |
+| Administration → Données de marché : Carte des loyers (CSV), plafonds (CSV), barème, taux d'usure, réglages | Implémenté et testé (démonstration) | SQL + e2e |
+| Récupération automatique Banque de France (API Webstat), contours des zones d'encadrement, tendance mensuelle des taux | **Restant** | — |
+
 ## Restant
 
 Tout le périmètre du cahier des charges est livré. Reste **à configurer** : compte Stripe et fonctions `platform` / `stripe-webhook` ([ABONNEMENTS](ABONNEMENTS.md)), premier administrateur, envoi réel des e-mails (Resend). Pistes ultérieures : vérification de l'abonnement dans les fonctions serveur (quittances, relances), réimport de la gestion locative depuis une sauvegarde, liasse 2031/2033 complète, travaux de rénovation énergétique et déficits antérieurs dans la déclaration.

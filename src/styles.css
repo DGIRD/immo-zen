@@ -376,8 +376,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .body { display: block; }
 }
 
-.computed { display: flex; align-items: baseline; gap: .3rem; min-height: 40px; padding: .5rem .65rem; border: 1px dashed var(--line-strong); border-radius: var(--radius); background: var(--paper); font-weight: 600; }
-.computed small { font-weight: 400; color: var(--ink-soft); }
+.computed, .market-figure { display: flex; align-items: baseline; gap: .3rem; min-height: 40px; padding: .5rem .65rem; border: 1px dashed var(--line-strong); border-radius: var(--radius); background: var(--paper); font-weight: 600; }
+.computed small, .market-figure small { font-weight: 400; color: var(--ink-soft); }
 
 /* ---------- Gestion locative ---------- */
 .pill-warn { background: var(--ocre-tint); color: var(--ocre); }
@@ -554,3 +554,19 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 .pay-line .row-delete { margin-left: auto; padding: 0 .25rem; font-size: .85em; opacity: .55; }
 .pay-line .row-delete:hover, .pay-line .row-delete:focus-visible { opacity: 1; }
 .doc-lines .link { text-align: left; }
+
+/* Loyer de marché et taux de crédit */
+.market-cap { margin: .35rem 0 0; font-size: .9rem; }
+.market-cap .pill { margin-left: 0; }
+.market-edit { grid-template-columns: auto repeat(3, minmax(0, 9rem)); }
+@media (max-width: 760px) { .market-edit { grid-template-columns: 1fr; } }
+.market-rent .row { display: flex; flex-wrap: wrap; gap: .5rem; }
+.loan-hint { display: flex; flex-direction: column; gap: .3rem; padding: .6rem .8rem; background: var(--ardoise-tint); border-radius: var(--radius); font-size: .9rem; }
+.loan-hint p { margin: 0; }
+.loan-hint .btn { margin-left: .5rem; }
+.sensitivity { margin-top: 1rem; }
+.sensitivity h3 { font-size: 1rem; margin: 0 0 .4rem; }
+.sensitivity td small { display: block; }
+.usury-pair { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; align-items: end; }
+.usury-pair > .label { grid-column: 1 / -1; }
+.market-rent { display: flex; flex-direction: column; gap: .7rem; }

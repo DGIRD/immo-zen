@@ -4,11 +4,15 @@ import type { Property, PropertyStatus, PropertyType, Scenario } from '../data/t
 import { DPE_VALUES, STATUS_LABELS, STATUS_ORDER, TYPE_LABELS } from '../domain/labels.ts';
 import { AddressFields } from '../ui/AddressFields.tsx';
 import { downloadBlob, stamp, toXlsx } from '../domain/exporting.ts';
-import { money, money2, pct } from '../domain/format.ts';
+import { money, money2, pct, todayParis } from '../domain/format.ts';
 import { inputsFromProperty, isProspect, primaryScenario, prospectFieldsFromSimulation } from '../domain/property.ts';
 import { autoProvisionMonthly, autoRecoverableAnnual, ENGINE_VERSION, normalizeInputs, simulate, simulatedCashflow, summarize, type FieldError, type SimulationInputs } from '../domain/simulator.ts';
 import { Button, Checkbox, NumberInput, PageHeader, Section, Select, TextArea, TextInput } from '../ui/components.tsx';
 import { EstimatePanel, type EstimateFields } from '../ui/EstimatePanel.tsx';
+import { MarketRentPanel } from '../ui/MarketRentPanel.tsx';
+import { LoanRateHint, useLoanData } from '../ui/LoanRateHint.tsx';
+import { proposedRate, rateScenarios } from '../domain/loanRates.ts';
+import type { MarketRentSnapshot } from '../domain/marketRent.ts';
 import { ListingImport } from '../ui/ListingImport.tsx';
 import type { ListingData, ListingField } from '../../supabase/functions/_shared/listing.ts';
 import { href, navigate } from '../ui/router.ts';
@@ -47,6 +51,7 @@ export function SimulatorPage({ propertyId }: { propertyId?: string }) {
     visit_at: p?.visit_at ?? null, comments: p?.comments ?? null, vigilance: p?.vigilance ?? [],
     estimate_low: p?.estimate_low ?? null, estimate_high: p?.estimate_high ?? null, estimate_median: p?.estimate_median ?? null,
     estimate_on: p?.estimate_on ?? null, estimate_source: p?.estimate_source ?? null, estimate_details: p?.estimate_details ?? null,
+    furnished: p?.furnished ?? null, construction_year: p?.construction_year ?? null, rent_zone: p?.rent_zone ?? null, market_rent: p?.market_rent ?? null,
   });
   // nouvelle agence ou nouvel agent créés à l'enregistrement
   const [newAgency, setNewAgency] = useState('');
@@ -73,6 +78,32 @@ export function SimulatorPage({ propertyId }: { propertyId?: string }) {
     return next;
   });
   const live = outcome.ok ? outcome.result : null;
+  const loanData = useLoanData();
+  // charges mensuelles du bien, pour passer du loyer charges comprises au loyer hors charges
+  const chargesMonthly = inputs.chargesProvisionMonthly > 0 ? inputs.chargesProvisionMonthly : inputs.coproChargesAnnual > 0 ? autoProvisionMonthly(inputs.coproChargesAnnual) : null;
+  /** Reprend la fourchette de marché (hors charges) dans la simulation : uniquement sur clic. */
+  function applyMarketRange(m: MarketRentSnapshot) {
+    const s2 = inputs.surface || m.surface;
+    if (!s2) return;
+    const lo = m.hc?.low ?? m.low, hi = m.hc?.high ?? m.high;
+    setInputs((i) => ({ ...i, rentM2Low: Math.round((lo / s2) * 100) / 100, rentM2High: Math.round((hi / s2) * 100) / 100, rentMode: i.rentMode === 'manuel' ? 'bas' : i.rentMode }));
+    notify(`Loyers au m² repris de la fourchette de marché${m.hc ? ' (hors charges)' : ' (charges comprises : renseignez la provision sur charges)'}.`);
+  }
+  function applyMarketMid(m: MarketRentSnapshot) {
+    setInputs((i) => ({ ...i, rentMode: 'manuel', monthlyRent: m.hc?.mid ?? m.mid }));
+    notify(`Loyer central de marché repris : ${money(m.hc?.mid ?? m.mid)} ${m.hc ? 'hors charges' : 'charges comprises'} par mois.`);
+  }
+  /** Cash-flow selon le loyer (bas, central, haut de marché) et le taux (bas, référence, haut). */
+  const sensitivity = useMemo(() => {
+    if (!outcome.ok || !outcome.result.monthlyRent) return null;
+    const run = (patch: Partial<SimulationInputs>) => { const o = simulate({ ...inputs, ...patch }); return o.ok ? o.result : null; };
+    const m = bien.market_rent;
+    const rents = m && m.high > 0 ? ([['Loyer bas de marché', m.hc?.low ?? m.low], ['Loyer central de marché', m.hc?.mid ?? m.mid], ['Loyer haut de marché', m.hc?.high ?? m.high]] as const)
+      .map(([label, rent]) => ({ label, detail: `${money(rent)} / mois`, r: run({ rentMode: 'manuel', monthlyRent: rent }) })) : [];
+    const ref = loanData ? proposedRate(loanData.benchmarks, inputs.loanYears, todayParis())?.rate ?? inputs.interestRate : inputs.interestRate;
+    const rates = inputs.useLoan ? rateScenarios(ref).map((x) => ({ label: x.label, detail: `${pct(x.rate)}`, r: run({ interestRate: x.rate }) })) : [];
+    return [...rents, ...rates];
+  }, [outcome, inputs, bien.market_rent, loanData]);
 
   /** Reprend dans la fiche et la simulation les caractéristiques retenues de l'annonce. */
   function applyListing(l: ListingData, fields: ListingField[], finalUrl: string | null) {
@@ -111,7 +142,9 @@ export function SimulatorPage({ propertyId }: { propertyId?: string }) {
     });
     notify(`${fields.length} caractéristique${fields.length > 1 ? 's' : ''} reprise${fields.length > 1 ? 's' : ''} de l’annonce : vérifiez-les avant d’enregistrer.`);
   }
-  const dirty = JSON.stringify(inputs) !== JSON.stringify(initial) || linked !== initialProperty || JSON.stringify(bien) !== JSON.stringify(bienBase);
+  // la fourchette de marché calculée automatiquement n'est pas une modification de l'utilisateur (enregistrée avec le reste)
+  const sansMarche = (b: Bien) => JSON.stringify({ ...b, market_rent: null });
+  const dirty = JSON.stringify(inputs) !== JSON.stringify(initial) || linked !== initialProperty || sansMarche(bien) !== sansMarche(bienBase);
 
   const linkedProp = linked ? data.properties.find((p) => p.id === linked) : undefined;
   async function save() {
@@ -130,7 +163,7 @@ export function SimulatorPage({ propertyId }: { propertyId?: string }) {
       if (agentId === NEW) { const c = await create('pro_contacts', { kind: 'agent', name: newAgent.trim(), organization_id: agencyId } as never); if (!c) return; agentId = (c as { id: string }).id; setNewAgent(''); }
       const bienOut: Partial<Property> = { ...bien, agency_id: agencyId, agent_id: agentId, title: bien.title.trim().slice(0, 200) };
       // estimation : envoyée seulement si renseignée (base pas encore migrée)
-      for (const k of ['estimate_low', 'estimate_high', 'estimate_median', 'estimate_on', 'estimate_source', 'estimate_details'] as const) if (bienOut[k] == null) delete bienOut[k];
+      for (const k of ['estimate_low', 'estimate_high', 'estimate_median', 'estimate_on', 'estimate_source', 'estimate_details', 'furnished', 'construction_year', 'rent_zone', 'market_rent'] as const) if (bienOut[k] == null) delete bienOut[k];
       let prop: Property | null | undefined = linkedProp;
       let created = false;
       if (!prop) {
@@ -235,6 +268,17 @@ export function SimulatorPage({ propertyId }: { propertyId?: string }) {
                 <EstimatePanel value={bien} input={{ ...bien, surface: inputs.surface }} onChange={(p) => setBien((b) => ({ ...b, ...p }))}
                   compareTo={live?.offerFai || null} compareLabel="Prix proposé (frais d’agence inclus)" />
               </Section>
+              <Section title="Loyer de marché">
+                <MarketRentPanel value={bien.market_rent}
+                  input={{ ...bien, surface: inputs.surface, chargesMonthly }}
+                  onChange={(m) => setB('market_rent', m)}
+                  fields={{ onFurnished: (v) => setB('furnished', v), onYear: (v) => setB('construction_year', v), onZone: (v) => setB('rent_zone', v) }}
+                  rentHc={live?.monthlyRent || null} rentLabel="Loyer de la simulation"
+                  actions={(m) => <>
+                    <Button size="sm" onClick={() => applyMarketRange(m)}>Reprendre bas et haut dans la simulation</Button>
+                    <Button size="sm" onClick={() => applyMarketMid(m)}>Utiliser le loyer central</Button>
+                  </>} />
+              </Section>
             </>
           )}
 
@@ -275,6 +319,12 @@ export function SimulatorPage({ propertyId }: { propertyId?: string }) {
                   options={[['aucun', 'Aucun'], ['partiel', 'Partiel : intérêts seuls'], ['total', 'Total : intérêts capitalisés']] as const}
                   hint={inputs.deferralType === 'partiel' ? 'Pendant le différé, seuls les intérêts et l’assurance sont payés.' : inputs.deferralType === 'total' ? 'Pendant le différé, rien n’est payé hors assurance ; les intérêts s’ajoutent au capital.' : undefined} />
                 {inputs.deferralType !== 'aucun' && num('deferralMonths', 'Durée du différé', 'mois', 'Comprise dans la durée totale')}
+                <Select label="Emprunteur" value={inputs.borrower} onChange={(v) => set('borrower', v ?? 'particulier')}
+                  options={[['particulier', 'Particulier'], ['personne_morale', 'Société (SCI…)']] as const} hint="Détermine le taux d’usure applicable" />
+                {inputs.loanYears > 0 && (
+                  <LoanRateHint years={inputs.loanYears} rate={inputs.interestRate} onUseRate={(x) => set('interestRate', x)}
+                    amount={live?.loanAmount ?? 0} insuranceRate={inputs.insuranceRate} fees={inputs.guaranteeFees + inputs.dossierFees} borrower={inputs.borrower} />
+                )}
               </div>
             )}
           </Section>
@@ -368,6 +418,18 @@ export function SimulatorPage({ propertyId }: { propertyId?: string }) {
               </dl>
               <p className="muted small">Le capital remboursé n’est pas une charge : il diminue la trésorerie mais constitue votre patrimoine. Aucune fiscalité n’est calculée.</p>
               {r.warnings.length > 0 && <ul className="warnings">{r.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
+              {sensitivity && sensitivity.length > 0 && (
+                <div className="sensitivity">
+                  <h3>Scénarios</h3>
+                  <table className="dt-table">
+                    <thead><tr><th>Hypothèse</th><th className="num">Cash-flow / mois</th><th className="num">Rendement brut</th></tr></thead>
+                    <tbody>{sensitivity.map((x) => (
+                      <tr key={x.label}><td><span>{x.label}</span><small className="muted"> {x.detail}</small></td><td className="num">{money(x.r?.cashflowMonthlyYear1)}</td><td className="num">{pct(x.r?.grossYield)}</td></tr>
+                    ))}</tbody>
+                  </table>
+                  <p className="muted small">Autres hypothèses inchangées. Taux bas et haut : référence ± 0,3 point.</p>
+                </div>
+              )}
             </>
           )}
         </aside>
@@ -434,7 +496,7 @@ export function SimulatorPage({ propertyId }: { propertyId?: string }) {
 }
 
 type Bien = Pick<Property, 'title' | 'address' | 'zip' | 'city' | 'property_type' | 'rooms' | 'dpe' | 'listing_url' | 'status'
-  | 'agency_id' | 'agent_id' | 'next_action' | 'follow_up_date' | 'visit_at' | 'comments' | 'vigilance'> & EstimateFields;
+  | 'agency_id' | 'agent_id' | 'next_action' | 'follow_up_date' | 'visit_at' | 'comments' | 'vigilance' | 'furnished' | 'construction_year' | 'rent_zone' | 'market_rent'> & EstimateFields;
 const NEW = '__new__';
 function toLocalInput(iso: string): string {
   const d = new Date(iso);

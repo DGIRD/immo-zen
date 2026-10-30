@@ -1,5 +1,6 @@
 // Types des lignes, alignés sur supabase/migrations/20261013000100_immozen_core.sql
 import type { SimulationInputs, ScenarioSummary } from '../domain/simulator.ts';
+import type { MarketRentSnapshot } from '../domain/marketRent.ts';
 
 export type PropertyStatus =
   | 'repere' | 'a_contacter' | 'informations_demandees' | 'visite_a_programmer' | 'visite_programmee'
@@ -54,6 +55,11 @@ export interface Property extends Versioned {
   estimate_on?: string | null;
   estimate_source?: string | null;
   estimate_details?: EstimateDetails | null;
+  /** Loyer de marché : bien meublé, année de construction et zone d'encadrement, fourchette enregistrée. */
+  furnished?: boolean | null;
+  construction_year?: number | null;
+  rent_zone?: string | null;
+  market_rent?: MarketRentSnapshot | null;
   /** Crédit d'un bien détenu. */
   loan_amount?: number | null;
   loan_rate?: number | null;

@@ -2,7 +2,9 @@ import { IRL_KEYS, IRL_VALUES, irlLabel, latestPublishedAt } from '../../domain/
 import { useMemo, useState } from 'react';
 import { usePlan, useStore } from '../../data/store.tsx';
 import { PlanLock } from '../../ui/PlanLock.tsx';
-import type { Insert, Lease, Tenant } from '../../data/types.ts';
+import type { Insert, Lease, Property, Tenant } from '../../data/types.ts';
+import { segmentFor, type MarketRentSnapshot } from '../../domain/marketRent.ts';
+import { MarketRentPanel } from '../../ui/MarketRentPanel.tsx';
 import { date, money, money2, todayParis } from '../../domain/format.ts';
 import { LEASE_BACKLOG_WARN, leaseLedger, leaseStartIssue, leaseState, leaseTenants, monthLabel, pastChargeCount, startChangeImpact, tenantName, type StartChangeImpact } from '../../domain/rental.ts';
 import { syncLedgerWith } from './ledgerSync.ts';
@@ -192,6 +194,8 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
   if (id && !existing) return <EmptyState title="Bail introuvable" />;
   if (!owned.length) return <EmptyState title="Aucun bien détenu" action={<Button onClick={() => navigate('/bien/nouveau?mode=owned')}>Ajouter un bien détenu</Button>}>Un bail ne peut concerner qu’un bien de la rubrique Mes biens.</EmptyState>;
   const hasCharges = existing ? data.charges.some((c) => c.lease_id === existing.id) : false;
+  const selected = data.properties.find((p) => p.id === d.property_id);
+  const previous = selected ? data.leases.filter((l) => l.property_id === selected.id && l.id !== existing?.id).sort((a, b) => b.start_date.localeCompare(a.start_date))[0] : undefined;
 
   function validate() {
     const e: Record<string, string> = {};
@@ -315,6 +319,8 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
         <p className="muted small">Une modification manuelle du loyer s’applique aux échéances générées ensuite. Pour la révision annuelle, utilisez « Réviser le loyer » dans la fiche du bail.</p>
       </Section>
 
+      {!existing && selected && <RelocationRent property={selected} lease={d} previous={previous} onUse={(v) => set('rent_hc', v)} />}
+
       <Section title="Révision annuelle (IRL)">
         <Checkbox label="Le bail prévoit une révision annuelle selon l’indice de référence des loyers (IRL)" checked={!!d.irl_enabled}
           onChange={(v) => setD((x) => ({ ...x, irl_enabled: v, irl_base_label: x.irl_base_label ?? (v ? latestPublishedAt(x.start_date ?? todayParis()) : null), irl_base_value: x.irl_base_value ?? (v ? IRL_VALUES[latestPublishedAt(x.start_date ?? todayParis()) ?? ''] ?? null : null) }))} />
@@ -393,4 +399,25 @@ export function StartChangeMessage({ from, to, imp }: { from: string; to: string
 /** Lignes mensuelles du bail remises en conformité (paiements rangés dans leur mois, reports). */
 export async function reallocateLease(store: ReturnType<typeof useStore>, leaseId: string): Promise<number> {
   return (await store.call((r) => syncLedgerWith(r, { leaseIds: [leaseId] }))) ?? 0;
+}
+
+/** Relocation d'un bien détenu : loyer de marché, plafond légal et loyer du dernier bail ; le loyer n'est repris que sur clic. */
+function RelocationRent({ property, lease, previous, onUse }: { property: Property; lease: Insert<Lease>; previous?: Lease; onUse: (rentHc: number) => void }) {
+  const [snap, setSnap] = useState<MarketRentSnapshot | null>(property.market_rent ?? null);
+  const charges = lease.charges_amount ?? null;
+  // parking, local, terrain… : pas de loyer de marché publié
+  if (!segmentFor(property.property_type, property.rooms)) return null;
+  return (
+    <Section title="Loyer de marché pour cette location">
+      {previous && <p className="small">Dernier bail : {money2(previous.rent_hc)} hors charges / mois{previous.end_date ? `, terminé le ${date(previous.end_date)}` : ''}.</p>}
+      <MarketRentPanel value={snap} onChange={setSnap}
+        input={{ ...property, furnished: !!lease.furnished, chargesMonthly: charges }}
+        rentHc={lease.rent_hc || null} rentLabel="Loyer du nouveau bail"
+        actions={(m) => <>
+          {m.hc && <Button size="sm" onClick={() => onUse(m.hc!.mid)}>Utiliser le loyer central ({money2(m.hc.mid)} HC)</Button>}
+          {m.cap_hc != null && <Button size="sm" onClick={() => onUse(m.cap_hc!)}>Utiliser le plafond légal ({money2(m.cap_hc)} HC)</Button>}
+        </>} />
+      <p className="muted small">En zone tendue, le loyer d’un nouveau bail ne peut pas dépasser celui du précédent locataire, révisé selon l’IRL, sauf exceptions (travaux importants, loyer manifestement sous-évalué). Un logement classé F ou G ne peut pas être reloué plus cher. En zone encadrée, le plafond légal s’applique aussi.</p>
+    </Section>
+  );
 }
