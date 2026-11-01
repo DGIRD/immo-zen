@@ -6,7 +6,7 @@ import type { PropertyType } from '../data/types.ts';
 import type { RentData } from '../data/market.ts';
 import type { Located } from './valuation.ts';
 import {
-  arrondissementCode, CAP_STATUS_LABELS, computeMarketRent, ENCADRED_INSEE, findCap, pickIndicator, segmentFor,
+  arrondissementCode, capStatusMessage, computeMarketRent, ENCADRED_INSEE, findCap, pickIndicator, segmentFor,
   type CapStatus, type MarketRent,
 } from './marketRent.ts';
 
@@ -73,7 +73,7 @@ export async function lookupMarketRent(i: LookupInput, today: string, deps: {
   const encadre = ENCADRED_INSEE[insee] ?? ENCADRED_INSEE[place.citycode] ?? null;
   return {
     mr, insee, capStatus: found.status, zones: found.zones,
-    capMessage: found.status === 'ok' || found.status === 'none' ? null : CAP_STATUS_LABELS[found.status],
+    capMessage: capStatusMessage(found.status, found.awaitedYear),
     encadreSansPlafond: found.status === 'none' && encadre ? encadre : null,
   };
 }

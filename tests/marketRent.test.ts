@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
+import { capStatusMessage,
   arrondissementCode, computeMarketRent, findCap, HORS_ZONE, parseRentCapsCsv, parseRentIndicatorsCsv, pickIndicator, rentPosition, segmentFor,
   segmentFromFileName, simulatorRentM2, snapshotOf, type RentCap, type RentIndicator,
 } from '../src/domain/marketRent.ts';
@@ -104,6 +104,20 @@ test('encadrement : zone, pièces, année, meublé, validité', () => {
   // après la fin de l'expérimentation, sans prolongation : retour au haut de la Carte des loyers
   assert.equal(findCap(caps, { ...q, zone: '1', today: '2026-11-24' }).status, 'expired');
   assert.equal(findCap([], q).status, 'none');
+});
+
+test('plafonds de Paris : année suivante non encore publiée en données ouvertes', () => {
+  const paris = (valid_to: string): RentCap => ({ territory: 'Paris', insee: '75118', zone: 'La Chapelle', rooms: 2, year_min: null, year_max: 1945, furnished: true, ref: 30, max: 36, min: 21, valid_from: '2025-07-01', valid_to });
+  const q = { zone: 'La Chapelle', rooms: 2, year: 1930, furnished: true, today: '2026-11-01' };
+  const f = findCap([paris('2026-06-30')], q);
+  assert.equal(f.status, 'not_published');
+  assert.equal(f.awaitedYear, 2026);
+  assert.equal(capStatusMessage(f.status, f.awaitedYear), 'Plafonds 2026 non encore publiés en données ouvertes : loyer haut de la Carte des loyers');
+  // fin de l'encadrement (date différente du 30 juin) : expirés
+  assert.equal(findCap([paris('2026-11-23')], { ...q, today: '2026-11-24' }).status, 'expired');
+  // autre territoire : expirés
+  assert.equal(findCap([{ ...paris('2026-06-30'), territory: 'Est Ensemble' }], q).status, 'expired');
+  assert.equal(capStatusMessage('ok'), null);
 });
 
 test('loyer de marché : photographie enregistrée avec le bien', () => {

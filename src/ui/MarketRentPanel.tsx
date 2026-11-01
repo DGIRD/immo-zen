@@ -153,7 +153,7 @@ export function MarketRentPanel({ input, value, onChange, fields, rentHc, rentLa
         </div>
       </div>
       {showWhy && v && <ul className="small">{v.reasons.map((r) => <li key={r}>{r}</li>)}</ul>}
-      {live?.capMessage && <p className="note-warn note" role="status">{live.capMessage}{live.capStatus === 'expired' ? '.' : ''}</p>}
+      {live?.capMessage && <p className="note-warn note" role="status">{live.capMessage}{live.capStatus === 'expired' || live.capStatus === 'not_published' ? '.' : ''}</p>}
       {live?.encadreSansPlafond && <p className="note-warn note" role="status">Commune encadrée ({live.encadreSansPlafond}) : plafonds pas encore chargés dans Immo-Zen, le loyer haut ne tient pas compte du plafond légal. Vérifiez sur le simulateur officiel de la commune.</p>}
       {newer && <p className="note">Un millésime plus récent de la Carte des loyers est disponible ({live!.mr.vintage}). <Button size="sm" onClick={() => void run(true)}>Mettre à jour</Button></p>}
       {editable && (

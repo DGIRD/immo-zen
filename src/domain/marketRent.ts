@@ -97,11 +97,12 @@ export function zonesFor(caps: RentCap[]): string[] {
   return [...new Set(caps.map((c) => c.zone))].sort((a, b) => a.localeCompare(b, 'fr', { numeric: true }));
 }
 
-export type CapStatus = 'ok' | 'none' | 'expired' | 'zone_needed' | 'rooms_needed' | 'year_needed' | 'not_found' | 'hors_zone';
+export type CapStatus = 'ok' | 'none' | 'expired' | 'not_published' | 'zone_needed' | 'rooms_needed' | 'year_needed' | 'not_found' | 'hors_zone';
 export const CAP_STATUS_LABELS: Record<CapStatus, string> = {
   ok: 'Plafond légal appliqué',
   none: 'Commune sans encadrement du niveau des loyers',
   expired: 'Plafonds d’encadrement expirés : loyer haut de la Carte des loyers',
+  not_published: 'Nouveaux plafonds non encore publiés en données ouvertes : loyer haut de la Carte des loyers',
   zone_needed: 'Commune encadrée : choisissez la zone d’encadrement du logement',
   rooms_needed: 'Commune encadrée : renseignez le nombre de pièces pour trouver le plafond',
   year_needed: 'Commune encadrée : renseignez l’année de construction pour trouver le plafond',
@@ -113,11 +114,33 @@ export const HORS_ZONE = '__hors_zone__';
 
 export interface CapQuery { zone: string | null; rooms: number | null; year: number | null; furnished: boolean; today: string }
 
+/**
+ * Plafonds de Paris arrivés au terme de leur année (30 juin) sans que l'arrêté suivant soit publié en données ouvertes :
+ * année attendue (celle qui commence le 1er juillet). Null si les plafonds ont pris fin pour une autre raison
+ * (fin de l'encadrement, autre territoire).
+ */
+export function awaitedParisYear(caps: RentCap[]): number | null {
+  if (!caps.length || caps.some((c) => c.territory !== 'Paris' || !c.valid_to)) return null;
+  const last = caps.map((c) => c.valid_to!).sort().at(-1)!;
+  return /^\d{4}-06-30$/.test(last) ? Number(last.slice(0, 4)) : null;
+}
+
+/** Libellé de la raison pour laquelle aucun plafond ne s'applique (null : plafond appliqué ou commune non encadrée). */
+export function capStatusMessage(status: CapStatus, awaitedYear?: number | null): string | null {
+  if (status === 'ok' || status === 'none') return null;
+  if (status === 'not_published' && awaitedYear) return `Plafonds ${awaitedYear} non encore publiés en données ouvertes : loyer haut de la Carte des loyers`;
+  return CAP_STATUS_LABELS[status];
+}
+
 /** Plafond applicable au logement, ou la raison pour laquelle il n'est pas déterminé. */
-export function findCap(caps: RentCap[], q: CapQuery): { cap: RentCap | null; status: CapStatus; zones: string[] } {
+export function findCap(caps: RentCap[], q: CapQuery): { cap: RentCap | null; status: CapStatus; zones: string[]; awaitedYear?: number } {
   if (!caps.length) return { cap: null, status: 'none', zones: [] };
   const live = capsInForce(caps, q.today);
-  if (!live.length) return { cap: null, status: caps.some((c) => c.valid_from > q.today) ? 'none' : 'expired', zones: [] };
+  if (!live.length) {
+    if (caps.some((c) => c.valid_from > q.today)) return { cap: null, status: 'none', zones: [] };
+    const awaitedYear = awaitedParisYear(caps);
+    return awaitedYear ? { cap: null, status: 'not_published', zones: [], awaitedYear } : { cap: null, status: 'expired', zones: [] };
+  }
   const zones = zonesFor(live);
   if (q.zone === HORS_ZONE) return { cap: null, status: 'hors_zone', zones };
   const zone = zones.length === 1 ? zones[0]! : q.zone && zones.includes(q.zone) ? q.zone : null;
