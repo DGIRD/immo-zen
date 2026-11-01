@@ -166,7 +166,8 @@ Enregistrez. L'application relit l'abonnement à chaque changement : la nouvelle
 2. Téléchargez les 4 fichiers CSV de la [Carte des loyers 2025](https://www.data.gouv.fr/datasets/carte-des-loyers-indicateurs-de-loyers-dannonce-par-commune-en-2025/), puis Administration → Données de marché → Carte des loyers : sélectionnez-les ensemble, vérifiez le segment de chacun, « Charger le millésime 2025 ». À refaire chaque décembre.
 3. Plafonds d'encadrement : remplissez le modèle `docs/modeles/plafonds-encadrement.csv` d'après les arrêtés préfectoraux (Paris : jeu « Logement – Encadrement des loyers » de data.gouv.fr), puis chargez-le. Si la prolongation de l'encadrement est adoptée, prolongez la validité de chaque territoire.
 4. Barème des taux : saisissez chaque mois les taux à 10, 15, 20 et 25 ans.
-5. Taux d'usure : saisissez ceux du trimestre suivant dès leur publication par la Banque de France (fin mars, juin, septembre, décembre).
+5. Taux d'usure : chargés automatiquement (voir 6). À défaut, saisissez ceux du trimestre suivant dès leur publication par la Banque de France (fin mars, juin, septembre, décembre).
+6. Mise à jour automatique : exécutez `supabase/migrations/20261030000200_donnees_marche_auto.sql`, lancez le workflow « Fonctions serveur Supabase » (déploie `marche`), puis exécutez `supabase/scheduling-marche.sql` dans le SQL Editor. La Carte des loyers, les taux d'usure et les plafonds de Paris se chargent ensuite chaque nuit ; un e-mail de rappel part le 1er du mois.
 
 ## 7. Assistant conversationnel (facultatif)
 

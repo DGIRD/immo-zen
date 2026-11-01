@@ -174,3 +174,14 @@ test('recherche : Montreuil encadré, arrondissement de Paris, plafonds non char
   const kA = lookupKey({ surface: 45, rooms: 2 }), kB = lookupKey({ surface: 46, rooms: 2 });
   assert.notEqual(kA, kB);
 });
+
+test('recherche : plafonds de Paris rangés sous la commune entière quand l’arrondissement n’est pas connu', async () => {
+  const data = { indicators: [ind({ insee: '75111', mid: 30, low: 25, high: 36 })], caps: [cap({ territory: 'Paris', insee: '75056', zone: 'Folie-Méricourt', max: 33.7 }), cap({ territory: 'Paris', insee: '75056', zone: 'Roquette', max: 32 })], config: DEFAULT_MARKET_CONFIG };
+  const r = await lookupMarketRent({ property_type: 'appartement', rooms: 2, surface: 30, city: 'Paris', zip: '75011', construction_year: 1930, rent_zone: 'Folie-Méricourt' },
+    '2026-10-30', { locate: place('75056'), rentData: async () => data });
+  assert.equal(r.capStatus, 'ok');
+  assert.equal(r.mr.capHc, 1011);
+  const sansZone = await lookupMarketRent({ property_type: 'appartement', rooms: 2, surface: 30, city: 'Paris', zip: '75011', construction_year: 1930 },
+    '2026-10-30', { locate: place('75056'), rentData: async () => data });
+  assert.deepEqual(sansZone.zones, ['Folie-Méricourt', 'Roquette'], 'quartier à choisir');
+});

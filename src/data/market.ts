@@ -5,11 +5,13 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { RepoError } from './repo.ts';
-import { DEFAULT_FURNISHED_COEF, DEFAULT_WIDE_THRESHOLD, type RentCap, type RentIndicator, type RentSegment } from '../domain/marketRent.ts';
+import { DEFAULT_FURNISHED_COEF, DEFAULT_WIDE_THRESHOLD, ENCADREMENT_END, type RentCap, type RentIndicator, type RentSegment } from '../domain/marketRent.ts';
 import { DEFAULT_RENEGOTIATION_GAP, USURY_2026_Q4, type RateBenchmark, type UsuryRate } from '../domain/loanRates.ts';
 
-export interface MarketConfig { rent_wide_threshold: number; furnished_coef: number; renegotiation_gap: number }
-export const DEFAULT_MARKET_CONFIG: MarketConfig = { rent_wide_threshold: DEFAULT_WIDE_THRESHOLD, furnished_coef: DEFAULT_FURNISHED_COEF, renegotiation_gap: DEFAULT_RENEGOTIATION_GAP };
+export interface MarketConfig { rent_wide_threshold: number; furnished_coef: number; renegotiation_gap: number; /** fin de l'encadrement des loyers (plafonds chargés automatiquement) */ encadrement_end?: string | null }
+/** Dernier chargement automatique d'une source (fonction serveur « marche »). */
+export interface SyncRow { source: string; version: string; details: Record<string, unknown>; loaded_at: string }
+export const DEFAULT_MARKET_CONFIG: MarketConfig = { rent_wide_threshold: DEFAULT_WIDE_THRESHOLD, furnished_coef: DEFAULT_FURNISHED_COEF, renegotiation_gap: DEFAULT_RENEGOTIATION_GAP, encadrement_end: ENCADREMENT_END };
 
 export interface RentData { indicators: RentIndicator[]; caps: RentCap[]; config: MarketConfig }
 export interface LoanData { benchmarks: RateBenchmark[]; usury: UsuryRate[]; config: MarketConfig }
@@ -22,6 +24,8 @@ export interface MarketApi {
   loanData(): Promise<LoanData | null>;
   admin: {
     indicatorStats(): Promise<IndicatorStat[]>;
+    /** Chargements automatiques (null : migration du 30/10 « données de marché automatiques » absente). */
+    syncStatus(): Promise<SyncRow[] | null>;
     /** Remplace le millésime d'un segment ; renvoie le nombre de communes enregistrées. */
     importIndicators(vintage: number, segment: RentSegment, rows: RentIndicator[], onProgress?: (done: number) => void): Promise<number>;
     caps(): Promise<StoredCap[]>;
@@ -58,6 +62,7 @@ const toUsury = (r: Record<string, unknown>): UsuryRate => ({
 });
 const toConfig = (r: Record<string, unknown> | null): MarketConfig => (r ? {
   rent_wide_threshold: n(r.rent_wide_threshold), furnished_coef: n(r.furnished_coef), renegotiation_gap: n(r.renegotiation_gap),
+  encadrement_end: r.encadrement_end === undefined ? ENCADREMENT_END : (r.encadrement_end as string | null),
 } : DEFAULT_MARKET_CONFIG);
 const capRow = (c: RentCap) => ({ territory: c.territory, insee: c.insee, zone: c.zone, rooms: c.rooms, year_min: c.year_min, year_max: c.year_max, furnished: c.furnished, ref: c.ref, max: c.max, min: c.min, valid_from: c.valid_from, valid_to: c.valid_to });
 
@@ -90,6 +95,11 @@ export function createSupabaseMarket(sb: SupabaseClient): MarketApi {
       };
     },
     admin: {
+      async syncStatus() {
+        const r = await sb.from('market_sync').select('*').order('loaded_at', { ascending: false });
+        if (missing(r.error)) return null;
+        return check(r) as SyncRow[];
+      },
       async indicatorStats() {
         return (check(await sb.rpc('iz_rent_indicator_stats')) as Record<string, unknown>[]).map((r) => ({ vintage: n(r.vintage), segment: r.segment as RentSegment, communes: n(r.communes) }));
       },
@@ -119,7 +129,12 @@ export function createSupabaseMarket(sb: SupabaseClient): MarketApi {
       },
       async deleteBenchmarks(on) { check(await sb.from('loan_rate_benchmarks').delete().eq('effective_on', on)); },
       async saveUsury(rows) { check(await sb.from('usury_rates').upsert(rows.map((r) => ({ ...r, updated_at: new Date().toISOString() })), { onConflict: 'quarter,borrower,bracket' })); },
-      async saveConfig(c) { check(await sb.from('market_config').update({ ...c, updated_at: new Date().toISOString() }).eq('id', true)); },
+      async saveConfig(c) {
+        // colonne de fin d'encadrement absente avant la migration du 30/10 : non envoyée
+        const { encadrement_end, ...rest } = c;
+        const patch = encadrement_end === undefined ? rest : { ...rest, encadrement_end };
+        check(await sb.from('market_config').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', true));
+      },
     },
   };
 }
@@ -170,6 +185,7 @@ export function createDemoMarket(storage: Storage, today: () => string): MarketA
     },
     async loanData() { const d = read(); return { benchmarks: d.benchmarks, usury: d.usury, config: d.config }; },
     admin: {
+      async syncStatus() { return []; },
       async indicatorStats() {
         const m = new Map<string, IndicatorStat>();
         for (const r of read().indicators) { const k = `${r.vintage}|${r.segment}`; const s = m.get(k) ?? { vintage: r.vintage, segment: r.segment, communes: 0 }; s.communes++; m.set(k, s); }

@@ -14,6 +14,10 @@ Les rappels, échéances et e-mails sont exécutés par le serveur, sans dépend
 
 La fonction serveur `daily` (Edge Function) ajoute l'envoi de la file d'e-mails (`email_outbox`) et la suppression des fichiers dont la fiche a été supprimée.
 
+## Données de marché (fonction « marche », chaque nuit à 4 h 37 UTC)
+
+Carte des loyers, taux d'usure et plafonds de Paris chargés dès publication ; rappel à l'administrateur le 1er du mois. Détail : [LOYERS-ET-TAUX](LOYERS-ET-TAUX.md). Planification : tâche `immozen-marche` (`supabase/scheduling.sql`, ou `supabase/scheduling-marche.sql` pour l'ajouter seule).
+
 ## Garde-fous
 
 | Risque | Protection |

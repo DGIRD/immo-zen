@@ -29,7 +29,7 @@ end $$;
 do $$
 declare j text;
 begin
-  foreach j in array array['immozen-daily', 'immozen-outbox', 'immozen-menage'] loop
+  foreach j in array array['immozen-daily', 'immozen-outbox', 'immozen-menage', 'immozen-marche'] loop
     if exists (select 1 from cron.job where jobname = j) then perform cron.unschedule(j); end if;
   end loop;
 end $$;
@@ -55,13 +55,24 @@ select cron.schedule('immozen-outbox', '*/5 * * * *', $$
     timeout_milliseconds := 60000)
 $$);
 
+-- Chaque nuit à 4 h 37 UTC : données de marché (Carte des loyers, taux d'usure, plafonds de Paris) chargées dès publication ;
+-- le 1er du mois, e-mail de rappel à l'adresse de support (barème des taux, arrêtés). Délai long : un millésime de la Carte est volumineux.
+select cron.schedule('immozen-marche', '37 4 * * *', $$
+  select net.http_post(
+    url := 'https://sbxnjvjsapnsdeenmvtm.supabase.co/functions/v1/marche',
+    headers := jsonb_build_object('Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'immozen_cron_secret')),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 300000)
+$$);
+
 -- Chaque dimanche à 3 h UTC : ménage de l'historique des tâches (sinon il grossit de 300 lignes par jour)
 select cron.schedule('immozen-menage', '0 3 * * 0', $$
   delete from cron.job_run_details where end_time < now() - interval '14 days';
   delete from public.job_runs where started_at < now() - interval '180 days';
 $$);
 
--- 4. Contrôle : les trois tâches doivent apparaître
+-- 4. Contrôle : les quatre tâches doivent apparaître
 select jobid, jobname, schedule, active from cron.job where jobname like 'immozen-%' order by jobname;
 
 -- Quelques minutes plus tard, pour vérifier (à exécuter séparément) :

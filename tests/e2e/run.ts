@@ -1268,6 +1268,9 @@ async function main() {
     await page.getByRole('link', { name: 'Administration' }).click();
     await page.getByRole('tab', { name: 'Données de marché' }).click();
     await page.getByRole('heading', { name: 'Carte des loyers' }).waitFor();
+    await page.getByRole('heading', { name: 'Mises à jour automatiques' }).waitFor();
+    await page.getByText('Mode démonstration : aucune mise à jour automatique.').waitFor();
+    await page.getByLabel('Fin de l’encadrement des loyers').waitFor();
     await page.getByRole('cell', { name: 'Appartements 1 et 2 pièces' }).first().waitFor();
     await page.getByLabel('Fichiers de la Carte des loyers').setInputFiles({ name: 'pred-app12-mef-dhup.csv', mimeType: 'text/csv', buffer: Buffer.from(
       '"id_zone";"INSEE_C";"LIBGEO";"EPCI";"DEP";"REG";"loypredm2";"lwr.IPm2";"upr.IPm2";"TYPPRED";"nbobs_com";"nbobs_mail";"R2_adj"\n"1";"94033";"Fontenay-sous-Bois";"";"94";"11";"22,5";"18,1";"27,9";"commune";"500";"500";"0,7"\n') });
