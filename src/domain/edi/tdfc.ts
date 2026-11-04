@@ -11,6 +11,7 @@
  * NON VALIDÉ par un professionnel ni par l'attestation de conformité EDIFICAS.
  */
 import type { Liasse2033B } from '../fiscal.ts';
+import type { BilanFacts } from '../bilan.ts';
 import { UNA, amount, encodeLatin9, invalidLatin9, segment, toLatin9Text } from './edifact.ts';
 import { parseAccreditation, signGroup, autackGroup, type RawRsaSigner } from './autack.ts';
 
@@ -83,18 +84,27 @@ export interface TdfcDeclarant {
 export interface TdfcPeriod { start: string; end: string }
 
 /**
- * Éléments du bilan que l'application ne suit pas : à saisir par le déclarant (0 par défaut).
- * Le capital individuel (compte de l'exploitant) équilibre le bilan.
+ * Montants du bilan au 31/12. Ils sont normalement calculés par `bilanFacts` (src/domain/bilan.ts) à partir des
+ * loyers, dépôts, dépenses et de l'historique depuis l'acquisition (voir `balanceFromFacts`).
  */
 export interface TdfcBalanceInputs {
-  /** Trésorerie affectée à l'activité en fin d'exercice (compte dédié). */
+  /** Trésorerie d'un compte dédié à l'activité (0 sans compte dédié). */
   cash?: number;
-  /** Loyers et charges restant dus par les locataires en fin d'exercice. */
+  /** Loyers et charges échus non réglés. */
   receivables?: number;
   /** Dépôts de garantie reçus et non restitués. */
   depositsHeld?: number;
-  /** Autres dettes (fournisseurs, charges à payer). */
+  /** Charges à payer et autres dettes. */
   otherDebts?: number;
+  /** Compte de l'exploitant suivi (avant résultat de l'exercice). Absent : il équilibre le bilan. */
+  exploitant?: number;
+  /** Écart de capital restant dû banque − calcul (pour expliquer l'écart du compte de l'exploitant). */
+  loanBankGap?: number;
+}
+
+/** Montants du bilan calculés par l'application. */
+export function balanceFromFacts(f: BilanFacts): TdfcBalanceInputs {
+  return { cash: f.cash, receivables: f.receivables, depositsHeld: f.depositsHeld, otherDebts: f.payables, exploitant: f.exploitant.closing, loanBankGap: f.loans.bankGap };
 }
 
 export interface TdfcRequest {
@@ -223,10 +233,15 @@ export interface Bilan2033A {
   immoGross: number; immoDep: number; immoNet: number;
   receivables: number; cash: number; currentTotal: number;
   assetsGross: number; assetsDep: number; assetsNet: number;
-  /** Capital individuel (compte de l'exploitant) : solde qui équilibre le bilan. */
+  /** Capital individuel déclaré (compte de l'exploitant suivi + écart éventuel). */
   capital: number; result: number; equity: number;
   loans: number; otherDebts: number; debts: number; liabilities: number;
   loansBeyondOneYear: number; acquisitions: number;
+  /** Compte de l'exploitant issu du suivi (null s'il n'est pas suivi : le capital équilibre alors le bilan). */
+  tracked: number | null;
+  /** Écart entre le bilan et le compte de l'exploitant suivi, et sa décomposition probable. */
+  gap: number;
+  gapExplained: { receivables: number; payables: number; loanBank: number; other: number };
 }
 
 export function bilan2033A(l: Liasse2033B, period: TdfcPeriod, b: TdfcBalanceInputs = {}): Bilan2033A {
@@ -241,13 +256,21 @@ export function bilan2033A(l: Liasse2033B, period: TdfcPeriod, b: TdfcBalanceInp
   const loans = l.loans.remaining;
   const otherDebts = r2((b.depositsHeld ?? 0) + (b.otherDebts ?? 0));
   const debts = r2(loans + otherDebts);
-  const capital = r2(assetsNet - result - debts);
+  const balancing = r2(assetsNet - result - debts);
+  const tracked = b.exploitant ?? null;
+  const gap = tracked === null ? 0 : r2(balancing - tracked);
+  // résultat calculé sur les encaissements : créances et charges à payer ne sont pas dans le résultat ;
+  // un capital restant dû de la banque différent du calcul n'a pas de contrepartie dans les flux suivis
+  const explained = { receivables, payables: -(b.otherDebts ?? 0), loanBank: -(b.loanBankGap ?? 0) };
+  const other = r2(gap - explained.receivables - explained.payables - explained.loanBank);
+  const capital = balancing;
   return {
     immoGross, immoDep, immoNet, receivables, cash, currentTotal,
     assetsGross: r2(immoGross + currentTotal), assetsDep: immoDep, assetsNet,
     capital, result, equity: r2(capital + result), loans, otherDebts, debts, liabilities: r2(capital + result + debts),
     loansBeyondOneYear: l.loans.beyondOneYear,
     acquisitions: r2(l.assets.filter((a) => a.start >= period.start && a.start <= period.end).reduce((s, a) => s + a.gross, 0)),
+    tracked, gap, gapExplained: { ...explained, other: tracked === null ? 0 : other },
   };
 }
 
@@ -511,6 +534,15 @@ export function checkRequest(r: TdfcRequest): TdfcCheck[] {
   if (r.balance?.cash === undefined) out.push({ level: 'avertissement', message: '2033-A : trésorerie de l’activité non renseignée, comptée à 0.' });
   if (r.balance?.depositsHeld === undefined) out.push({ level: 'avertissement', message: '2033-A : dépôts de garantie reçus non renseignés, comptés à 0.' });
   if (bil.capital < 0) out.push({ level: 'avertissement', message: `2033-A : compte de l’exploitant négatif (${bil.capital} €) — vérifier la trésorerie et les emprunts.` });
+  if (bil.tracked === null) out.push({ level: 'avertissement', message: '2033-A : compte de l’exploitant non suivi, calculé pour équilibrer le bilan.' });
+  else if (Math.abs(bil.gap) >= 1) {
+    const e = bil.gapExplained, parts: string[] = [];
+    if (e.receivables) parts.push(`loyers impayés au 31/12 ${e.receivables} €`);
+    if (e.payables) parts.push(`charges à payer ${e.payables} €`);
+    if (e.loanBank) parts.push(`écart capital restant dû banque / calcul ${e.loanBank} €`);
+    if (Math.abs(e.other) >= 1) parts.push(`non expliqué ${e.other} € (retenues sur dépôt, années hors réel, saisies manuelles)`);
+    out.push({ level: Math.abs(e.other) >= 1 ? 'bloquant' : 'avertissement', message: `2033-A : écart de ${bil.gap} € entre le bilan et le compte de l’exploitant suivi (${bil.tracked} €) : ${parts.join(', ')}. Le résultat étant calculé sur les encaissements, les impayés et charges à payer créent cet écart.` });
+  }
   if (!p.accreditation) out.push({ level: 'bloquant', message: 'Accréditation DGFiP absente : l’interchange ne peut pas être signé (à obtenir auprès du correspondant téléprocédures).' });
   else {
     try {

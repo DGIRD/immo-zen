@@ -174,6 +174,8 @@ export interface TaxPropertyInputs {
   meuble_kind?: MeubleKind;
   /** Déficits fonciers antérieurs non encore imputés (case 4BD), saisis depuis l'avis d'imposition. */
   prior_deficits?: number;
+  /** Bilan 2033-A : capital restant dû au 31/12 selon le tableau d'amortissement de la banque (prioritaire sur le calcul). */
+  loan_remaining_bank?: number;
 }
 export type MeubleKind = 'longue_duree' | 'tourisme_classe' | 'chambre_hotes' | 'tourisme_non_classe';
 export type TaxInputs = Record<string, Record<string, TaxPropertyInputs>>;

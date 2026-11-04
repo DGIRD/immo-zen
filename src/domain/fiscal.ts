@@ -350,6 +350,34 @@ export function reelBic(p: Property, year: number, d: FiscalData, inputsByYear: 
   return out!;
 }
 
+// ---------------------------------------------------------------- emprunts au bilan
+
+export interface LoanBalance {
+  /** Capital restant dû au 31/12 retenu (banque si saisi, sinon calcul). */
+  remaining: number;
+  /** Part remboursable au-delà d'un an. */
+  beyondOneYear: number;
+  computed: number;
+  source: 'banque' | 'calcul' | 'aucun';
+  /** Écart entre le montant de la banque et le calcul (positif : la banque indique plus). */
+  gap: number;
+}
+
+/**
+ * Capital restant dû d'un bien au 31/12 : celui du tableau de la banque s'il est saisi, sinon calculé d'après le
+ * crédit du bien. La part à plus d'un an retranche le capital des 12 prochaines échéances calculées.
+ */
+export function loanBalance(p: Property, year: number, inputs: TaxPropertyInputs = {}): LoanBalance {
+  const computed = loanInfo(p, `${year}-12-31`)?.remaining ?? 0;
+  const next = loanInfo(p, `${year + 1}-12-31`)?.remaining ?? 0;
+  const bank = inputs.loan_remaining_bank;
+  if (bank != null && bank >= 0) {
+    const nextPrincipal = Math.max(0, computed - next);
+    return { remaining: round2(bank), beyondOneYear: round2(Math.max(0, bank - nextPrincipal)), computed, source: 'banque', gap: round2(bank - computed) };
+  }
+  return { remaining: computed, beyondOneYear: next, computed, source: computed > 0 ? 'calcul' : 'aucun', gap: 0 };
+}
+
 // ---------------------------------------------------------------- liasse LMNP (2031, 2033-B)
 
 export interface Liasse2033B {
@@ -392,7 +420,7 @@ export function liasse2033B(list: ReelBic[], year: number, d: FiscalData, inputs
     if (base && p.acquired_at && landPct > 0 && p.acquired_at.slice(0, 4) <= String(year))
       assets.push({ label: `${p.title} – Terrain (${landPct} %, non amortissable)`, gross: round2(base * landPct / 100), cumulated: 0, kind: 'terrain', start: p.acquired_at, dotation: 0 });
     for (const i of items) assets.push({ label: `${p.title} – ${i.label}`, gross: i.base, cumulated: i.cumulated, kind: i.kind, start: i.start, dotation: i.amount });
-    const end = loanInfo(p, `${year}-12-31`)?.remaining ?? 0, next = loanInfo(p, `${year + 1}-12-31`)?.remaining ?? 0;
+    const { remaining: end, beyondOneYear: next } = loanBalance(p, year, inp);
     loans.remaining = round2(loans.remaining + end);
     loans.beyondOneYear = round2(loans.beyondOneYear + next);
   }

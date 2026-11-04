@@ -15,7 +15,8 @@ Référentiel utilisé : cahier des charges EDI-TDFC de la **campagne 2026** (DG
 | `src/domain/edi/tdfc.ts` | Correspondance liasse → codes TDFC, message INFENT-DF, interchange, bilan 2033-A, contrôles avant envoi, `secureInterchange` |
 | `src/domain/edi/autack.ts` | Bloc signé, accréditation, groupe AUTACK PEDI (navigateur, Deno et Node ; aucune clé privée) |
 | `supabase/functions/_shared/tdfcSigner.ts` | Signature RSA côté serveur (`node:crypto`), contrôle clé ↔ accréditation |
-| `tests/tdfc.test.ts`, `tests/autack.test.ts` | 22 tests, dont l'exemple signé par la DGFiP et la population fictive |
+| `src/domain/bilan.ts` | Créances, dépôts, charges à payer, emprunts et compte de l'exploitant suivi |
+| `tests/tdfc.test.ts`, `tests/autack.test.ts`, `tests/bilan.test.ts` | 30 tests, dont l'exemple signé par la DGFiP, la population fictive et l'équilibre spontané du bilan |
 | `tests/fixtures/tdfc/` | Exemples publics du pack technique DGFiP (partenaire fictif) |
 | `scripts/tdfc-exemple.ts` | Interchange de test non signé : `node --import tsx scripts/tdfc-exemple.ts sortie.edi` |
 
@@ -30,7 +31,34 @@ Référentiel utilisé : cahier des charges EDI-TDFC de la **campagne 2026** (DG
 | 2033-C | Terrains, constructions (bâti), agencements (travaux), autres immobilisations (meubles) : brut et amortissements (début, augmentations, fin), totaux |
 | 2033-D à G | Déposés néant |
 
-**Bilan 2033-A** : l'application ne tient pas de comptabilité en partie double. Le bilan est donc construit à partir de ce qu'elle connaît : les immobilisations et amortissements de la liasse, le capital restant dû calculé d'après le crédit saisi, et la part à plus d'un an. Il s'y ajoute quatre montants saisis par le déclarant (`TdfcBalanceInputs`) : trésorerie, loyers restant dus, dépôts de garantie reçus et autres dettes. Le **capital individuel (compte de l'exploitant)** équilibre l'actif et le passif. Les contrôles bloquent un bilan déséquilibré et signalent un compte de l'exploitant négatif.
+**Bilan 2033-A** (`src/domain/bilan.ts`, `bilanFacts`) : construit à partir des données de gestion, sans saisie dans le cas courant.
+
+| Ligne | Origine |
+| --- | --- |
+| Immobilisations (brut, amortissements) | Liasse : terrain, bâti, meubles, travaux |
+| Créances (AJ/CJ) | Échéances échues au 31/12 non couvertes par des paiements reçus au plus tard le 31/12 |
+| Disponibilités (AM/CM) | 0 par défaut (activité sans compte dédié) ; solde saisi sinon |
+| Capital individuel (FA) | Compte de l'exploitant **suivi** depuis l'acquisition (voir ci-dessous) |
+| Résultat (FG) | Ligne 310 du 2033-B |
+| Emprunts (FL), dettes à plus d'un an (JA) | Capital restant dû **de la banque** s'il est saisi (`loan_remaining_bank`), sinon calculé ; alerte au-delà de 5 € d'écart |
+| Autres dettes (FP) | Dépôts de garantie détenus (encaissements − restitutions − retenues) + charges à payer (dépenses de l'année non payées au 31/12) |
+
+**Compte de l'exploitant** :
+- **Ouverture** (l'année de l'achat) : apport = prix et frais − emprunt.
+- **Chaque année** : solde précédent + résultat de l'année précédente + apports (dépenses payées, échéances d'emprunt, dépôts restitués) − prélèvements (loyers et recettes encaissés, dépôts encaissés, sauf la trésorerie conservée sur un compte dédié).
+- **Reprise** : si les années précédentes n'ont pas été tenues dans l'application, les capitaux propres du bilan N-1 déposé sont repris (`openingEquity`).
+
+Avec des données complètes, le bilan s'équilibre de lui-même (test « données complètes sans impayé »).
+
+Le résultat de la liasse étant calculé sur les encaissements, l'écart entre le bilan et le compte suivi est calculé puis décomposé :
+- loyers impayés au 31/12 ;
+- charges à payer ;
+- écart banque / calcul ;
+- reste non expliqué.
+
+Un écart entièrement expliqué donne un avertissement, un écart non expliqué bloque l'envoi. Le capital transmis est celui qui équilibre le bilan.
+
+**À trancher avec l'expert-comptable** : en BIC, le résultat se calcule en principe sur les créances acquises et les dépenses engagées (art. 38-2 bis du CGI), et non sur les encaissements. Passer la liasse en engagements ferait disparaître l'écart, mais modifierait les montants déclarés.
 
 ## Signature (AUTACK PEDI)
 
@@ -46,7 +74,7 @@ Le procédé est reproduit d'après `signer_donnees.c` de la DGFiP et vérifié 
 
 1. **Fonction serveur `tdfc`** : construire la liasse, signer avec la clé secrète, archiver l'interchange et sa référence.
 2. **Transfert SFTP (PassTrans)** et lecture des retours : accusé de réception (INFENT-RCS), CONTRL, compte rendu (INFENT-CR, signé par la DGFiP et vérifiable avec `dgfip_cle_publique_pedi.pem`).
-3. **Interface** : SIREN, ROF, saisies du bilan, mandat de l'abonné, aperçu, historique des dépôts.
+3. **Interface** : SIREN, ROF, capital restant dû de la banque, trésorerie éventuelle, écran de relecture du bilan (origine de chaque ligne, corrections tracées), mandat de l'abonné, historique des dépôts.
 4. **Campagne 2027** : intégrer le nouveau cahier des charges dès sa publication (mars 2027).
 
 ## Points à faire valider
