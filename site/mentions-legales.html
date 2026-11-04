@@ -17,7 +17,18 @@
         <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 17 16 6l12 11" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 26h14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="16" cy="19" r="2.4" fill="currentColor"/></svg>
         Immo-Zen
       </a>
-      <nav id="nav" aria-label="Navigation du site" style="display:flex"><a class="btn btn-espace" href="app/">Espace client</a></nav>
+      <nav id="nav" class="site-nav" aria-label="Navigation du site">
+        <a href="#profils">Pour qui</a>
+        <a href="#decider">Acheter</a>
+        <a href="#gerer">Gérer</a>
+        <a href="#declarer">Déclarer</a>
+        <a href="#tarifs">Tarifs</a>
+        <a href="guides/">Guides</a>
+      </nav>
+      <div class="top-actions">
+        <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav">Menu</button>
+        <a class="btn btn-espace" href="app/">Espace client</a>
+      </div>
     </div>
   </header>
   <main class="page">
@@ -54,5 +65,6 @@
       <nav aria-label="Liens légaux"><a href="./">Accueil</a><a href="mailto:contact@immo-zen.fr">contact@immo-zen.fr</a><a href="app/">Espace client</a></nav>
     </div>
   </footer>
+  <script src="site.js" defer></script>
 </body>
 </html>
