@@ -9,6 +9,7 @@
 import type { Allocation, Expense, ExpenseCategory, Lease, MeubleKind, Payment, Property, RentCharge, TaxPropertyInputs, TaxRegime } from '../data/types.ts';
 import { isIncome } from './rental.ts';
 import { amortize, round2 } from './simulator.ts';
+import { loanInfo } from './property.ts';
 
 export const MICRO_FONCIER_LIMIT = 15000;
 export const MICRO_BIC_LIMIT = 77700;
@@ -357,7 +358,9 @@ export interface Liasse2033B {
   deferredUsed: number;
   fiscalResult: number;
   /** Immobilisations (2033-C) : valeurs brutes et amortissements cumulés en fin d'exercice. */
-  assets: { label: string; gross: number; cumulated: number; kind: DepreciationItem['kind']; start: string; dotation: number }[];
+  assets: { label: string; gross: number; cumulated: number; kind: DepreciationItem['kind'] | 'terrain'; start: string; dotation: number }[];
+  /** Emprunts (bilan 2033-A) : capital restant dû en fin d'exercice et part à plus d'un an. */
+  loans: { remaining: number; beyondOneYear: number };
   /** Amortissements différés restant à imputer en fin d'exercice. */
   deferredAfter: number;
 }
@@ -378,11 +381,20 @@ export function liasse2033B(list: ReelBic[], year: number, d: FiscalData, inputs
   const deferredUsed = round2(Math.max(0, deducted - l254));
   const fiscal = round2(l310 + l318 - deferredUsed);
   const assets: Liasse2033B['assets'] = [];
+  const loans = { remaining: 0, beyondOneYear: 0 };
   for (const r of list) {
     const p = d.properties.find((x) => x.id === r.propertyId);
     if (!p) continue;
-    const { items } = depreciationItems(p, year, d, inputs(p.id, year));
+    const inp = inputs(p.id, year);
+    const { items } = depreciationItems(p, year, d, inp);
+    const base = inp.depreciable_base ?? p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null;
+    const landPct = inp.land_pct ?? DEFAULT_TAX_INPUTS.land_pct;
+    if (base && p.acquired_at && landPct > 0 && p.acquired_at.slice(0, 4) <= String(year))
+      assets.push({ label: `${p.title} – Terrain (${landPct} %, non amortissable)`, gross: round2(base * landPct / 100), cumulated: 0, kind: 'terrain', start: p.acquired_at, dotation: 0 });
     for (const i of items) assets.push({ label: `${p.title} – ${i.label}`, gross: i.base, cumulated: i.cumulated, kind: i.kind, start: i.start, dotation: i.amount });
+    const end = loanInfo(p, `${year}-12-31`)?.remaining ?? 0, next = loanInfo(p, `${year + 1}-12-31`)?.remaining ?? 0;
+    loans.remaining = round2(loans.remaining + end);
+    loans.beyondOneYear = round2(loans.beyondOneYear + next);
   }
   return {
     lines: [
@@ -398,7 +410,7 @@ export function liasse2033B(list: ReelBic[], year: number, d: FiscalData, inputs
       { code: '318', label: 'Réintégration : amortissements non déductibles (art. 39 C du CGI)', amount: l318 },
       { code: fiscal >= 0 ? '352' : '354', label: fiscal >= 0 ? 'Résultat fiscal : bénéfice' : 'Résultat fiscal : déficit', amount: Math.abs(fiscal) },
     ],
-    deferredUsed, fiscalResult: fiscal, assets,
+    deferredUsed, fiscalResult: fiscal, assets, loans,
     deferredAfter: sum(list.map((r) => r.deferredAfter)),
   };
 }

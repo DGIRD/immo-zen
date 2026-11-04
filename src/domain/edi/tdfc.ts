@@ -79,11 +79,27 @@ export interface TdfcDeclarant {
 
 export interface TdfcPeriod { start: string; end: string }
 
+/**
+ * Éléments du bilan que l'application ne suit pas : à saisir par le déclarant (0 par défaut).
+ * Le capital individuel (compte de l'exploitant) équilibre le bilan.
+ */
+export interface TdfcBalanceInputs {
+  /** Trésorerie affectée à l'activité en fin d'exercice (compte dédié). */
+  cash?: number;
+  /** Loyers et charges restant dus par les locataires en fin d'exercice. */
+  receivables?: number;
+  /** Dépôts de garantie reçus et non restitués. */
+  depositsHeld?: number;
+  /** Autres dettes (fournisseurs, charges à payer). */
+  otherDebts?: number;
+}
+
 export interface TdfcRequest {
   partner: EdiPartner;
   declarant: TdfcDeclarant;
   period: TdfcPeriod;
   liasse: Liasse2033B;
+  balance?: TdfcBalanceInputs;
   /** Interchange de test (UNB 0035 = 1, UNG DF4) ou réel. */
   test: boolean;
   /** Date de préparation. */
@@ -141,7 +157,7 @@ function line(l: Liasse2033B, code: string): number {
  * Données de la liasse. Correspondance établie d'après les libellés du dictionnaire des données 2026 :
  * les lignes 218 à 354 du 2033-B papier calculées par l'application sont reprises sous les codes EDI de même objet.
  */
-export function liasseItems(r: Pick<TdfcRequest, 'declarant' | 'period' | 'liasse'>): TdfcItem[] {
+export function liasseItems(r: Pick<TdfcRequest, 'declarant' | 'period' | 'liasse' | 'balance'>): TdfcItem[] {
   const { declarant: d, period, liasse: l } = r;
   const items: TdfcItem[] = [];
 
@@ -190,7 +206,8 @@ export function liasseItems(r: Pick<TdfcRequest, 'declarant' | 'period' | 'liass
   if (fiscal >= 0) items.push(money('2033B', 'CM', 'Bénéfice fiscal avant imputation des déficits', fiscal), money('2033B', 'CR', 'Bénéfice fiscal après imputation des déficits', fiscal));
   else items.push(money('2033B', 'EM', 'Déficit fiscal avant imputation des déficits', -fiscal), money('2033B', 'ER', 'Déficit fiscal après imputation des déficits', -fiscal));
 
-  // 2033-C : immobilisations et amortissements
+  // 2033-A : bilan simplifié ; 2033-C : immobilisations et amortissements
+  items.push(...items2033A(bilan2033A(l, period, r.balance)));
   items.push(...items2033C(l, period));
 
   // Formulaires sans contenu pour un LMNP sans salarié ni associé
@@ -198,9 +215,64 @@ export function liasseItems(r: Pick<TdfcRequest, 'declarant' | 'period' | 'liass
   return items;
 }
 
-/** Lignes du 2033-C par nature : bâti → constructions, travaux → installations et agencements, meubles → autres. */
+/** Bilan simplifié 2033-A d'un loueur en meublé : immobilisations, créances, trésorerie, emprunts, dépôts. */
+export interface Bilan2033A {
+  immoGross: number; immoDep: number; immoNet: number;
+  receivables: number; cash: number; currentTotal: number;
+  assetsGross: number; assetsDep: number; assetsNet: number;
+  /** Capital individuel (compte de l'exploitant) : solde qui équilibre le bilan. */
+  capital: number; result: number; equity: number;
+  loans: number; otherDebts: number; debts: number; liabilities: number;
+  loansBeyondOneYear: number; acquisitions: number;
+}
+
+export function bilan2033A(l: Liasse2033B, period: TdfcPeriod, b: TdfcBalanceInputs = {}): Bilan2033A {
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  const immoGross = r2(l.assets.reduce((s, a) => s + a.gross, 0));
+  const immoDep = r2(l.assets.reduce((s, a) => s + a.cumulated, 0));
+  const immoNet = r2(immoGross - immoDep);
+  const receivables = r2(b.receivables ?? 0), cash = r2(b.cash ?? 0);
+  const currentTotal = r2(receivables + cash);
+  const assetsNet = r2(immoNet + currentTotal);
+  const result = line(l, '310');
+  const loans = l.loans.remaining;
+  const otherDebts = r2((b.depositsHeld ?? 0) + (b.otherDebts ?? 0));
+  const debts = r2(loans + otherDebts);
+  const capital = r2(assetsNet - result - debts);
+  return {
+    immoGross, immoDep, immoNet, receivables, cash, currentTotal,
+    assetsGross: r2(immoGross + currentTotal), assetsDep: immoDep, assetsNet,
+    capital, result, equity: r2(capital + result), loans, otherDebts, debts, liabilities: r2(capital + result + debts),
+    loansBeyondOneYear: l.loans.beyondOneYear,
+    acquisitions: r2(l.assets.filter((a) => a.start >= period.start && a.start <= period.end).reduce((s, a) => s + a.gross, 0)),
+  };
+}
+
+function items2033A(b: Bilan2033A): TdfcItem[] {
+  const m = (code: string, label: string, v: number) => money('2033A', code, label, v);
+  const out = [
+    m('AC', 'Immobilisations corporelles, brut', b.immoGross), m('BC', 'Immobilisations corporelles, amortissements', b.immoDep), m('CC', 'Immobilisations corporelles, net', b.immoNet),
+    m('AE', 'Total I actif immobilisé, brut', b.immoGross), m('BE', 'Total I actif immobilisé, amortissements', b.immoDep), m('CE', 'Total I actif immobilisé, net', b.immoNet),
+  ];
+  if (b.receivables) out.push(m('AJ', 'Créances clients, brut', b.receivables), m('CJ', 'Créances clients, net', b.receivables));
+  if (b.cash) out.push(m('AM', 'Disponibilités, brut', b.cash), m('CM', 'Disponibilités, net', b.cash));
+  out.push(
+    m('AQ', 'Total II actif circulant, brut', b.currentTotal), m('CQ', 'Total II actif circulant, net', b.currentTotal),
+    m('AR', 'Total général de l’actif, brut', b.assetsGross), m('BR', 'Total général de l’actif, amortissements', b.assetsDep), m('CR', 'Total général de l’actif, net', b.assetsNet),
+    m('FA', 'Capital individuel (compte de l’exploitant)', b.capital), m('FG', 'Résultat de l’exercice', b.result), m('FJ', 'Total I capitaux propres', b.equity),
+  );
+  if (b.loans) out.push(m('FL', 'Emprunts et dettes assimilées', b.loans));
+  if (b.otherDebts) out.push(m('FP', 'Autres dettes (dépôts de garantie reçus)', b.otherDebts));
+  out.push(m('FR', 'Total III dettes', b.debts), m('FS', 'Total général du passif', b.liabilities));
+  if (b.loansBeyondOneYear) out.push(m('JA', 'Dettes à plus d’un an', b.loansBeyondOneYear));
+  if (b.acquisitions) out.push(m('JB', 'Coût de revient des immobilisations acquises dans l’exercice', b.acquisitions));
+  return out;
+}
+
+/** Lignes du 2033-C par nature : terrain, bâti → constructions, travaux → agencements, meubles → autres immobilisations. */
 function items2033C(l: Liasse2033B, period: TdfcPeriod): TdfcItem[] {
   const rows = {
+    terrain: { label: 'terrains', gross: ['AC', 'BC', 'DC'], dep: [] },
     bati: { label: 'constructions', gross: ['AD', 'BD', 'DD'], dep: ['FC', 'GC', 'JC'] },
     travaux: { label: 'installations générales, agencements', gross: ['AF', 'BF', 'DF'], dep: ['FE', 'GE', 'JE'] },
     meuble: { label: 'autres immobilisations corporelles', gross: ['AH', 'BH', 'DH'], dep: ['FG', 'GG', 'JG'] },
@@ -216,12 +288,15 @@ function items2033C(l: Liasse2033B, period: TdfcPeriod): TdfcItem[] {
     const dot = list.reduce((s, a) => s + a.dotation, 0);
     const begin = end - added, depBegin = depEnd - dot;
     out.push(
-      money('2033C', r.gross[0], `Valeur brute au début de l’exercice : ${r.label}`, begin),
-      money('2033C', r.gross[1], `Augmentations : ${r.label}`, added),
-      money('2033C', r.gross[2], `Valeur brute en fin d’exercice : ${r.label}`, end),
-      money('2033C', r.dep[0], `Amortissements au début de l’exercice : ${r.label}`, depBegin),
-      money('2033C', r.dep[1], `Dotations de l’exercice : ${r.label}`, dot),
-      money('2033C', r.dep[2], `Amortissements en fin d’exercice : ${r.label}`, depEnd),
+      money('2033C', r.gross[0]!, `Valeur brute au début de l’exercice : ${r.label}`, begin),
+      money('2033C', r.gross[1]!, `Augmentations : ${r.label}`, added),
+      money('2033C', r.gross[2]!, `Valeur brute en fin d’exercice : ${r.label}`, end),
+    );
+    const [dBegin, dDot, dEnd] = r.dep as readonly string[];
+    if (dBegin && dDot && dEnd) out.push(
+      money('2033C', dBegin, `Amortissements au début de l’exercice : ${r.label}`, depBegin),
+      money('2033C', dDot, `Dotations de l’exercice : ${r.label}`, dot),
+      money('2033C', dEnd, `Amortissements en fin d’exercice : ${r.label}`, depEnd),
     );
     total.begin += begin; total.added += added; total.end += end; total.depBegin += depBegin; total.dot += dot; total.depEnd += depEnd;
   }
@@ -394,7 +469,12 @@ export function checkRequest(r: TdfcRequest): TdfcCheck[] {
   if (l.assets.length === 0) out.push({ level: 'avertissement', message: '2033-C déposé néant : aucune immobilisation amortie.' });
   if (Object.values(l.lines).some((x) => !Number.isInteger(x.amount))) out.push({ level: 'avertissement', message: 'Les centimes sont tronqués (règle TDFC : euros entiers, sans arrondi).' });
 
-  out.push({ level: 'bloquant', message: '2033-A (bilan simplifié) : pas encore produit par Immo-Zen.' });
+  const bil = bilan2033A(l, period, r.balance);
+  if (!near(bil.assetsNet, bil.liabilities)) out.push({ level: 'bloquant', message: `2033-A : bilan déséquilibré (actif ${bil.assetsNet} €, passif ${bil.liabilities} €).` });
+  if (!near(bil.assetsGross - bil.assetsDep, bil.assetsNet)) out.push({ level: 'bloquant', message: '2033-A : total de l’actif incohérent (brut − amortissements ≠ net).' });
+  if (r.balance?.cash === undefined) out.push({ level: 'avertissement', message: '2033-A : trésorerie de l’activité non renseignée, comptée à 0.' });
+  if (r.balance?.depositsHeld === undefined) out.push({ level: 'avertissement', message: '2033-A : dépôts de garantie reçus non renseignés, comptés à 0.' });
+  if (bil.capital < 0) out.push({ level: 'avertissement', message: `2033-A : compte de l’exploitant négatif (${bil.capital} €) — vérifier la trésorerie et les emprunts.` });
   out.push({ level: 'bloquant', message: 'Sécurisation AUTACK non encore intégrée : l’interchange ne peut pas être transmis.' });
 
   // jeu de caractères

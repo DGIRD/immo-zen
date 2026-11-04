@@ -4,7 +4,7 @@ import type { Expense, Property } from '../src/data/types.ts';
 import { fiscalSummary, type FiscalData, type Liasse2033B } from '../src/domain/fiscal.ts';
 import { amount, encodeLatin9, escape, invalidLatin9, segment } from '../src/domain/edi/edifact.ts';
 import {
-  buildInterchange, campaignFor, checkRequest, dataCode, encodeInterchange, interchangeRef, liasseItems, validSiren, type TdfcRequest,
+  bilan2033A, buildInterchange, campaignFor, checkRequest, dataCode, encodeInterchange, interchangeRef, liasseItems, validSiren, type TdfcRequest,
 } from '../src/domain/edi/tdfc.ts';
 
 // ------------------------------------------------------------------ syntaxe EDIFACT
@@ -138,7 +138,7 @@ test('réel : pas d’indicateur de test, application DF1', () => {
 
 test('contrôles : bloquants sur SIREN, ROF, agrément, campagne, 2033-A et sécurisation', () => {
   const ok = checkRequest(request());
-  assert.deepEqual(ok.filter((c) => c.level === 'bloquant').map((c) => c.message.slice(0, 6)), ['2033-A', 'Sécuri']);
+  assert.deepEqual(ok.filter((c) => c.level === 'bloquant').map((c) => c.message.slice(0, 6)), ['Sécuri']);
   const bad = checkRequest(request({
     declarant: { siren: '123456789', rof: 'BIC01', name: 'X', address: { street: '', zip: '9412', city: 'Fontenay' } },
     partner: { ...request().partner, agrement: '' }, period: { start: '2026-01-01', end: '2026-12-31' },
@@ -154,5 +154,30 @@ test('population fictive DGFiP (BIC IR RS) : SIREN et ROF acceptés', () => {
   const declarant = { siren: '079555934', rof: 'BIC1', name: 'MONSIEUR 01', address: { street: '252 RUE ALPHANUMERIQUE', zip: '44001', city: 'NANTES CHANTIERS' } };
   assert.ok(validSiren(declarant.siren));
   const checks = checkRequest(request({ declarant })).filter((c) => c.level === 'bloquant').map((c) => c.message.slice(0, 6));
-  assert.deepEqual(checks, ['2033-A', 'Sécuri']);
+  assert.deepEqual(checks, ['Sécuri']);
+});
+
+test('2033-A : bilan équilibré par le compte de l’exploitant, terrain et emprunt repris', () => {
+  const loanProp = { ...prop, loan_amount: 150000, loan_rate: 3, loan_years: 20, loan_start_date: '2024-02-05' } as Property;
+  const s = fiscalSummary(2025, { ...data, properties: [loanProp] }, () => ({}));
+  const l = s.reelBic!.liasse;
+  const terrain = l.assets.find((a) => a.kind === 'terrain');
+  assert.equal(terrain?.gross, 30000, 'terrain = 15 % de 200 000 €');
+  assert.ok(l.loans.remaining > 130000 && l.loans.remaining < 150000, `capital restant dû fin 2025 : ${l.loans.remaining}`);
+  assert.ok(l.loans.beyondOneYear < l.loans.remaining);
+  const b = bilan2033A(l, { start: '2025-01-01', end: '2025-12-31' }, { cash: 2500, depositsHeld: 900 });
+  assert.equal(b.immoGross, 30000 + 170000 + 3000);
+  assert.equal(b.assetsNet, b.liabilities);
+  assert.equal(b.equity, b.capital + b.result);
+  assert.equal(b.otherDebts, 900);
+  assert.equal(b.acquisitions, 3000, 'seul le meuble est acquis en 2025');
+  const r = request({ liasse: l, balance: { cash: 2500, depositsHeld: 900 } });
+  const items = liasseItems(r);
+  const moa = (code: string) => { const v = items.find((i) => i.form === '2033A' && i.code === code)?.value; return v?.seg === 'MOA' ? v.amount : undefined; };
+  assert.equal(moa('CR'), moa('FS'));
+  assert.equal(moa('FL'), l.loans.remaining);
+  assert.equal(moa('AM'), 2500);
+  const c = (code: string) => { const v = items.find((i) => i.form === '2033C' && i.code === code)?.value; return v?.seg === 'MOA' ? v.amount : undefined; };
+  assert.equal(c('DC'), 30000, '2033-C : terrains');
+  assert.deepEqual(checkRequest(r).filter((x) => x.level === 'bloquant').map((x) => x.message.slice(0, 6)), ['Sécuri']);
 });
