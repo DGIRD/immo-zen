@@ -64,7 +64,7 @@ const options = {
   outdir: join(appOut, 'assets'),
   entryNames: serve ? 'app' : 'app-[hash]',
   assetNames: '[name]-[hash]',
-  loader: { '.css': 'css' },
+  loader: { '.css': 'css', '.woff2': 'file' },
   metafile: true,
   logLevel: 'info',
   legalComments: 'none',
