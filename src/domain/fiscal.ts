@@ -357,7 +357,7 @@ export interface Liasse2033B {
   deferredUsed: number;
   fiscalResult: number;
   /** Immobilisations (2033-C) : valeurs brutes et amortissements cumulés en fin d'exercice. */
-  assets: { label: string; gross: number; cumulated: number }[];
+  assets: { label: string; gross: number; cumulated: number; kind: DepreciationItem['kind']; start: string; dotation: number }[];
   /** Amortissements différés restant à imputer en fin d'exercice. */
   deferredAfter: number;
 }
@@ -382,7 +382,7 @@ export function liasse2033B(list: ReelBic[], year: number, d: FiscalData, inputs
     const p = d.properties.find((x) => x.id === r.propertyId);
     if (!p) continue;
     const { items } = depreciationItems(p, year, d, inputs(p.id, year));
-    for (const i of items) assets.push({ label: `${p.title} – ${i.label}`, gross: i.base, cumulated: i.cumulated });
+    for (const i of items) assets.push({ label: `${p.title} – ${i.label}`, gross: i.base, cumulated: i.cumulated, kind: i.kind, start: i.start, dotation: i.amount });
   }
   return {
     lines: [
