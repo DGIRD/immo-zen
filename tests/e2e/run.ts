@@ -1203,6 +1203,36 @@ async function main() {
     const liasse = page.locator('table.tax-2033');
     await liasse.waitFor();
     assert.match((await liasse.innerText()).replace(/[\u202f\u00a0]/g, ' '), /218[\s\S]*242[\s\S]*254[\s\S]*310/);
+    // relecture du bilan 2033-A : origine des lignes, équilibre, correction motivée et conservée
+    const bilan = page.getByRole('region', { name: 'Relecture du bilan 2033-A' });
+    await bilan.getByRole('heading', { name: 'Bilan simplifié au 31/12/2024 (2033-A)' }).waitFor();
+    await bilan.getByText(/Actif = passif = /).waitFor();
+    await bilan.locator('caption', { hasText: 'Actif' }).waitFor();
+    await bilan.getByText('Convention', { exact: true }).first().waitFor();
+    await bilan.getByRole('button', { name: 'Ajouter la correction' }).click();
+    await bilan.getByText('Motif requis').waitFor();
+    await bilan.getByLabel('Ligne').selectOption('payables');
+    await bilan.getByLabel('Montant retenu').fill('120');
+    await bilan.getByLabel(/^Motif/).fill('Facture du syndic reçue en janvier');
+    await bilan.getByRole('button', { name: 'Ajouter la correction' }).click();
+    const hist = bilan.locator('table.bilan-history');
+    await hist.getByText('En vigueur').waitFor();
+    await bilan.locator('table.bilan-table').getByText('Corrigé', { exact: true }).waitFor();
+    await bilan.getByText(/Actif = passif = /).waitFor();
+    await page.screenshot({ path: join(out, '45-bilan-2033a.png'), fullPage: true });
+    await hist.getByRole('button', { name: 'Annuler' }).click();
+    await hist.getByText(/^Annulée le /).waitFor();
+    assert.equal(await hist.locator('tbody tr').count(), 1, 'correction annulée conservée dans l’historique');
+    await page.setViewportSize({ width: 390, height: 844 });
+    try {
+      // écran du bilan à 390 px : rien ne dépasse, hors tableaux à défilement propre
+      const wide = await bilan.evaluate((root) => [root, ...root.querySelectorAll('*')].filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1)
+        .filter((e) => !e.parentElement?.closest('.dt-scroll')).slice(0, 5).map((e) => `${e.tagName}.${(e as HTMLElement).className} ${Math.round(e.getBoundingClientRect().right)}px`));
+      await bilan.screenshot({ path: join(out, '46-bilan-2033a-mobile.png') });
+      assert.deepEqual(wide, [], `bilan 2033-A trop large à 390 px : ${wide.join(' | ')}`);
+    } finally {
+      await page.setViewportSize({ width: 1360, height: 900 });
+    }
     await guide.getByText('Location meublée au réel (LMNP) : liasse 2031 et 2033').waitFor();
     await guide.getByText('Espace professionnel').first().waitFor();
     await guide.getByText(/tuile « Résultat »/).first().waitFor();

@@ -100,6 +100,8 @@ export interface TdfcBalanceInputs {
   exploitant?: number;
   /** Écart de capital restant dû banque − calcul (pour expliquer l'écart du compte de l'exploitant). */
   loanBankGap?: number;
+  /** Corrections manuelles sans contrepartie dans les flux suivis (ex. dépôts corrigés : calcul − correction). */
+  manualAdjustment?: number;
 }
 
 /** Montants du bilan calculés par l'application. */
@@ -241,7 +243,7 @@ export interface Bilan2033A {
   tracked: number | null;
   /** Écart entre le bilan et le compte de l'exploitant suivi, et sa décomposition probable. */
   gap: number;
-  gapExplained: { receivables: number; payables: number; loanBank: number; other: number };
+  gapExplained: { receivables: number; payables: number; loanBank: number; manual: number; other: number };
 }
 
 export function bilan2033A(l: Liasse2033B, period: TdfcPeriod, b: TdfcBalanceInputs = {}): Bilan2033A {
@@ -261,8 +263,8 @@ export function bilan2033A(l: Liasse2033B, period: TdfcPeriod, b: TdfcBalanceInp
   const gap = tracked === null ? 0 : r2(balancing - tracked);
   // résultat calculé sur les encaissements : créances et charges à payer ne sont pas dans le résultat ;
   // un capital restant dû de la banque différent du calcul n'a pas de contrepartie dans les flux suivis
-  const explained = { receivables, payables: -(b.otherDebts ?? 0), loanBank: -(b.loanBankGap ?? 0) };
-  const other = r2(gap - explained.receivables - explained.payables - explained.loanBank);
+  const explained = { receivables, payables: -(b.otherDebts ?? 0), loanBank: -(b.loanBankGap ?? 0), manual: r2(b.manualAdjustment ?? 0) };
+  const other = r2(gap - explained.receivables - explained.payables - explained.loanBank - explained.manual);
   const capital = balancing;
   return {
     immoGross, immoDep, immoNet, receivables, cash, currentTotal,
@@ -540,6 +542,7 @@ export function checkRequest(r: TdfcRequest): TdfcCheck[] {
     if (e.receivables) parts.push(`loyers impayés au 31/12 ${e.receivables} €`);
     if (e.payables) parts.push(`charges à payer ${e.payables} €`);
     if (e.loanBank) parts.push(`écart capital restant dû banque / calcul ${e.loanBank} €`);
+    if (e.manual) parts.push(`corrections manuelles ${e.manual} €`);
     if (Math.abs(e.other) >= 1) parts.push(`non expliqué ${e.other} € (retenues sur dépôt, années hors réel, saisies manuelles)`);
     out.push({ level: Math.abs(e.other) >= 1 ? 'bloquant' : 'avertissement', message: `2033-A : écart de ${bil.gap} € entre le bilan et le compte de l’exploitant suivi (${bil.tracked} €) : ${parts.join(', ')}. Le résultat étant calculé sur les encaissements, les impayés et charges à payer créent cet écart.` });
   }

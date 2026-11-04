@@ -601,3 +601,30 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 .usury-pair { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; align-items: end; }
 .usury-pair > .label { grid-column: 1 / -1; }
 .market-rent { display: flex; flex-direction: column; gap: .7rem; }
+
+/* Relecture du bilan 2033-A */
+.bilan-review { margin: 1.2rem 0; padding-top: .6rem; border-top: 1px solid var(--line); }
+.bilan-status { padding: .55rem .8rem; border-radius: var(--radius); margin: .6rem 0 1rem; }
+.bilan-ok { background: var(--vert-tint); color: var(--vert); }
+.bilan-avertissement { background: var(--ocre-tint); color: var(--ocre); }
+.bilan-bloquant { background: var(--brique-tint); color: var(--brique); }
+.bilan-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: 1rem; }
+.bilan-side { min-width: 0; }
+.bilan-table caption { text-align: left; font-weight: 600; padding: .3rem 0; }
+.bilan-table td { vertical-align: top; }
+.bilan-table tr.subtotal td { border-top: 1px solid var(--line-strong); font-weight: 600; }
+.bilan-table .pill { margin-left: 0; white-space: nowrap; }
+.bilan-table summary { cursor: pointer; }
+.bilan-detail { list-style: none; padding: .3rem 0 0; margin: 0; font-size: .85rem; }
+.bilan-detail li { display: flex; justify-content: space-between; gap: .8rem; padding: .1rem 0; border-bottom: 1px dotted var(--line); }
+.bilan-warnings { padding-left: 0; list-style: none; margin: .6rem 0; }
+.bilan-correction-action { align-self: end; }
+.bilan-history tr.revoked td { color: var(--ink-soft); text-decoration: line-through; }
+.bilan-history tr.revoked td:last-child, .bilan-history tr.revoked td:nth-last-child(2) { text-decoration: none; }
+.bilan-table td:nth-child(2) { white-space: normal; }
+.bilan-origin-inline { display: none; }
+@media (max-width: 640px) {
+  .bilan-table th:nth-child(1), .bilan-table td:nth-child(1), .bilan-table th:nth-child(4), .bilan-table td:nth-child(4) { display: none; }
+  .bilan-origin-inline { display: inline-block; margin: .2rem 0 0; }
+  .bilan-table td.num { white-space: nowrap; }
+}

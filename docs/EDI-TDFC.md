@@ -16,7 +16,8 @@ Référentiel utilisé : cahier des charges EDI-TDFC de la **campagne 2026** (DG
 | `src/domain/edi/autack.ts` | Bloc signé, accréditation, groupe AUTACK PEDI (navigateur, Deno et Node ; aucune clé privée) |
 | `supabase/functions/_shared/tdfcSigner.ts` | Signature RSA côté serveur (`node:crypto`), contrôle clé ↔ accréditation |
 | `src/domain/bilan.ts` | Créances, dépôts, charges à payer, emprunts et compte de l'exploitant suivi |
-| `tests/tdfc.test.ts`, `tests/autack.test.ts`, `tests/bilan.test.ts` | 30 tests, dont l'exemple signé par la DGFiP, la population fictive et l'équilibre spontané du bilan |
+| `src/domain/bilanReview.ts`, `src/pages/FiscalBilan.tsx` | Écran de relecture du bilan (Déclaration fiscale → LMNP) : origine de chaque ligne, saisies, corrections motivées et conservées |
+| `tests/tdfc.test.ts`, `tests/autack.test.ts`, `tests/bilan.test.ts`, `tests/bilanReview.test.ts` | 35 tests, dont l'exemple signé par la DGFiP, la population fictive et l'équilibre spontané du bilan |
 | `tests/fixtures/tdfc/` | Exemples publics du pack technique DGFiP (partenaire fictif) |
 | `scripts/tdfc-exemple.ts` | Interchange de test non signé : `node --import tsx scripts/tdfc-exemple.ts sortie.edi` |
 
@@ -60,6 +61,13 @@ Un écart entièrement expliqué donne un avertissement, un écart non expliqué
 
 **À trancher avec l'expert-comptable** : en BIC, le résultat se calcule en principe sur les créances acquises et les dépenses engagées (art. 38-2 bis du CGI), et non sur les encaissements. Passer la liasse en engagements ferait disparaître l'écart, mais modifierait les montants déclarés.
 
+**Écran de relecture** (page Déclaration fiscale, section LMNP, sous le 2033-B) :
+- **Lecture** : actif et passif ligne par ligne, avec une étiquette d'origine (Liasse, Calculé, Banque, Saisi, Convention, Suivi depuis l'achat, Bilan N-1 repris, Corrigé). Chaque ligne se déplie sur son détail : biens, impayés par bail, charges à payer, mouvements du compte de l'exploitant, emprunts par bien.
+- **État** : actif = passif, ou écart expliqué ou non expliqué.
+- **Saisies** : capital restant dû de la banque par bien, trésorerie d'un compte dédié, capitaux propres du bilan N-1.
+- **Corrections** : pour les créances, les dépôts de garantie et les charges à payer, l'abonné saisit un montant et un motif obligatoire. La correction la plus récente s'applique. Une correction annulée reste visible dans l'historique (date, motif, état). Ces données sont enregistrées avec les autres saisies fiscales, dans `bilan_corrections` (foyer, par année).
+- **Mobile** : à 390 px, le code et l'origine passent sous le libellé ; le montant reste toujours visible.
+
 ## Signature (AUTACK PEDI)
 
 Le procédé est reproduit d'après `signer_donnees.c` de la DGFiP et vérifié sur l'exemple officiel (`tests/autack.test.ts`) :
@@ -74,7 +82,7 @@ Le procédé est reproduit d'après `signer_donnees.c` de la DGFiP et vérifié 
 
 1. **Fonction serveur `tdfc`** : construire la liasse, signer avec la clé secrète, archiver l'interchange et sa référence.
 2. **Transfert SFTP (PassTrans)** et lecture des retours : accusé de réception (INFENT-RCS), CONTRL, compte rendu (INFENT-CR, signé par la DGFiP et vérifiable avec `dgfip_cle_publique_pedi.pem`).
-3. **Interface** : SIREN, ROF, capital restant dû de la banque, trésorerie éventuelle, écran de relecture du bilan (origine de chaque ligne, corrections tracées), mandat de l'abonné, historique des dépôts.
+3. **Interface de télétransmission** : SIREN, ROF, mandat de l'abonné, aperçu de l'interchange, historique des dépôts (l'écran de relecture du bilan est livré).
 4. **Campagne 2027** : intégrer le nouveau cahier des charges dès sa publication (mars 2027).
 
 ## Points à faire valider
