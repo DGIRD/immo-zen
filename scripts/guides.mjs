@@ -5,6 +5,7 @@
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { BRAND_SVG, siteHeader } from './site-header.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const srcDir = join(root, 'content/guides');
@@ -12,6 +13,8 @@ const outDir = join(root, 'site/guides');
 const SITE = 'https://immo-zen.fr';
 const DATE = '2026-10-20';
 const DATE_FR = '20 octobre 2026';
+/** Dernière modification des pages pour le plan du site. */
+const SITEMAP_LASTMOD = '2026-11-04';
 const CATEGORIES = ['Investir', 'Financer et déclarer', 'Gérer'];
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -46,7 +49,7 @@ function polish(html) {
     .replace(/<\/table>/g, '</table></div>');
 }
 
-const BRAND = `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 17 16 6l12 11" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 26h14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="16" cy="19" r="2.4" fill="currentColor"/></svg>`;
+const BRAND = BRAND_SVG;
 
 function shell({ title, description, canonical, body, jsonld, prefix }) {
   return `<!doctype html>
@@ -70,15 +73,7 @@ function shell({ title, description, canonical, body, jsonld, prefix }) {
 </head>
 <body>
   <a class="skip" href="#contenu">Aller au contenu</a>
-  <header class="top">
-    <div class="wrap top-in">
-      <a class="brand" href="${prefix}" aria-label="Immo-Zen, accueil">
-        ${BRAND}
-        Immo-Zen
-      </a>
-      <nav class="nav-simple" aria-label="Navigation du site"><a href="${prefix}guides/">Guides</a><a class="hide-sm" href="${prefix}#tarifs">Tarifs</a><a class="btn btn-espace" href="${prefix}app/">Espace client</a></nav>
-    </div>
-  </header>
+  ${siteHeader({ prefix, current: 'guides' })}
   <main id="contenu" class="page">
 ${body}
   </main>
@@ -88,6 +83,7 @@ ${body}
       <nav aria-label="Liens du site"><a href="${prefix}">Accueil</a><a href="${prefix}guides/">Guides</a><a href="${prefix}mentions-legales.html">Mentions légales</a><a href="mailto:contact@immo-zen.fr">contact@immo-zen.fr</a></nav>
     </div>
   </footer>
+  <script src="${prefix}site.js" defer></script>
 </body>
 </html>
 `;
@@ -168,8 +164,17 @@ writeFileSync(join(outDir, 'index.html'), indexPage(all));
 
 // Plan du site pour les moteurs de recherche.
 const urls = [`${SITE}/`, `${SITE}/guides/`, ...all.map((a) => `${SITE}/guides/${a.slug}.html`), `${SITE}/mentions-legales.html`];
-writeFileSync(join(root, 'site/sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${u}</loc><lastmod>${DATE}</lastmod></url>`).join('\n')}\n</urlset>\n`);
-writeFileSync(join(root, 'site/robots.txt'), `User-agent: *\nDisallow: /app/\nSitemap: ${SITE}/sitemap.xml\n`);
+writeFileSync(join(root, 'site/sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${u}</loc><lastmod>${SITEMAP_LASTMOD}</lastmod></url>`).join('\n')}\n</urlset>\n`);
+writeFileSync(join(root, 'site/robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${SITE}/sitemap.xml\n`);
+
+// En-tête commun réécrit dans les pages statiques.
+for (const [file, opts] of [['site/index.html', { home: true }], ['site/mentions-legales.html', {}]]) {
+  const path = join(root, file);
+  const html = readFileSync(path, 'utf8');
+  const next = html.replace(/<header class="top">[\s\S]*?<\/header>/, siteHeader(opts));
+  if (next === html && !html.includes(siteHeader(opts))) throw new Error(`${file} : en-tête introuvable`);
+  writeFileSync(path, next);
+}
 
 for (const a of all) console.log(`${a.slug.padEnd(40)} ${String(a.words).padStart(5)} mots  ${a.minutes} min`);
 console.log(`${all.length} guides générés dans site/guides/`);

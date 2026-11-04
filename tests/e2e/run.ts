@@ -118,8 +118,10 @@ async function main() {
     const mp = await m.newPage();
     await mp.goto(siteUrl);
     await noHorizontalScroll(mp);
+    // « Espace client » visible sans ouvrir le menu ; le menu liste les rubriques
+    await mp.getByRole('banner').getByRole('link', { name: 'Espace client' }).waitFor();
     await mp.getByRole('button', { name: 'Menu' }).click();
-    await mp.getByLabel('Navigation du site').getByRole('link', { name: 'Espace client' }).waitFor();
+    await mp.getByLabel('Navigation du site').getByRole('link', { name: 'Tarifs' }).waitFor();
     await mp.screenshot({ path: join(out, '30-site-mobile.png'), fullPage: true });
     await m.close();
   });

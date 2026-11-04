@@ -29,16 +29,18 @@
         <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 17 16 6l12 11" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 26h14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="16" cy="19" r="2.4" fill="currentColor"/></svg>
         Immo-Zen
       </a>
-      <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav">Menu</button>
-      <nav id="nav" aria-label="Navigation du site">
+      <nav id="nav" class="site-nav" aria-label="Navigation du site">
         <a href="#profils">Pour qui</a>
         <a href="#decider">Acheter</a>
         <a href="#gerer">Gérer</a>
         <a href="#declarer">Déclarer</a>
         <a href="#tarifs">Tarifs</a>
-        <a href="#guides">Guides</a>
-        <a class="btn btn-espace" href="app/">Espace client</a>
+        <a href="guides/">Guides</a>
       </nav>
+      <div class="top-actions">
+        <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav">Menu</button>
+        <a class="btn btn-espace" href="app/">Espace client</a>
+      </div>
     </div>
   </header>
 
@@ -63,20 +65,51 @@
         <form class="calc" id="calc" aria-labelledby="calc-title" onsubmit="return false">
           <h2 id="calc-title">Votre prochain bien s'autofinance-t-il ?</h2>
           <div class="calc-grid">
-            <label>Prix du bien<span class="in"><input inputmode="numeric" name="prix" value="120000"><i>€</i></span></label>
-            <label>Loyer hors charges<span class="in"><input inputmode="numeric" name="loyer" value="750"><i>€ / mois</i></span></label>
-            <label>Apport<span class="in"><input inputmode="numeric" name="apport" value="25000"><i>€</i></span></label>
-            <label>Taux du crédit<span class="in"><input inputmode="decimal" name="taux" value="3,5"><i>% sur 20 ans</i></span></label>
-            <label class="wide">Charges du propriétaire : taxe foncière, copropriété, assurance<span class="in"><input inputmode="numeric" name="charges" value="1300"><i>€ / an</i></span></label>
+            <label>Prix du bien<span class="in"><input inputmode="numeric" name="prix" value="120000" autocomplete="off"><i>€</i></span></label>
+            <label>Loyer hors charges<span class="in"><input inputmode="numeric" name="loyer" value="750" autocomplete="off"><i>€ / mois</i></span></label>
+            <label>Apport<span class="in"><input inputmode="numeric" name="apport" value="25000" autocomplete="off"><i>€</i></span></label>
+            <label>Charges du propriétaire<span class="in"><input inputmode="numeric" name="charges" value="1300" autocomplete="off" aria-describedby="calc-charges-hint"><i>€ / an</i></span></label>
+            <label>Taux du crédit<span class="in"><input inputmode="decimal" name="taux" value="3,5" autocomplete="off"><i>%</i></span></label>
+            <label>Durée du crédit<span class="in"><select name="duree"><option value="10">10 ans</option><option value="15">15 ans</option><option value="20" selected>20 ans</option><option value="25">25 ans</option></select></span></label>
           </div>
           <div class="calc-out" aria-live="polite">
             <p class="calc-label">Cash-flow mensuel estimé, avant impôts</p>
             <p class="calc-figure" id="cf">—</p>
             <p class="calc-verdict" id="cf-verdict"></p>
             <p class="calc-detail" id="cf-detail"></p>
+            <div class="calc-cta" id="cf-cta" hidden>
+              <p id="cf-cta-text"></p>
+              <a class="btn btn-main" id="cf-cta-btn" href="app/">Essayer gratuitement 30 jours</a>
+              <p class="calc-cta-note">Sans carte bancaire</p>
+            </div>
           </div>
-          <p class="small">Estimation simplifiée : frais de notaire de 7,5 %, assurance emprunteur de 0,3 %. Le simulateur d'Immo-Zen ajoute frais d'agence, négociation, travaux, différé, vacance et charges récupérables, et compare jusqu'à quatre biens.</p>
+          <p class="small" id="calc-charges-hint">Charges du propriétaire : taxe foncière, part non récupérable de la copropriété, assurance. Estimation simplifiée : frais de notaire de 7,5 %, assurance emprunteur de 0,3 %. Le simulateur d'Immo-Zen ajoute frais d'agence, négociation, travaux, différé, vacance et charges récupérables, et compare jusqu'à quatre biens.</p>
         </form>
+      </div>
+    </section>
+
+    <section class="apercu" id="apercu" aria-labelledby="apercu-title">
+      <div class="wrap apercu-head">
+        <div>
+          <h2 id="apercu-title">Immo-Zen en images</h2>
+          <p class="intro">De l'annonce à la déclaration, avec un parc d'exemple fictif de quatre logements.</p>
+        </div>
+        <div class="shots-nav" aria-hidden="true">
+          <button type="button" class="shots-prev" tabindex="-1">‹</button>
+          <button type="button" class="shots-next" tabindex="-1">›</button>
+        </div>
+      </div>
+      <div class="shots" role="region" aria-label="Captures d'écran de l'application, défilement horizontal" tabindex="0">
+        <ul role="list">
+          <li><a href="img/app/tableau-de-bord.webp"><img src="img/app/tableau-de-bord-600.webp" srcset="img/app/tableau-de-bord-600.webp 600w, img/app/tableau-de-bord.webp 1200w" sizes="(max-width: 760px) 84vw, 440px" width="1200" height="900" loading="eager" decoding="async" alt="Tableau de bord d’un parc de quatre biens : cash-flow prévisionnel, loyers impayés, quittances à émettre et actions à faire"></a></li>
+          <li><a href="img/app/simulation.webp"><img src="img/app/simulation-600.webp" srcset="img/app/simulation-600.webp 600w, img/app/simulation.webp 1200w" sizes="(max-width: 760px) 84vw, 440px" width="1200" height="900" loading="eager" decoding="async" alt="Simulation d’un T2 à Paris 18e affiché 240 000 € avec une offre à 220 000 € : coût total, crédit et cash-flow"></a></li>
+          <li><a href="img/app/baux-locataires.webp"><img src="img/app/baux-locataires-600.webp" srcset="img/app/baux-locataires-600.webp 600w, img/app/baux-locataires.webp 1200w" sizes="(max-width: 760px) 84vw, 440px" width="1200" height="900" loading="lazy" decoding="async" alt="Liste des baux et locataires : bien, locataire, type de location, loyer et état du bail"></a></li>
+          <li><a href="img/app/bail.webp"><img src="img/app/bail-600.webp" srcset="img/app/bail-600.webp 600w, img/app/bail.webp 1200w" sizes="(max-width: 760px) 84vw, 440px" width="1200" height="900" loading="lazy" decoding="async" alt="Génération d’un contrat de location meublée à partir des informations du bail, avec les points à vérifier"></a></li>
+          <li><a href="img/app/quittance.webp"><img src="img/app/quittance-600.webp" srcset="img/app/quittance-600.webp 600w, img/app/quittance.webp 1200w" sizes="(max-width: 760px) 84vw, 440px" width="1200" height="900" loading="lazy" decoding="async" alt="Quittance de loyer au format PDF pour la période d’octobre, avec le détail du loyer et des charges"></a></li>
+          <li><a href="img/app/loyers.webp"><img src="img/app/loyers-600.webp" srcset="img/app/loyers-600.webp 600w, img/app/loyers.webp 1200w" sizes="(max-width: 760px) 84vw, 440px" width="1200" height="900" loading="lazy" decoding="async" alt="Suivi des loyers : un loyer d’octobre non réglé repéré, avec le reste dû"></a></li>
+          <li><a href="img/app/depenses.webp"><img src="img/app/depenses-600.webp" srcset="img/app/depenses-600.webp 600w, img/app/depenses.webp 1200w" sizes="(max-width: 760px) 84vw, 440px" width="1200" height="900" loading="lazy" decoding="async" alt="Dépenses classées par bien et par catégorie, avec import depuis un fichier Excel ou CSV"></a></li>
+          <li><a href="img/app/declaration.webp"><img src="img/app/declaration-600.webp" srcset="img/app/declaration-600.webp 600w, img/app/declaration.webp 1200w" sizes="(max-width: 760px) 84vw, 440px" width="1200" height="900" loading="lazy" decoding="async" alt="Déclaration fiscale : régime de chaque bien, loyers encaissés et dépenses payées à reporter"></a></li>
+        </ul>
       </div>
     </section>
 

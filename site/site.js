@@ -15,12 +15,55 @@
 
   const btn = document.querySelector('.menu-btn');
   const nav = document.getElementById('nav');
+  const closeMenu = () => { if (nav) nav.classList.remove('open'); if (btn) btn.setAttribute('aria-expanded', 'false'); };
   if (btn && nav) {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
       const open = nav.classList.toggle('open');
       btn.setAttribute('aria-expanded', String(open));
     });
-    nav.addEventListener('click', (e) => { if (e.target.closest('a')) { nav.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); } });
+    nav.addEventListener('click', (e) => { if (e.target.closest('a')) closeMenu(); });
+    document.addEventListener('click', (e) => { if (nav.classList.contains('open') && !nav.contains(e.target)) closeMenu(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && nav.classList.contains('open')) { closeMenu(); btn.focus(); } });
+  }
+
+  // ---------- rubrique en cours dans le menu (accueil : ancres de la page)
+  const anchorLinks = nav ? [...nav.querySelectorAll('a[href^="#"]')] : [];
+  const sections = anchorLinks.map((a) => document.getElementById(a.getAttribute('href').slice(1))).filter(Boolean);
+  if (sections.length) {
+    const mark = () => {
+      const y = window.scrollY + window.innerHeight * 0.35;
+      let cur = null;
+      for (const s of sections) if (s.offsetTop <= y) cur = s.id;
+      // la section du formulaire de contact et les guides suivent « Tarifs » sans rubrique propre
+      const last = sections[sections.length - 1];
+      if (cur === last.id && y > last.offsetTop + last.offsetHeight) cur = null;
+      anchorLinks.forEach((a) => {
+        if (a.getAttribute('href') === `#${cur}`) a.setAttribute('aria-current', 'true');
+        else a.removeAttribute('aria-current');
+      });
+    };
+    let raf = 0;
+    window.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; mark(); }); }, { passive: true });
+    window.addEventListener('resize', mark);
+    mark();
+  }
+
+  // ---------- captures de l'application : boutons précédent / suivant
+  const shots = document.querySelector('.shots');
+  if (shots) {
+    const prev = document.querySelector('.shots-prev');
+    const next = document.querySelector('.shots-next');
+    const step = () => (shots.querySelector('li')?.getBoundingClientRect().width ?? 400) + 16;
+    const sync = () => {
+      if (prev) prev.disabled = shots.scrollLeft < 8;
+      if (next) next.disabled = shots.scrollLeft + shots.clientWidth > shots.scrollWidth - 8;
+    };
+    prev?.addEventListener('click', () => shots.scrollBy({ left: -step(), behavior: 'smooth' }));
+    next?.addEventListener('click', () => shots.scrollBy({ left: step(), behavior: 'smooth' }));
+    shots.addEventListener('scroll', sync, { passive: true });
+    window.addEventListener('resize', sync);
+    sync();
   }
 
   // ---------- profils d'investisseur (onglets accessibles ; sans script, tous les profils s'affichent)
@@ -58,9 +101,10 @@
   function update() {
     const f = new FormData(calc);
     const prix = num(f.get('prix')), loyer = num(f.get('loyer')), apport = num(f.get('apport')), taux = num(f.get('taux')) / 100, charges = num(f.get('charges'));
+    const annees = Math.min(30, Math.max(1, num(f.get('duree')) || 20));
     const cout = prix * 1.075;
     const emprunt = Math.max(0, cout - apport);
-    const n = 240, t = taux / 12;
+    const n = annees * 12, t = taux / 12;
     const mensualite = emprunt === 0 ? 0 : t === 0 ? emprunt / n : (emprunt * t) / (1 - Math.pow(1 + t, -n));
     const assurance = (emprunt * 0.003) / 12;
     const credit = mensualite + assurance;
@@ -71,9 +115,30 @@
     if (verdict) verdict.textContent = cf >= 0
       ? 'Le loyer couvre le crédit et les charges : le bien s’autofinance, avant impôts.'
       : `Effort d’épargne d’environ ${eur.format(Math.abs(Math.round(cf)))} par mois : à négocier, à financer autrement, ou à assumer en connaissance de cause.`;
-    detail.textContent = `Crédit ${eur.format(Math.round(credit))} / mois sur ${eur.format(Math.round(emprunt))} empruntés · rendement brut ${rendement.toFixed(1).replace('.', ',')} %`;
+    detail.textContent = `Crédit ${eur.format(Math.round(credit))} / mois sur ${annees} ans pour ${eur.format(Math.round(emprunt))} empruntés · rendement brut ${rendement.toFixed(1).replace('.', ',')} %`;
+    if (cta) {
+      cta.hidden = false;
+      ctaText.textContent = cf < 0
+        ? 'Découvrez comment améliorer ce résultat : Immo-Zen compare le prix aux ventes réelles du quartier pour négocier, et teste l’effet de l’apport, de la durée, des travaux ou du meublé sur votre cash-flow.'
+        : 'Bonne nouvelle ! Après l’achat, Immo-Zen vous fait gagner du temps sur la gestion : échéances créées automatiquement, quittances prêtes dès que le loyer est réglé, montants de la déclaration préparés.';
+      ctaBtn.textContent = cf < 0 ? 'Améliorer ce résultat : essai gratuit 30 jours' : 'Essayer gratuitement 30 jours';
+    }
   }
-  if (calc) { calc.addEventListener('input', update); update(); }
+  const cta = document.getElementById('cf-cta');
+  const ctaText = document.getElementById('cf-cta-text');
+  const ctaBtn = document.getElementById('cf-cta-btn');
+  if (calc) {
+    calc.addEventListener('input', update);
+    calc.addEventListener('change', update);
+    // un clic dans un champ sélectionne la valeur d'exemple : la saisie la remplace directement
+    calc.querySelectorAll('input').forEach((el) => {
+      let justFocused = false;
+      el.addEventListener('focus', () => { justFocused = true; requestAnimationFrame(() => el.select()); });
+      el.addEventListener('mouseup', (e) => { if (justFocused) e.preventDefault(); justFocused = false; });
+      el.addEventListener('blur', () => { justFocused = false; });
+    });
+    update();
+  }
 
   // ---------- formulaire de contact → prospects commerciaux (Administration)
   const form = document.getElementById('contact');
