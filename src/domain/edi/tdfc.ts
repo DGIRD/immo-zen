@@ -12,6 +12,7 @@
  */
 import type { Liasse2033B } from '../fiscal.ts';
 import { UNA, amount, encodeLatin9, invalidLatin9, segment, toLatin9Text } from './edifact.ts';
+import { parseAccreditation, signGroup, autackGroup, type RawRsaSigner } from './autack.ts';
 
 // ------------------------------------------------------------------ campagnes intégrées
 
@@ -59,6 +60,8 @@ export interface EdiPartner {
   software: { editor: string; program: string; version: string; revision?: string };
   /** Référence de l'attestation de conformité EDIFICAS du module. */
   attestation: string;
+  /** Accréditation remise par le correspondant téléprocédures (1368 caractères hexadécimaux). */
+  accreditation?: string;
 }
 
 /** Déclarant (loueur en meublé non professionnel). */
@@ -342,14 +345,21 @@ function valueSegments(v: Value): string[] {
   }
 }
 
-const yymmdd = (d: Date) => d.toISOString().slice(2, 10).replaceAll('-', '');
-const hhmm = (d: Date) => d.toISOString().slice(11, 16).replace(':', '');
+/** Date et heure légales de Paris (préparation de l'interchange et horodatage de la signature). */
+export function parisStamp(d: Date): { yyyymmdd: string; yymmdd: string; hhmm: string; signature: string } {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(d).map((p) => [p.type, p.value]));
+  const yyyymmdd = `${parts.year}${parts.month}${parts.day}`, hhmm = `${parts.hour}${parts.minute}`;
+  return { yyyymmdd, yymmdd: yyyymmdd.slice(2), hhmm, signature: yyyymmdd + hhmm };
+}
 
 /** Référence d'interchange (n14) : agrément (7) + dernier chiffre de l'année + quantième (3) + séquence (3). */
 export function interchangeRef(agrement: string, at: Date, sequence: number): string {
-  const start = Date.UTC(at.getUTCFullYear(), 0, 1);
-  const day = Math.floor((at.getTime() - start) / 86400000) + 1;
-  return agrement + String(at.getUTCFullYear() % 10) + String(day).padStart(3, '0') + String(sequence).padStart(3, '0');
+  const s = parisStamp(at).yyyymmdd;
+  const [y, m, d] = [Number(s.slice(0, 4)), Number(s.slice(4, 6)), Number(s.slice(6))];
+  const day = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(y, 0, 1)) / 86400000) + 1;
+  return agrement + String(y % 10) + String(day).padStart(3, '0') + String(sequence).padStart(3, '0');
 }
 
 export interface TdfcMessage {
@@ -357,9 +367,14 @@ export interface TdfcMessage {
   items: TdfcItem[];
   /** Segments UNH … UNT du message INFENT-DF. */
   segments: string[];
+  /** Groupe fonctionnel INFENT (UNG … UNE), objet de la signature. */
+  group: string;
   /** Interchange complet, sans le groupe fonctionnel AUTACK de sécurisation. */
   interchange: string;
   reference: string;
+  test: boolean;
+  agrement: string;
+  stamp: ReturnType<typeof parisStamp>;
 }
 
 /** Construit le message INFENT-DF et l'interchange (non sécurisé). */
@@ -368,14 +383,14 @@ export function buildInterchange(r: TdfcRequest): TdfcMessage {
   if (!campaign) throw new Error(`Cahier des charges EDI-TDFC non intégré pour un exercice clos le ${r.period.end}.`);
   const items = liasseItems(r);
   const p = r.partner;
-  const at = r.preparedAt;
-  const ref = interchangeRef(p.agrement, at, r.sequence);
+  const at = parisStamp(r.preparedAt);
+  const ref = interchangeRef(p.agrement, r.preparedAt, r.sequence);
   const msgRef = '00001';
 
   const body: string[] = [
     segment('UNH', msgRef, ['INFENT', 'D', '00B', 'UN', campaign.groupVersion]),
     segment('BGM', ['IDF', '71', '211'], ['INFENT' + r.documentRef]),
-    segment('DTM', ['242', at.toISOString().slice(0, 10).replaceAll('-', ''), '102']),
+    segment('DTM', ['242', at.yyyymmdd, '102']),
     segment('RFF', ['AUM', p.software.editor]),
     segment('RFF', ['AUN', p.software.program, undefined, p.software.version, p.software.revision]),
     segment('RFF', ['AUO', p.attestation]),
@@ -387,21 +402,42 @@ export function buildInterchange(r: TdfcRequest): TdfcMessage {
   });
   body.push(segment('UNT', String(body.length + 1), msgRef));
 
-  const interchange = [
-    UNA,
-    segment('UNB', ['UNOL', '3'], [p.agrement, '146', p.transfer.mode + p.transfer.alias], ['DGI_EDI_TDFC'], [yymmdd(at), hhmm(at)], ref,
-      undefined, undefined, undefined, undefined, campaign.interchangeAgreement, r.test ? '1' : undefined),
-    segment('UNG', 'INFENT', [r.test ? 'DF4' : 'DF1', '146'], ['EDI_TDFC'], [yymmdd(at), hhmm(at)], '1', 'UN', ['D', '00B', campaign.groupVersion]),
+  const group = [
+    segment('UNG', 'INFENT', [r.test ? 'DF4' : 'DF1', '146'], ['EDI_TDFC'], [at.yymmdd, at.hhmm], '1', 'UN', ['D', '00B', campaign.groupVersion]),
     ...body,
     segment('UNE', '1', '1'),
-    segment('UNZ', '1', ref),
   ].join('');
-  return { campaign, items, segments: body, interchange, reference: ref };
+  const header = UNA + segment('UNB', ['UNOL', '3'], [p.agrement, '146', p.transfer.mode + p.transfer.alias], ['DGI_EDI_TDFC'], [at.yymmdd, at.hhmm], ref,
+    undefined, undefined, undefined, undefined, campaign.interchangeAgreement, r.test ? '1' : undefined);
+  const interchange = header + group + segment('UNZ', '1', ref);
+  return { campaign, items, segments: body, group, interchange, reference: ref, test: r.test, agrement: p.agrement, stamp: at };
 }
 
-/** Interchange encodé en ISO 8859-15, prêt à être sécurisé. */
+/** Interchange non sécurisé encodé en ISO 8859-15 (pour relecture ; la DGFiP refuse un envoi sans AUTACK). */
 export function encodeInterchange(m: TdfcMessage): Uint8Array {
   return encodeLatin9(m.interchange);
+}
+
+export interface SecuredInterchange {
+  /** Fichier à transmettre (ISO 8859-15). */
+  bytes: Uint8Array;
+  text: string;
+  signatureHex: string;
+  reference: string;
+}
+
+/**
+ * Sécurise l'interchange : signature du groupe INFENT et ajout du groupe AUTACK PEDI (UNZ compte 2 groupes).
+ * L'accréditation doit avoir été délivrée pour la clé du signataire (vérifié par la fonction serveur).
+ */
+export async function secureInterchange(m: TdfcMessage, accreditationText: string, signer: RawRsaSigner): Promise<SecuredInterchange> {
+  const accreditation = parseAccreditation(accreditationText);
+  const signatureHex = await signGroup(encodeLatin9(m.group), m.stamp.signature, signer);
+  const unb = m.interchange.slice(0, m.interchange.indexOf("'UNG+") + 1);
+  const text = unb + m.group
+    + autackGroup({ test: m.test, agrement: m.agrement, accreditation, signatureHex, yymmdd: m.stamp.yymmdd, hhmm: m.stamp.hhmm })
+    + segment('UNZ', '2', m.reference);
+  return { bytes: encodeLatin9(text), text, signatureHex, reference: m.reference };
 }
 
 // ------------------------------------------------------------------ contrôles avant envoi
@@ -475,7 +511,14 @@ export function checkRequest(r: TdfcRequest): TdfcCheck[] {
   if (r.balance?.cash === undefined) out.push({ level: 'avertissement', message: '2033-A : trésorerie de l’activité non renseignée, comptée à 0.' });
   if (r.balance?.depositsHeld === undefined) out.push({ level: 'avertissement', message: '2033-A : dépôts de garantie reçus non renseignés, comptés à 0.' });
   if (bil.capital < 0) out.push({ level: 'avertissement', message: `2033-A : compte de l’exploitant négatif (${bil.capital} €) — vérifier la trésorerie et les emprunts.` });
-  out.push({ level: 'bloquant', message: 'Sécurisation AUTACK non encore intégrée : l’interchange ne peut pas être transmis.' });
+  if (!p.accreditation) out.push({ level: 'bloquant', message: 'Accréditation DGFiP absente : l’interchange ne peut pas être signé (à obtenir auprès du correspondant téléprocédures).' });
+  else {
+    try {
+      parseAccreditation(p.accreditation);
+    } catch (e) {
+      out.push({ level: 'bloquant', message: (e as Error).message });
+    }
+  }
 
   // jeu de caractères
   const texts = [d.name, d.activity ?? '', d.address.street, d.address.city, d.address.complement ?? '', d.home?.street ?? '', d.home?.city ?? '', p.name];

@@ -112,8 +112,8 @@ test('interchange : en-tête, compteurs et références cohérents', () => {
   const m = buildInterchange(request());
   const segs = m.interchange.split(/(?<!\?)'/).filter(Boolean);
   assert.equal(segs[0], 'UNA:+,? ');
-  assert.equal(segs[1], 'UNB+UNOL:3+9400101:146:TIMMOZEN1+DGI_EDI_TDFC+260415:1030+94001016105001+++++PED-DGI-IN-TD2601+1');
-  assert.equal(segs[2], 'UNG+INFENT+DF4:146+EDI_TDFC+260415:1030+1+UN+D:00B:FD2601');
+  assert.equal(segs[1], 'UNB+UNOL:3+9400101:146:TIMMOZEN1+DGI_EDI_TDFC+260415:1230+94001016105001+++++PED-DGI-IN-TD2601+1');
+  assert.equal(segs[2], 'UNG+INFENT+DF4:146+EDI_TDFC+260415:1230+1+UN+D:00B:FD2601');
   assert.equal(segs[3], 'UNH+00001+INFENT:D:00B:UN:FD2601');
   assert.ok(segs.includes('BGM+IDF:71:211+INFENTLMNP2025-1'));
   assert.ok(segs.includes('RFF+AUN:Immo-Zen::1.0'));
@@ -136,9 +136,9 @@ test('réel : pas d’indicateur de test, application DF1', () => {
   assert.match(m.interchange, /PED-DGI-IN-TD2601'UNG\+INFENT\+DF1:146/);
 });
 
-test('contrôles : bloquants sur SIREN, ROF, agrément, campagne, 2033-A et sécurisation', () => {
+test('contrôles : bloquants sur SIREN, ROF, agrément, campagne, 2033-A et accréditation', () => {
   const ok = checkRequest(request());
-  assert.deepEqual(ok.filter((c) => c.level === 'bloquant').map((c) => c.message.slice(0, 6)), ['Sécuri']);
+  assert.deepEqual(ok.filter((c) => c.level === 'bloquant').map((c) => c.message.slice(0, 6)), ['Accréd']);
   const bad = checkRequest(request({
     declarant: { siren: '123456789', rof: 'BIC01', name: 'X', address: { street: '', zip: '9412', city: 'Fontenay' } },
     partner: { ...request().partner, agrement: '' }, period: { start: '2026-01-01', end: '2026-12-31' },
@@ -154,7 +154,7 @@ test('population fictive DGFiP (BIC IR RS) : SIREN et ROF acceptés', () => {
   const declarant = { siren: '079555934', rof: 'BIC1', name: 'MONSIEUR 01', address: { street: '252 RUE ALPHANUMERIQUE', zip: '44001', city: 'NANTES CHANTIERS' } };
   assert.ok(validSiren(declarant.siren));
   const checks = checkRequest(request({ declarant })).filter((c) => c.level === 'bloquant').map((c) => c.message.slice(0, 6));
-  assert.deepEqual(checks, ['Sécuri']);
+  assert.deepEqual(checks, ['Accréd']);
 });
 
 test('2033-A : bilan équilibré par le compte de l’exploitant, terrain et emprunt repris', () => {
@@ -179,5 +179,5 @@ test('2033-A : bilan équilibré par le compte de l’exploitant, terrain et emp
   assert.equal(moa('AM'), 2500);
   const c = (code: string) => { const v = items.find((i) => i.form === '2033C' && i.code === code)?.value; return v?.seg === 'MOA' ? v.amount : undefined; };
   assert.equal(c('DC'), 30000, '2033-C : terrains');
-  assert.deepEqual(checkRequest(r).filter((x) => x.level === 'bloquant').map((x) => x.message.slice(0, 6)), ['Sécuri']);
+  assert.deepEqual(checkRequest(r).filter((x) => x.level === 'bloquant').map((x) => x.message.slice(0, 6)), ['Accréd']);
 });
