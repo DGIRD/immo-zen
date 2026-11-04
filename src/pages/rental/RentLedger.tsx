@@ -1,6 +1,6 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useStore } from '../../data/store.tsx';
-import type { Payment, Receipt, RentCharge } from '../../data/types.ts';
+import type { Payment, Receipt } from '../../data/types.ts';
 import { downloadBlob, stamp, toCsv, toXlsx, type ExportColumn } from '../../domain/exporting.ts';
 import { date, money2 } from '../../domain/format.ts';
 import { ledgerRows, ledgerSettings, mmYYYY, monthQuittance, ROW_STATUS_LABELS, type LedgerRow, type RowStatus } from '../../domain/ledger.ts';
@@ -13,8 +13,8 @@ import { Button, EmptyState, Section } from '../../ui/components.tsx';
 import { navigate } from '../../ui/router.ts';
 import { useChargeEditing } from './ChargeEdit.tsx';
 import { applyPaymentEdit, METHODS, PaymentDialog, ReceiptDialog, receiptsCovering, sendLabel, usePaymentActions, useReceiptActions, useRental } from './common.tsx';
-import { RepoError } from '../../data/repo.ts';
-import { syncLedgerWith } from './ledgerSync.ts';
+import { saveLedgerGrid } from './gridSave.ts';
+import { previewEdits } from '../../domain/gridEdits.ts';
 import { issueMonthDocs, useExcessDialog } from './monthActions.tsx';
 
 export type Filter = 'a_traiter' | 'impayee' | 'partielle' | 'reportee' | 'reglee' | 'a_venir' | 'ecarts' | 'annulee' | 'hors_periode' | 'doublons' | 'toutes';
@@ -250,121 +250,31 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
         : 'Statut calculé : choisissez Réglé, Impayé ou Annulé, ou saisissez le réglé') },
     { id: 'doc', label: 'Quittance', type: 'text', get: () => null, fixed: (r) => [r.quittance, ...r.recus].filter(Boolean).map((d) => docLabel(d!)).join(' ; ') || muted('—') },
   ];
-  async function saveLines(changes: { row: LedgerRow; values: Record<string, string | number | null> }[]) {
-    let n = 0;
-    /** Documents annulés pour permettre la modification, à réémettre ensuite (mois → type). */
-    const reissue = new Map<string, { lease_id: string; month: string; kind: 'quittance' | 'recu' }>();
-    let cancelled = 0;
-    const ok = await store.call(async (repo) => {
-      for (const { row, values } of changes) {
-        // quittance ou reçu émis sur ce mois : annulé, puis réémis après la modification si le mois le permet encore
-        {
-          const d = await repo.loadAll();
-          const ids = new Set([row.loyer!.id, ...row.others.map((c) => c.id), ...(row.report ? [row.report.id] : [])]);
-          const pays = d.payments.filter((p) => row.payments.some((x) => x.id === p.id));
-          const docs = d.receipts.filter((r) => !r.cancelled_at && (ids.has(r.charge_id) || (r.extra_lines ?? []).some((x) => ids.has(x.charge_id))));
-          for (const r of [...new Map([...docs, ...pays.flatMap((p) => receiptsCovering(p, d))].map((r) => [r.id, r])).values()]) {
-            await repo.cancelReceipt(r.id, 'Ligne modifiée dans la grille');
-            cancelled++;
-            const m = r.period_start.slice(0, 7);
-            const k = `${r.lease_id}|${m}`;
-            reissue.set(k, { lease_id: r.lease_id, month: m, kind: r.kind === 'quittance' || reissue.get(k)?.kind === 'quittance' ? 'quittance' : 'recu' });
-          }
-        }
-        const snap = await repo.loadAll();
-        const loyer = snap.charges.find((c) => c.id === row.loyer!.id);
-        if (!loyer) continue;
-        const label = `la ligne de ${monthLabel(`${row.month}-01`)}`;
-        const upd = async (c: RentCharge, patch: Partial<RentCharge>) => {
-          const res = await repo.update('rent_charges', c.id, c.version, patch);
-          if (res.status !== 'ok') throw new RepoError(`${label[0]!.toUpperCase()}${label.slice(1)} a été modifiée entre-temps : rechargez la page.`);
-        };
-        // loyer, charges, échéance, réception
-        const lp: Partial<RentCharge> = {};
-        if ('due_date' in values) lp.due_date = String(values.due_date);
-        if ('rent' in values) lp.rent_amount = round2(Number(values.rent ?? 0));
-        if ('charges' in values) lp.charges_amount = round2(Number(values.charges ?? 0));
-        if ('received' in values) lp.received_at = values.received === 'oui' ? new Date().toISOString() : null;
-        if (Object.keys(lp).length) await upd(loyer, lp);
-        // autre somme due (une seule par mois) : modifiée, créée ou retirée
-        if ('other' in values || 'other_label' in values) {
-          const o = row.others.length === 1 ? snap.charges.find((c) => c.id === row.others[0]!.id) : undefined;
-          const amount = round2(Number(values.other ?? (o ? o.rent_amount + o.charges_amount : 0)));
-          const text = 'other_label' in values ? (String(values.other_label ?? '').trim() || null) : o?.label ?? null;
-          if (o) {
-            if (amount === 0 && !snap.allocations.some((a) => a.charge_id === o.id)) await repo.remove('rent_charges', o.id);
-            else await upd(o, o.kind === 'regularisation' ? { rent_amount: 0, charges_amount: amount, label: text } : { rent_amount: amount, charges_amount: 0, label: text });
-          } else if (amount > 0) {
-            await repo.insert('rent_charges', { lease_id: loyer.lease_id, kind: 'autre', period_start: loyer.period_start, period_end: loyer.period_end, due_date: loyer.due_date,
-              rent_amount: amount, charges_amount: 0, label: text ?? `Autre somme due ${mmYYYY(row.month)}` });
-          }
-        }
-        const status = 'status' in values ? String(values.status) : null;
-        const monthPays = () => repo.loadAll().then((d) => ({ d, list: d.payments.filter((p) => row.payments.some((x) => x.id === p.id)) }));
-        // statut « Impayé » : les paiements du mois sont supprimés (documents annulés d'abord)
-        if (status === 'impayee') {
-          const { d, list } = await monthPays();
-          for (const r of [...new Map(list.flatMap((p) => receiptsCovering(p, d)).map((r) => [r.id, r])).values()]) await repo.cancelReceipt(r.id, 'Statut passé à Impayé');
-          for (const p of list) await repo.remove('payments', p.id);
-        } else if (row.payments.length > 1 && 'paid_on' in values && values.paid_on) {
-          // plusieurs paiements : la date de règlement est celle du dernier paiement du mois
-          const { d, list } = await monthPays();
-          const last = [...list].sort((a, b) => a.paid_on.localeCompare(b.paid_on) || a.created_at.localeCompare(b.created_at)).at(-1);
-          if (last && last.paid_on !== values.paid_on) {
-            for (const r of receiptsCovering(last, d)) await repo.cancelReceipt(r.id, 'Paiement modifié');
-            const res = await repo.update('payments', last.id, last.version, { paid_on: String(values.paid_on), period_month: `${row.month}-01`, date_defaulted: false });
-            if (res.status !== 'ok') throw new RepoError('Le paiement a été modifié entre-temps : rechargez la page.');
-          }
-        }
-        // réglé et date de règlement (un seul paiement dans le mois) : paiement modifié, créé ou supprimé
-        if (status !== 'impayee' && ('paid' in values || 'paid_on' in values) && row.payments.length <= 1) {
-          const p = row.payments[0] ? snap.payments.find((x) => x.id === row.payments[0]!.id) : undefined;
-          const amount = round2(Number(values.paid ?? (p?.amount ?? 0)));
-          const when = String(values.paid_on ?? p?.paid_on ?? (loyer.due_date <= today ? loyer.due_date : today));
-          if (p) {
-            for (const r of receiptsCovering(p, snap)) await repo.cancelReceipt(r.id, 'Paiement modifié');
-            await repo.removeWhere('payment_allocations', { payment_id: p.id });
-            if (amount <= 0) await repo.remove('payments', p.id);
-            else {
-              const cur = (await repo.loadAll()).payments.find((x) => x.id === p.id)!;
-              const res = await repo.update('payments', p.id, cur.version, { amount, paid_on: when, period_month: `${row.month}-01`, date_defaulted: false });
-              if (res.status !== 'ok') throw new RepoError('Le paiement a été modifié entre-temps : rechargez la page.');
-            }
-          } else if (amount > 0) {
-            await repo.insert('payments', { lease_id: loyer.lease_id, amount, paid_on: when, period_month: `${row.month}-01`, method: 'virement', source: 'saisie', date_defaulted: false });
-          }
-        }
-        // statut « Réglé » : un paiement complète le mois jusqu'au total dû (montants modifiés pris en compte)
-        if (status === 'reglee') {
-          const d = await repo.loadAll();
-          // toutes les sommes du mois, y compris celles dont le reste dû a été reporté sur le mois suivant
-          const own = d.charges.filter((c) => c.lease_id === loyer.lease_id && !c.cancelled_at
-            && (c.kind === 'loyer' || c.kind === 'report' ? c.period_start : c.due_date).slice(0, 7) === row.month);
-          const due = round2(own.reduce((t, c) => t + c.rent_amount + c.charges_amount, 0));
-          const paid = round2(d.payments.filter((p) => p.lease_id === loyer.lease_id && (p.period_month ?? p.paid_on).slice(0, 7) === row.month).reduce((t, p) => t + p.amount, 0) + row.advanceIn - row.advanceOut);
-          const missing = round2(due - paid);
-          const when = String(values.paid_on ?? (loyer.due_date <= today ? loyer.due_date : today));
-          if (missing > 0) await repo.insert('payments', { lease_id: loyer.lease_id, amount: missing, paid_on: when, period_month: `${row.month}-01`, method: 'virement', source: 'saisie', date_defaulted: false });
-          if (settings.receivedMode === 'confirmation' && !('received' in values)) {
-            const c = (await repo.loadAll()).charges.find((x) => x.id === loyer.id)!;
-            if (!c.received_at) await upd(c, { received_at: new Date().toISOString() });
-          }
-        }
-        // statut « Annulé » : la ligne n'est plus due (réactivable depuis le tableau)
-        if (status === 'annulee') {
-          const c = (await repo.loadAll()).charges.find((x) => x.id === loyer.id)!;
-          await upd(c, { cancelled_at: new Date().toISOString(), cancel_reason: 'Annulé depuis la grille' });
-        }
-        n++;
-      }
-      await syncLedgerWith(repo, { leaseIds: [...new Set(changes.map((c) => c.row.lease_id))] });
-      // réémission : quittance si le mois est toujours intégralement réglé, sinon reçu partiel s'il y en avait un
-      const again = reissue.size ? await issueMonthDocs(repo, [...reissue.values()]) : { q: 0, r: 0, issued: [] };
-      return { n, again: again.q + again.r };
-    });
-    if (ok) store.notify(`${ok.n} ligne${ok.n > 1 ? 's' : ''} modifiée${ok.n > 1 ? 's' : ''}.${cancelled ? ` ${cancelled} document${cancelled > 1 ? 's' : ''} annulé${cancelled > 1 ? 's' : ''}${ok.again ? `, ${ok.again} réémis avec un nouveau numéro` : ', non réémis (mois plus intégralement réglé)'}.` : ''}`);
-    return ok?.n ?? 0;
+  async function saveLines(changes: { row: LedgerRow; values: Record<string, string | number | null> }[], opts?: { auto: boolean }) {
+    // une ligne après l'autre, du mois le plus ancien au plus récent, reports recalculés entre deux lignes
+    const edits = changes.map(({ row, values }) => ({ key: row.key, lease_id: row.lease_id, month: row.month, values }));
+    const res = await store.call((repo) => saveLedgerGrid(repo, edits, today));
+    if (!res) return { saved: [] as string[], failed: null };
+    const docs = res.cancelled ? ` ${res.cancelled} document${res.cancelled > 1 ? 's' : ''} annulé${res.cancelled > 1 ? 's' : ''}${res.reissued ? `, ${res.reissued} réémis avec un nouveau numéro` : ', non réémis (mois plus intégralement réglé)'}.` : '';
+    if (res.failed) {
+      const row = changes.find((c) => c.row.key === res.failed!.key)?.row;
+      const where = row ? `${monthLabel(`${row.month}-01`)}${fixedLease ? '' : ` (${labelOfLease(row.lease_id)})`}` : 'une ligne';
+      store.notify(`${res.saved.length ? `${res.saved.length} ligne${res.saved.length > 1 ? 's' : ''} enregistrée${res.saved.length > 1 ? 's' : ''}. ` : ''}Non enregistré : ${where} – ${res.failed.message}${docs}`, 'error');
+    } else if (!opts?.auto || docs) {
+      store.notify(`${res.saved.length} ligne${res.saved.length > 1 ? 's' : ''} modifiée${res.saved.length > 1 ? 's' : ''}.${docs}`);
+    }
+    return { saved: res.saved, failed: res.failed };
   }
+  // recalcul en direct : lignes telles qu'elles seront après l'enregistrement des saisies valides
+  const deriveLines = useCallback((changes: { row: LedgerRow; values: Record<string, string | number | null> }[]) => {
+    const prev = previewEdits(data, changes.map(({ row, values }) => ({ key: row.key, lease_id: row.lease_id, month: row.month, values })), settings, today);
+    return (r: LedgerRow) => {
+      const n = prev.get(r.key);
+      return n && (n.due !== r.due || n.paid !== r.paid || n.gap !== r.gap || n.status !== r.status || n.carryIn !== r.carryIn || n.other !== r.other || n.carriedOut !== r.carriedOut) ? n : r;
+    };
+  }, [data, today]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** Ligne quittancée : la quittance serait annulée puis réémise, on attend une confirmation explicite. */
+  const lineNeedsConfirm = useCallback((r: LedgerRow) => (r.quittance || r.recus.length ? 'la quittance ou le reçu du mois sera annulé puis réémis' : null), []);
 
   const exportCols: ExportColumn<LedgerRow>[] = [
     ...(fixedLease ? [] : [{ label: 'Bail', value: (r: LedgerRow) => labelOfLease(r.lease_id) }]),
@@ -430,8 +340,9 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
       {grid === 'lignes' ? (
         <GridEditor rows={gridRows} columns={lineGrid} rowKey={(r) => r.key} rowLabel={(r) => `${monthLabel(`${r.month}-01`)}${fixedLease ? '' : ` – ${labelOfLease(r.lease_id)}`}`}
           flag={(r) => (isDupRow(r) ? <DupPill title="Doublon possible" /> : null)}
-          note={<>Toutes les colonnes du tableau, selon les filtres. Modifiables : échéance, loyer, charges, autre somme due (une par mois ; 0 la retire), réglé (un seul paiement dans le mois ; un montant saisi sur un mois sans paiement crée le paiement, 0 le supprime), date de règlement (celle du dernier paiement du mois), statut (« Réglé » ajoute le paiement manquant, « Impayé » supprime les paiements du mois, « Annulé » annule la ligne){settings.receivedMode === 'confirmation' ? ', reçu' : ''}. Le total, l’écart, le statut et les reports se recalculent à l’enregistrement. Une ligne quittancée reste modifiable : sa quittance est annulée, puis réémise avec un nouveau numéro si le mois est toujours intégralement réglé (l’ancienne reste dans l’historique).</>}
-          onSave={saveLines} onClose={() => setGrid(null)} />
+          note={<>Toutes les colonnes du tableau, selon les filtres. Modifiables : échéance, loyer, charges, autre somme due (une par mois ; 0 la retire), réglé (un seul paiement dans le mois ; un montant saisi sur un mois sans paiement crée le paiement, 0 le supprime), date de règlement (celle du dernier paiement du mois), statut (« Réglé » ajoute le paiement manquant, « Impayé » supprime les paiements du mois, « Annulé » annule la ligne){settings.receivedMode === 'confirmation' ? ', reçu' : ''}. Le total, l’écart, le statut et les reports se recalculent pendant la saisie ; chaque ligne est enregistrée quand vous la quittez, du mois le plus ancien au plus récent. Une ligne quittancée reste modifiable mais attend le bouton « Enregistrer » : sa quittance est annulée, puis réémise avec un nouveau numéro si le mois est toujours intégralement réglé (l’ancienne reste dans l’historique).</>}
+          onSave={saveLines} onClose={() => setGrid(null)} derive={deriveLines} autoSave={{ confirm: lineNeedsConfirm }}
+          storageKey={`immozen:grille-loyers:${leaseFilter || 'tous'}`} />
       ) : grid === 'paiements' ? (
         <PaymentsGrid payments={scopePayments} dupIds={dupPays.ids} onClose={() => setGrid(null)} />
       ) : (
@@ -517,29 +428,35 @@ function PaymentsGrid({ payments, dupIds, onClose }: { payments: Payment[]; dupI
     { id: 'reference', label: 'Référence', type: 'text', get: (p) => p.reference, validate: (x) => (String(x ?? '').length > 200 ? '200 caractères au plus' : null) },
     { id: 'comment', label: 'Commentaire', type: 'text', get: (p) => p.comment, width: '12rem' },
   ];
-  async function saveGrid(changes: { row: Payment; values: Record<string, string | number | null> }[]) {
-    let n = 0;
+  async function saveGrid(changes: { row: Payment; values: Record<string, string | number | null> }[], opts?: { auto: boolean }) {
+    const saved: string[] = [];
+    let failed: { key: string; message: string } | null = null;
     const msgs: string[] = [];
-    for (const { row, values } of changes) {
+    // paiements les plus anciens d'abord : les mois sont remis en conformité dans l'ordre
+    for (const { row, values } of [...changes].sort((a, b) => a.row.paid_on.localeCompare(b.row.paid_on))) {
       const snap = await store.repo.loadAll().catch(() => null);
-      if (!snap) { store.notify('Données indisponibles : réessayez.', 'error'); break; }
+      if (!snap) { failed = { key: row.id, message: 'données indisponibles, réessayez' }; break; }
       const current = snap.payments.find((p) => p.id === row.id);
-      if (!current) continue;
+      if (!current) { failed = { key: row.id, message: 'paiement supprimé entre-temps' }; break; }
       const f = { amount: Number(values.amount ?? current.amount), paid_on: String(values.paid_on ?? current.paid_on), method: (values.method ?? current.method) as Payment['method'],
         reference: 'reference' in values ? (values.reference as string | null) : current.reference, comment: 'comment' in values ? (values.comment as string | null) : current.comment };
       const msg = await applyPaymentEdit(store, snap, current, f);
-      if (msg) { n++; if (/document/.test(msg)) msgs.push(msg); }
+      if (!msg) { failed = { key: row.id, message: 'enregistrement refusé (voir le message)' }; break; }
+      saved.push(row.id);
+      if (/document/.test(msg)) msgs.push(msg);
     }
     await store.refresh();
-    if (n) store.notify(`${n} paiement${n > 1 ? 's' : ''} modifié${n > 1 ? 's' : ''}.${msgs.length ? ' Les quittances concernées ont été rééditées ou annulées.' : ''}`);
-    return n;
+    if (saved.length && (!opts?.auto || msgs.length)) store.notify(`${saved.length} paiement${saved.length > 1 ? 's' : ''} modifié${saved.length > 1 ? 's' : ''}.${msgs.length ? ' Les quittances concernées ont été rééditées ou annulées.' : ''}`);
+    return { saved, failed };
   }
+  /** Paiement couvert par une quittance : la quittance serait annulée, on attend une confirmation explicite. */
+  const needsConfirm = (p: Payment) => (receiptsCovering(p, store.data).length ? 'la quittance qui couvre ce paiement sera annulée puis réémise' : null);
   return (
     <Section>
       <GridEditor rows={[...payments].sort((a, b) => b.paid_on.localeCompare(a.paid_on))} columns={gridCols} rowKey={(p) => p.id} rowLabel={(p) => `paiement du ${date(p.paid_on)}`}
         flag={(p) => (dupIds.has(p.id) ? <DupPill title="Doublon possible" /> : null)}
-        note="Paiements du bail et du mois sélectionnés. Une date ou un montant modifié range de nouveau le paiement dans son mois ; les quittances concernées sont annulées puis réémises si le mois reste réglé."
-        onSave={saveGrid} onClose={onClose} />
+        note="Paiements du bail et du mois sélectionnés. Chaque paiement est enregistré quand vous quittez sa ligne. Une date ou un montant modifié range de nouveau le paiement dans son mois ; les quittances concernées sont annulées puis réémises si le mois reste réglé (après clic sur « Enregistrer »)."
+        onSave={saveGrid} onClose={onClose} autoSave={{ confirm: needsConfirm }} storageKey="immozen:grille-paiements" />
     </Section>
   );
 }

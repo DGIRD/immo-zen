@@ -4,9 +4,10 @@
  */
 import type { Repo, Snapshot } from '../../data/repo.ts';
 import { RepoError } from '../../data/repo.ts';
-import type { RentCharge } from '../../data/types.ts';
+import type { Receipt, RentCharge } from '../../data/types.ts';
 import { todayParis } from '../../domain/format.ts';
-import { emptyPlan, ledgerPlan, ledgerSettings, planSize, type LedgerPlan } from '../../domain/ledger.ts';
+import { emptyPlan, ledgerPlan, ledgerRows, ledgerSettings, monthQuittance, planSize, type LedgerPlan } from '../../domain/ledger.ts';
+import { round2 } from '../../domain/simulator.ts';
 import { leaseState, monthOf } from '../../domain/rental.ts';
 
 export interface SyncOptions {
@@ -64,8 +65,16 @@ export async function applyLedgerPlan(repo: Repo, plan: LedgerPlan): Promise<num
  * Renvoie le nombre d'écritures. Deux passes au plus : la première peut créer un report que la seconde complète.
  */
 export async function syncLedgerWith(repo: Repo, opts: SyncOptions = {}): Promise<number> {
+  return (await syncLedgerSnapshot(repo, opts)).n;
+}
+
+/**
+ * Comme syncLedgerWith, et renvoie aussi l'instantané à jour (évite un rechargement de plus à l'appelant).
+ * `snapshot` : instantané déjà à jour, utilisé au lieu d'un premier rechargement.
+ */
+export async function syncLedgerSnapshot(repo: Repo, opts: SyncOptions & { snapshot?: Snapshot } = {}): Promise<{ n: number; snap: Snapshot }> {
   const today = todayParis();
-  let snap = await repo.loadAll();
+  let snap = opts.snapshot ?? await repo.loadAll();
   let n = 0;
   const missing = snap.leases.filter((l) => (!opts.leaseIds || opts.leaseIds.includes(l.id)) && leaseState(l, today) !== 'a_venir'
     && (leaseState(l, today) === 'actif' || !snap.charges.some((c) => c.lease_id === l.id && c.kind === 'loyer'))
@@ -78,5 +87,29 @@ export async function syncLedgerWith(repo: Repo, opts: SyncOptions = {}): Promis
     for (const { plan } of plans) n += await applyLedgerPlan(repo, plan);
     snap = await repo.loadAll();
   }
-  return n;
+  return { n, snap };
+}
+
+/** Émet la quittance (ou le reçu partiel) des mois indiqués, à partir des données à jour. Renvoie le nombre émis. */
+export async function issueMonthDocs(repo: Repo, months: { lease_id: string; month: string; kind: 'quittance' | 'recu' }[]): Promise<{ q: number; r: number; issued: Receipt[] }> {
+  const snap = await repo.loadAll();
+  const rows = ledgerRows(snap, ledgerSettings(snap.settings?.rental_settings), todayParis());
+  let q = 0, r = 0;
+  const issued: Receipt[] = [];
+  for (const m of months) {
+    const row = rows.find((x) => x.lease_id === m.lease_id && x.month === m.month);
+    if (!row?.loyer || row.loyer.cancelled_at) continue;
+    if (m.kind === 'quittance') {
+      const plan = monthQuittance(row, snap.allocations, snap.receipts);
+      if (!plan) continue;
+      issued.push(await (plan.extras.length ? repo.issueReceiptWithExtras(plan.chargeId, plan.extras) : repo.issueReceipt(plan.chargeId, 'quittance')));
+      q++;
+    } else {
+      const paidOnLoyer = round2(snap.allocations.filter((a) => a.charge_id === row.loyer!.id).reduce((s, a) => s + a.amount, 0));
+      if (paidOnLoyer <= 0 || paidOnLoyer >= round2(row.loyer.rent_amount + row.loyer.charges_amount)) continue;
+      issued.push(await repo.issueReceipt(row.loyer.id, 'recu'));
+      r++;
+    }
+  }
+  return { q, r, issued };
 }

@@ -1,3 +1,4 @@
+import { receiptsCovering } from '../../domain/gridEdits.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../data/store.tsx';
 import type { Lease, Payment, PaymentMethod, Receipt, RentCharge } from '../../data/types.ts';
@@ -389,10 +390,7 @@ type Ledger = Pick<Snapshot, 'allocations' | 'receipts' | 'charges'>;
 export interface PaymentFields { amount: number; paid_on: string; method: PaymentMethod; reference: string | null; comment: string | null; period_month?: string | null }
 
 /** Quittances et reçus valables couvrant une échéance réglée par ce paiement. */
-export function receiptsCovering(p: Payment, d: Ledger) {
-  const ids = new Set(d.allocations.filter((a) => a.payment_id === p.id).map((a) => a.charge_id));
-  return d.receipts.filter((r) => !r.cancelled_at && (ids.has(r.charge_id) || (r.extra_lines ?? []).some((x) => ids.has(x.charge_id))));
-}
+export { receiptsCovering };
 
 /** Mois à retenir après modification d'un paiement : un mois choisi à la main est conservé, sinon celui de la nouvelle date. */
 export function editedMonth(p: Pick<Payment, 'paid_on' | 'period_month'>, newDate: string, chosen?: string | null): string {

@@ -1450,6 +1450,22 @@ async function main() {
     await page.getByText('1 ligne modifiée.').first().waitFor();
     await page.getByRole('button', { name: 'Fermer la grille' }).click({ timeout: 3000 }).catch(() => undefined);
     await page.locator('table.dt-table tbody tr', { hasText: rowName.split(' – ')[0]! }).locator('.status', { hasText: /^Réglé$/ }).first().waitFor();
+    // recalcul en direct, puis enregistrement automatique en quittant la ligne (ligne sans quittance)
+    await page.getByRole('button', { name: 'Modifier en grille' }).click();
+    const autoRow = page.locator('.grid-table tbody tr').filter({ has: page.locator('input[aria-label^="Autre somme due – "]') }).filter({ hasNotText: /Q-\d{4}-/ }).first();
+    await autoRow.waitFor();
+    const totalBefore = (await autoRow.locator('td.grid-recalc, td').filter({ hasText: /€/ }).allInnerTexts()).join('|');
+    const other = autoRow.locator('input[aria-label^="Autre somme due – "]');
+    await other.fill('7');
+    await autoRow.locator('td.grid-recalc').first().waitFor({ timeout: 5000 });
+    assert.notEqual((await autoRow.locator('td').filter({ hasText: /€/ }).allInnerTexts()).join('|'), totalBefore, 'total recalculé pendant la saisie');
+    await page.locator('.grid-edit-bar strong').click(); // quitte la ligne
+    await autoRow.getByText('Enregistrée').waitFor({ timeout: 20000 });
+    await autoRow.locator('input[aria-label^="Autre somme due – "]').fill('0');
+    await page.locator('.grid-edit-bar strong').click();
+    await autoRow.getByText('Enregistrée').waitFor({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Fermer la grille' }).click();
+    await page.locator('.grid-table').waitFor({ state: 'detached', timeout: 10000 });
   });
 
   await step('rendu mobile (390 px) sans défilement horizontal', async () => {
