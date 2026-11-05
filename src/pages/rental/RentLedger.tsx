@@ -17,7 +17,13 @@ import { saveLedgerGrid } from './gridSave.ts';
 import { previewEdits } from '../../domain/gridEdits.ts';
 import { issueMonthDocs, useExcessDialog } from './monthActions.tsx';
 
-export type Filter = 'a_traiter' | 'impayee' | 'partielle' | 'reportee' | 'reglee' | 'a_venir' | 'ecarts' | 'annulee' | 'hors_periode' | 'doublons' | 'toutes';
+/**
+ * Vues du tableau (menu « Afficher ») : regroupements de statuts, le statut précis restant affiché sur chaque ligne.
+ * - reste_du : Impayé, Partiel, Partiel reporté ;
+ * - anomalies : excédent à qualifier, doublon possible, paiement hors période ;
+ * - toutes : les loyers annulés n'apparaissent qu'avec la case « Inclure les annulés ».
+ */
+export type Filter = 'a_traiter' | 'reste_du' | 'reglee' | 'a_venir' | 'anomalies' | 'toutes';
 
 export const DupPill = ({ title }: { title: string }) => <span className="pill pill-warn dup-flag" title={title}>doublon possible</span>;
 
@@ -56,6 +62,8 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
 }) {
   const { viewById, leaseById, leaseLabel, today } = useRental();
   const [filter, setFilter] = useState<Filter>(initialFilter);
+  // fiche d'un bail : les mois annulés restent visibles (on vient souvent de les annuler) ; Loyers et paiements : sur demande
+  const [withCancelled, setWithCancelled] = useState(fixedLease);
   const [month, setMonth] = useState('');
   const [pay, setPay] = useState<{ leaseId?: string; month?: string; mode: 'saisie' | 'confirmation' } | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
@@ -76,15 +84,17 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
   const dupPays = useMemo(() => paymentDuplicates(data.payments), [data.payments]);
   const isDupRow = (r: LedgerRow) => (!!r.loyer && dupCharges.ids.has(r.loyer.id)) || r.payments.some((p) => dupPays.ids.has(p.id));
   const canQuittance = (r: LedgerRow) => !!monthQuittance(r, data.allocations, data.receipts);
+  /** Cas à vérifier : excédent à qualifier, doublon possible, paiement daté d'un mois sans loyer. */
+  const isAnomaly = (r: LedgerRow) => r.excessToQualify || isDupRow(r) || r.status === 'hors_periode';
   const overdue = (r: LedgerRow) => (r.status === 'impayee' || r.status === 'partielle' || r.status === 'reportee') && (r.month < today.slice(0, 7) || (r.loyer?.due_date ?? '') <= today);
   const rows = allRows.filter((r) => {
     if (leaseFilter && r.lease_id !== leaseFilter) return false;
     if (month && r.month !== month) return false;
     switch (filter) {
-      case 'toutes': return true;
-      case 'doublons': return isDupRow(r);
+      case 'toutes': return withCancelled || r.status !== 'annulee';
       case 'a_traiter': return (overdue(r) && r.status !== 'reportee') || r.toConfirm || r.excessToQualify || canQuittance(r) || r.status === 'hors_periode';
-      case 'ecarts': return r.excessToQualify || (r.gap !== 0 && r.status !== 'reportee' && r.status !== 'a_venir' && r.status !== 'annulee');
+      case 'reste_du': return r.status === 'impayee' || r.status === 'partielle' || r.status === 'reportee';
+      case 'anomalies': return isAnomaly(r);
       default: return r.status === filter;
     }
   });
@@ -318,13 +328,13 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
           </button>
           <div className="figure"><span className="figure-label">Total dû (sélection)</span><span className="figure-value">{money2(totals.due)}</span><span className="figure-hint">réglé {money2(totals.paid)}</span></div>
           <div className="figure"><span className="figure-label">Reste dû (sélection)</span><span className={`figure-value ${totals.rest ? 'neg' : ''}`}>{money2(totals.rest)}</span>
-            {toQualify > 0 ? <button type="button" className="figure-hint link" onClick={() => setFilter('ecarts')}>{toQualify} excédent{toQualify > 1 ? 's' : ''} à qualifier</button>
+            {toQualify > 0 ? <button type="button" className="figure-hint link" onClick={() => setFilter('anomalies')}>{toQualify} excédent{toQualify > 1 ? 's' : ''} à qualifier</button>
               : totals.over > 0 ? <span className="figure-hint">trop-perçu {money2(totals.over)}</span> : null}</div>
         </div>
       )}
       {scopeDupExtra.length > 0 && !grid && (
         <p className="note note-warn">{scopeDupExtra.length} paiement{scopeDupExtra.length > 1 ? 's semblent' : ' semble'} en double (même bail, même montant, à quelques jours d’écart).{' '}
-          <button type="button" className="link" onClick={() => setFilter('doublons')}>Afficher les doublons</button>{' · '}
+          <button type="button" className="link" onClick={() => setFilter('anomalies')}>Afficher les doublons</button>{' · '}
           <button type="button" className="link" onClick={() => payActions.removeMany(scopeDupExtra)}>Supprimer les doublons (garder le premier enregistré)</button></p>
       )}
       {fixedLease && <p className="muted small">Une ligne par mois : le réglé additionne les paiements du mois. Un mois échu partiellement réglé reporte son reste dû dans « Autre somme due » du mois suivant. L’absence de réponse à l’e-mail de confirmation ne vaut jamais paiement.</p>}
@@ -362,12 +372,16 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
           toolbar={<>
             <label className="inline-select">Afficher
               <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
-                <option value="a_traiter">À traiter</option><option value="impayee">Impayés</option><option value="partielle">Partiels</option>
-                <option value="reportee">Partiels reportés</option><option value="reglee">Réglés</option><option value="a_venir">À venir</option>
-                <option value="ecarts">Écarts ({allRows.filter((r) => r.excessToQualify).length} à qualifier)</option>
-                <option value="annulee">Annulés</option><option value="hors_periode">Hors période</option>
-                <option value="doublons">Doublons possibles ({allRows.filter(isDupRow).length})</option><option value="toutes">Tous</option>
+                <option value="a_traiter">À traiter</option>
+                <option value="reste_du">Reste dû (impayés et partiels)</option>
+                <option value="reglee">Réglés</option>
+                <option value="a_venir">À venir</option>
+                <option value="anomalies">Anomalies ({scope.filter(isAnomaly).length})</option>
+                <option value="toutes">Tous</option>
               </select></label>
+            {filter === 'toutes' && (
+              <label className="checkbox small"><input type="checkbox" checked={withCancelled} onChange={(e) => setWithCancelled(e.target.checked)} /><span>Inclure les annulés</span></label>
+            )}
             <label className="inline-select">Mois
               <select value={month} onChange={(e) => setMonth(e.target.value)}>
                 <option value="">Tous</option>{months.map((m) => <option key={m} value={m}>{monthLabel(`${m}-01`)}</option>)}
@@ -376,8 +390,10 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
             <Button size="sm" onClick={() => setGrid('paiements')} disabled={!scopePayments.length}>Modifier les paiements en grille</Button>
             {toolbarExtra}
           </>}
-          empty={<EmptyState title={filter === 'a_traiter' ? 'Rien à traiter' : filter === 'doublons' ? 'Aucun doublon' : 'Aucune ligne'}>
-            {filter === 'a_traiter' ? 'Aucun impayé échu, aucun écart à qualifier et aucune quittance en attente.' : filter === 'doublons' ? 'Aucune ligne ni aucun paiement ne fait doublon.' : 'Aucune ligne ne correspond.'}</EmptyState>} />
+          empty={<EmptyState title={filter === 'a_traiter' ? 'Rien à traiter' : filter === 'anomalies' ? 'Aucune anomalie' : filter === 'reste_du' ? 'Aucun reste dû' : 'Aucune ligne'}>
+            {filter === 'a_traiter' ? 'Aucun impayé échu, aucun écart à qualifier et aucune quittance en attente.'
+              : filter === 'anomalies' ? 'Aucun excédent à qualifier, aucun doublon possible et aucun paiement hors période.'
+              : filter === 'reste_du' ? 'Tous les mois échus sont réglés.' : 'Aucune ligne ne correspond.'}</EmptyState>} />
       )}
       <div className="export-row">
         <span className="muted">Exporter :</span>

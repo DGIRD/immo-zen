@@ -1112,8 +1112,14 @@ async function main() {
     await page.locator('table.dt-table tbody tr').first().getByLabel('Actions').click();
     await page.getByRole('menuitem', { name: 'Modifier la ligne' }).first().waitFor();
     await page.keyboard.press('Escape');
-    await page.getByLabel('Afficher').selectOption('annulee');
+    // menu regroupé : 6 vues, les annulés seulement avec « Tous » et la case dédiée
+    const views = await page.getByLabel('Afficher').locator('option').evaluateAll((o) => o.map((x) => (x as HTMLOptionElement).value));
+    assert.deepEqual(views, ['a_traiter', 'reste_du', 'reglee', 'a_venir', 'anomalies', 'toutes']);
+    await page.getByLabel('Inclure les annulés').check();
     await page.screenshot({ path: join(out, '38-echeances-actions.png'), fullPage: true });
+    await page.getByLabel('Afficher').selectOption('reste_du');
+    await page.getByLabel('Afficher').selectOption('anomalies');
+    await page.getByLabel('Afficher').selectOption('a_traiter');
   });
 
   await step('excédent : autre somme due, trop-perçu à qualifier puis reporté en avance', async () => {
