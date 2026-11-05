@@ -541,6 +541,9 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 .grid-cell.changed { border-color: var(--ocre); background: var(--ocre-tint); }
 .grid-cell.invalid { border-color: #b3261e; }
 .grid-err { display: block; white-space: normal; max-width: 12rem; }
+/* valeurs recalculées en direct d'après la saisie (définitives à l'enregistrement) */
+.grid-recalc { font-style: italic; color: var(--ocre, inherit); }
+.grid-state { white-space: normal; min-width: 8rem; max-width: 16rem; }
 .dup-flag { white-space: nowrap; }
 @media (max-width: 760px) { .grid-edit-actions { margin-left: 0; width: 100%; } }
 .note-warn { background: var(--ocre-tint); border-left: 4px solid var(--ocre); }

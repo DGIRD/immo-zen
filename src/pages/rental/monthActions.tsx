@@ -5,13 +5,15 @@
 import { useState } from 'react';
 import { useStore } from '../../data/store.tsx';
 import { RepoError, type Repo } from '../../data/repo.ts';
-import type { Lease, Receipt, RentCharge } from '../../data/types.ts';
-import { money2, todayParis } from '../../domain/format.ts';
-import { EXCESS_LABELS, ledgerRows, ledgerSettings, mmYYYY, monthQuittance, type ExcessChoice, type LedgerRow } from '../../domain/ledger.ts';
+import type { Lease, RentCharge } from '../../data/types.ts';
+import { money2 } from '../../domain/format.ts';
+import { EXCESS_LABELS, mmYYYY, type ExcessChoice, type LedgerRow } from '../../domain/ledger.ts';
 import { monthLabel } from '../../domain/rental.ts';
 import { round2 } from '../../domain/simulator.ts';
 import { Button, Checkbox, Modal, TextInput } from '../../ui/components.tsx';
 import { syncLedgerWith, type SyncOptions } from './ledgerSync.ts';
+
+export { issueMonthDocs } from './ledgerSync.ts';
 
 /** Remise en conformité des lignes (création des lignes manquantes, répartition, reports). */
 export function useLedgerSync() {
@@ -67,30 +69,6 @@ export async function applyExcess(repo: Repo, loyerId: string, amount: number, d
     const res = await repo.update('rent_charges', loyer.id, loyer.version, { excess_mode: d.advance ? 'avance' : 'trop_percu' });
     if (res.status !== 'ok') throw new RepoError('La ligne a été modifiée entre-temps : rechargez la page.');
   }
-}
-
-/** Émet la quittance (ou le reçu partiel) des mois indiqués, à partir des données à jour. Renvoie le nombre émis. */
-export async function issueMonthDocs(repo: Repo, months: { lease_id: string; month: string; kind: 'quittance' | 'recu' }[]): Promise<{ q: number; r: number; issued: Receipt[] }> {
-  const snap = await repo.loadAll();
-  const rows = ledgerRows(snap, ledgerSettings(snap.settings?.rental_settings), todayParis());
-  let q = 0, r = 0;
-  const issued: Receipt[] = [];
-  for (const m of months) {
-    const row = rows.find((x) => x.lease_id === m.lease_id && x.month === m.month);
-    if (!row?.loyer || row.loyer.cancelled_at) continue;
-    if (m.kind === 'quittance') {
-      const plan = monthQuittance(row, snap.allocations, snap.receipts);
-      if (!plan) continue;
-      issued.push(await (plan.extras.length ? repo.issueReceiptWithExtras(plan.chargeId, plan.extras) : repo.issueReceipt(plan.chargeId, 'quittance')));
-      q++;
-    } else {
-      const paidOnLoyer = round2(snap.allocations.filter((a) => a.charge_id === row.loyer!.id).reduce((s, a) => s + a.amount, 0));
-      if (paidOnLoyer <= 0 || paidOnLoyer >= round2(row.loyer.rent_amount + row.loyer.charges_amount)) continue;
-      issued.push(await repo.issueReceipt(row.loyer.id, 'recu'));
-      r++;
-    }
-  }
-  return { q, r, issued };
 }
 
 /** Choix proposé pour un excédent : nature, libellé, options. */

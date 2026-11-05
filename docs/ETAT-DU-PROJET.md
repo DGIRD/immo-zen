@@ -194,6 +194,20 @@ Expression de besoin des 29-30/10/2026, règles : [LOYERS-ET-TAUX](LOYERS-ET-TAU
 | Mise à jour automatique chaque nuit : Carte des loyers, taux d'usure (page de la Banque de France), plafonds de Paris ; rappel mensuel (barème, arrêtés) ; suivi dans l'administration | Implémenté et testé (réponses simulées) / **à activer** (fonction `marche`, planification) | unitaires + SQL + e2e |
 | Contours des zones d'encadrement hors Paris, tendance mensuelle des taux, barème automatique (accord Crédit Logement) | **Restant** | — |
 
+## Grille de Loyers et paiements : recalcul en direct et enregistrement automatique (4 novembre 2026)
+
+Signalement du 04/11/2026 : enregistrement non automatique ; en saisie de plusieurs mois, montants non recalculés et paiements en double.
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Effets d'une ligne modifiée décrits une seule fois (`src/domain/gridEdits.ts`), utilisés pour l'aperçu et l'enregistrement | Implémenté et testé | unitaires |
+| Enregistrement bail par bail, du mois le plus ancien au plus récent, remise en conformité après chaque mois (`src/pages/rental/gridSave.ts`) : « Réglé » sur deux mois consécutifs ne règle plus deux fois le reste dû reporté | Implémenté et testé | unitaires (défaut reproduit puis corrigé, mode démonstration) |
+| Erreur au milieu d'une saisie : lignes précédentes enregistrées et recalculées, saisie des suivantes conservée (auparavant tout était effacé) | Implémenté et testé | unitaires |
+| Recalcul en direct du total dû, des reports, de l'écart et du statut (italique) | Implémenté et testé | unitaires + e2e |
+| Enregistrement automatique d'une ligne quittée (1,5 s), file d'attente, état par ligne ; ligne quittancée ou paiement couvert par une quittance : attend « Enregistrer » | Implémenté et testé | e2e |
+| Brouillon conservé sur l'appareil, proposé à la réouverture ; avertissement en quittant la page | Implémenté | — |
+| Rechargements : un par ligne et un ou deux pour la remise en conformité, au lieu de 3 à 9 par ligne | Implémenté | — |
+
 ## Restant
 
 Tout le périmètre du cahier des charges est livré. Reste **à configurer** : compte Stripe et fonctions `platform` / `stripe-webhook` ([ABONNEMENTS](ABONNEMENTS.md)), premier administrateur, envoi réel des e-mails (Resend). Pistes ultérieures : vérification de l'abonnement dans les fonctions serveur (quittances, relances), réimport de la gestion locative depuis une sauvegarde, liasse 2031/2033 complète, travaux de rénovation énergétique et déficits antérieurs dans la déclaration.
