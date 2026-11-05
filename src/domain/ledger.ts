@@ -52,11 +52,16 @@ export interface LedgerSettings {
   /** Point de départ des lignes : début de chaque bail, ou date choisie. */
   startMode: 'bail' | 'date';
   startDate: string | null;
+  /** Quittances proposées à partir de ce mois (AAAA-MM), null : tous les mois. */
+  receiptsFrom?: string | null;
 }
 export function ledgerSettings(rs: RentalSettings | null | undefined): LedgerSettings {
   const date = rs?.ledger_start_date && /^\d{4}-\d{2}-\d{2}$/.test(rs.ledger_start_date) ? rs.ledger_start_date : null;
-  return { receivedMode: rs?.received_mode === 'confirmation' ? 'confirmation' : 'auto', startMode: rs?.ledger_start_mode === 'date' && date ? 'date' : 'bail', startDate: date };
+  const from = rs?.receipts_from && /^\d{4}-\d{2}$/.test(rs.receipts_from) ? rs.receipts_from : null;
+  return { receivedMode: rs?.received_mode === 'confirmation' ? 'confirmation' : 'auto', startMode: rs?.ledger_start_mode === 'date' && date ? 'date' : 'bail', startDate: date, receiptsFrom: from };
 }
+/** Le mois est-il concerné par les quittances proposées (mois antérieurs écartés sur demande) ? */
+export const receiptsProposed = (s: LedgerSettings, month: string) => !s.receiptsFrom || month >= s.receiptsFrom;
 /** Première date couverte par les lignes d'un bail (début du bail, ou date choisie si elle est postérieure). */
 export function ledgerStart(lease: Pick<Lease, 'start_date'>, s: LedgerSettings): string {
   return s.startMode === 'date' && s.startDate && s.startDate > lease.start_date ? s.startDate : lease.start_date;

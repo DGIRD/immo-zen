@@ -48,6 +48,8 @@ interface Props<T> {
   autoSave?: { delay?: number; confirm?: (row: T) => string | null };
   /** Brouillon conservé sur l'appareil (saisie retrouvée après un rechargement). */
   storageKey?: string;
+  /** Choix de grille affiché dans la barre (ex. Par mois / Par paiement) ; changer de grille passe par la fermeture. */
+  modes?: { current: string; options: readonly (readonly [string, string])[]; onChange: (mode: string) => void };
 }
 
 type RowState = { state: 'saving' | 'saved' | 'error'; message?: string };
@@ -70,7 +72,7 @@ function writeDraft(key: string | undefined, d: Record<string, Record<string, st
   try { if (Object.keys(d).length) localStorage.setItem(key, JSON.stringify(d)); else localStorage.removeItem(key); } catch { /* stockage indisponible : brouillon en mémoire seulement */ }
 }
 
-export function GridEditor<T>({ rows, columns, rowKey, rowLabel, lock, flag, onSave, onClose, note, max = 300, derive, autoSave, storageKey }: Props<T>) {
+export function GridEditor<T>({ rows, columns, rowKey, rowLabel, lock, flag, onSave, onClose, note, max = 300, derive, autoSave, storageKey, modes }: Props<T>) {
   const shown = useMemo(() => rows.slice(0, max), [rows, max]);
   const [draft, setDraftState] = useState<Record<string, Record<string, string>>>(() => {
     // brouillon retrouvé : seulement pour les lignes encore affichées
@@ -225,19 +227,20 @@ export function GridEditor<T>({ rows, columns, rowKey, rowLabel, lock, flag, onS
       if (ok) onClose();
     } finally { setBusy(false); }
   }
-  async function close() {
+  /** Quitter la grille (fermeture ou changement de grille) : saisie en attente enregistrée ou abandonnée. */
+  async function close(after: () => void = onClose) {
     if (timer.current) clearTimeout(timer.current);
     await queue.current;
     // lignes encore au brouillon (les lignes enregistrées en ont été retirées)
     const left = changesRef.current.filter((c) => c.key in draftRef.current);
-    if (!left.length) { onClose(); return; }
+    if (!left.length) { after(); return; }
     const savable = left.filter((c) => !Object.keys(c.errors).length);
-    if (savable.length === left.length && window.confirm(`Enregistrer ${savable.length > 1 ? `les ${savable.length} lignes modifiées` : 'la ligne modifiée'} avant de fermer ?`)) {
+    if (savable.length === left.length && window.confirm(`Enregistrer ${savable.length > 1 ? `les ${savable.length} lignes modifiées` : 'la ligne modifiée'} avant de quitter la grille ?`)) {
       setBusy(true);
-      try { if (await saveList(savable, false)) onClose(); } finally { setBusy(false); }
+      try { if (await saveList(savable, false)) after(); } finally { setBusy(false); }
       return;
     }
-    if (window.confirm('Abandonner les modifications non enregistrées ?')) { setDraft(() => ({})); onClose(); }
+    if (window.confirm('Abandonner les modifications non enregistrées ?')) { setDraft(() => ({})); after(); }
   }
 
   const savingCount = Object.values(rowState).filter((s) => s.state === 'saving').length;
@@ -251,6 +254,14 @@ export function GridEditor<T>({ rows, columns, rowKey, rowLabel, lock, flag, onS
     <div className="grid-edit">
       <div className="grid-edit-bar" role="region" aria-label="Modification en grille">
         <strong>Modification en grille</strong>
+        {modes && (
+          <span className="seg" role="group" aria-label="Grille">
+            {modes.options.map(([k, l]) => (
+              <button key={k} type="button" aria-pressed={modes.current === k} disabled={busy}
+                onClick={() => { if (modes.current !== k) void close(() => modes.onChange(k)); }}>{l}</button>
+            ))}
+          </span>
+        )}
         <span className="muted small" aria-live="polite">{status}</span>
         {errorCount > 0 && <span className="form-error small">{errorCount} valeur{errorCount > 1 ? 's' : ''} à corriger</span>}
         <span className="grid-edit-actions">
