@@ -200,9 +200,32 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .dt-scroll { overflow-x: auto; }
 .dt-scroll.tall { max-height: 480px; overflow-y: auto; }
 .dt-table { width: 100%; border-collapse: collapse; font-size: .92rem; }
-.dt-table th, .dt-table td { padding: .55rem .75rem; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.dt-table th, .dt-table td { padding: .55rem .6rem; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .dt-table th { font-weight: 600; color: var(--ink-soft); font-size: .84rem; background: var(--surface); position: sticky; top: 0; }
 .dt-table .num { text-align: right; }
+/* bandeaux de groupe (ex. un par bail) */
+.dt-table tr.dt-group td { background: var(--paper); border-top: 2px solid var(--line-strong); white-space: normal; padding: .5rem .75rem; }
+.dt-table tbody tr.dt-group:hover { background: var(--paper); }
+.dt-group-band { display: flex; align-items: center; gap: .6rem; }
+.dt-group-toggle { border: 0; background: none; font-size: 1rem; line-height: 1; padding: .2rem .35rem; cursor: pointer; color: var(--ink-soft); border-radius: 4px; }
+.dt-group-toggle:hover { background: var(--line); }
+.dt-group-body { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: .4rem 1rem; }
+.dt-group-title { font-weight: 600; color: var(--ink); }
+.dt-group-meta { color: var(--ink-soft); font-size: .86rem; }
+.dt-group-actions { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.dt-card-group { list-style: none; padding: .5rem .25rem; border-bottom: 2px solid var(--line-strong); }
+/* détail sous un montant (loyer + charges, paiements) */
+.amount-detail { display: block; font-size: .78rem; line-height: 1.35; color: var(--ink-soft); white-space: nowrap; }
+.amount-detail.pay-lines { min-width: 0; align-items: flex-end; }
+.amount-detail .pay-line { flex-wrap: nowrap; justify-content: flex-end; }
+/* cartes mobiles : le détail passe à la ligne au lieu de déborder */
+.dt-card .amount-detail { white-space: normal; }
+.dt-card .amount-detail.pay-lines { align-items: flex-start; }
+.dt-card .amount-detail .pay-line { flex-wrap: wrap; justify-content: flex-start; }
+.dt-card dl > div { min-width: 0; }
+.seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); padding: .3rem .7rem; font-size: .85rem; cursor: pointer; color: var(--ink-soft); }
+.seg button[aria-pressed="true"] { background: var(--sapin); color: #fff; }
 .dt-table tbody tr:hover { background: var(--paper); }
 .dt-table tr.selected { background: var(--mousse); }
 .dt-table.compact th, .dt-table.compact td { padding: .35rem .6rem; }

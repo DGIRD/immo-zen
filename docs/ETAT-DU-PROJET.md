@@ -208,6 +208,17 @@ Signalement du 04/11/2026 : enregistrement non automatique ; en saisie de plusie
 | Brouillon conservé sur l'appareil, proposé à la réouverture ; avertissement en quittant la page | Implémenté | — |
 | Rechargements : un par ligne et un ou deux pour la remise en conformité, au lieu de 3 à 9 par ligne | Implémenté | — |
 
+## Loyers et paiements : affichage allégé (5 novembre 2026)
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Huit colonnes par défaut (période, dû avec détail, réglé avec paiements, reste / écart, statut, quittance, actions) ; colonnes détaillées dans « Colonnes » | Implémenté et testé | e2e |
+| Bandeau repliable par bail avec « Tous les baux » (bien, locataires, reste dû) ; regroupement générique dans `DataTable` (`groupBy`, `groupHeader`) | Implémenté et testé | e2e |
+| « À traiter » en trois blocs : Loyers impayés, À vérifier, Quittances à émettre (émission groupée, « Ne plus proposer avant… ») | Implémenté et testé | e2e |
+| Réglage « Quittances proposées à partir de » (`rental_settings.receipts_from`) | Implémenté | — |
+| Indicateurs : Loyers impayés (réceptions à confirmer en complément), Quittances à émettre | Implémenté | — |
+| Un seul bouton « Modifier en grille », choix Par mois / Par paiement dans la grille | Implémenté et testé | e2e |
+
 ## Restant
 
 Tout le périmètre du cahier des charges est livré. Reste **à configurer** : compte Stripe et fonctions `platform` / `stripe-webhook` ([ABONNEMENTS](ABONNEMENTS.md)), premier administrateur, envoi réel des e-mails (Resend). Pistes ultérieures : vérification de l'abonnement dans les fonctions serveur (quittances, relances), réimport de la gestion locative depuis une sauvegarde, liasse 2031/2033 complète, travaux de rénovation énergétique et déficits antérieurs dans la déclaration.

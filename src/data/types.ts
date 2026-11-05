@@ -195,6 +195,8 @@ export interface RentalSettings {
   ledger_start_date?: string | null;
   /** Date de passage au tableau unique (reprise des échéances et paiements existants). */
   ledger_unified_at?: string | null;
+  /** Quittances proposées à partir de ce mois (AAAA-MM) : les mois antérieurs réglés ne sont plus signalés « à émettre ». */
+  receipts_from?: string | null;
 }
 
 // ---------------------------------------------------------------------

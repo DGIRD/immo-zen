@@ -879,19 +879,34 @@ async function main() {
 
   await step('loyers : tableau unique (une ligne par mois, réglé, reçu, écart, quittance), réédition de quittance, paiement modifié, suppression', async () => {
     await page.goto(url + '#/loyers');
+    // tous les baux : un bandeau repliable par bail, plus de colonne « Bail »
+    await page.getByLabel('Afficher').selectOption('toutes');
+    assert.ok(await page.locator('tr.dt-group').count() >= 1, 'bandeaux par bail');
+    assert.ok(!/\bBail\b/.test(await page.locator('table.dt-table thead').first().innerText()), 'colonne Bail remplacée par les bandeaux');
+    const before = await page.locator('table.dt-table tbody tr:not(.dt-group)').count();
+    await page.locator('tr.dt-group').first().getByRole('button', { name: 'Replier le groupe' }).click();
+    assert.ok(await page.locator('table.dt-table tbody tr:not(.dt-group)').count() < before, 'groupe replié');
+    await page.locator('tr.dt-group').first().getByRole('button', { name: 'Déplier le groupe' }).click();
+    // « À traiter » : blocs Loyers impayés, À vérifier, Quittances à émettre
+    await page.getByLabel('Afficher').selectOption('a_traiter');
+    for (const t of await page.locator('tr.dt-group .dt-group-title').allInnerTexts()) assert.match(t, /^(Loyers impayés|À vérifier|Quittances à émettre) \(\d+\)$/);
+    await page.getByText('Loyers impayés', { exact: true }).first().waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Modifier les paiements en grille' }).count(), 0, 'un seul bouton de grille');
     await page.getByLabel('Filtrer par bail').selectOption({ index: 1 });
     await page.getByLabel('Afficher').selectOption('toutes');
     // un seul tableau : plus d'onglets Échéances / Paiements / Quittances et reçus
     assert.equal(await page.getByRole('tab', { name: /^(Paiements|Quittances et reçus)/ }).count(), 0, 'onglets supprimés');
     const heads = (await page.locator('table.dt-table thead').first().innerText()).replace(/\s+/g, ' ');
-    for (const h of ['Période', 'Loyer dû (HC)', 'Charges dues', 'Autre somme due', 'Total dû', 'Réglé', 'Date de règlement', 'Reçu', 'Écart', 'Statut', 'Quittance']) assert.ok(heads.includes(h), `colonne ${h}`);
+    for (const h of ['Période', 'Dû', 'Réglé', 'Reste / écart', 'Statut', 'Quittance']) assert.ok(heads.includes(h), `colonne ${h}`);
+    for (const h of ['Loyer dû (HC)', 'Charges dues', 'Date de règlement']) assert.ok(!heads.includes(h), `colonne ${h} masquée par défaut`);
+    assert.ok(await page.locator('table.dt-table tbody .amount-detail', { hasText: /loyer / }).count() >= 1, 'détail du dû sous le total');
     assert.equal(await page.getByRole('button', { name: /Mettre en cohérence|Répartir les paiements par mois/ }).count(), 0, 'commandes de remise en ordre supprimées');
     const rows = page.locator('table.dt-table tbody tr');
     const withQ = rows.filter({ has: page.getByRole('button', { name: /^Quittance Q-/ }) });
     assert.ok(await withQ.count() >= 1, 'quittances visibles dans les lignes des mois');
     const first = withQ.first();
     assert.ok(await first.locator('.pay-line').count() >= 1, 'paiements du mois sur la même ligne');
-    const period = (await first.locator('td').nth(2).innerText()).trim();
+    const period = (await first.locator('td').nth(1).innerText()).trim();
     const row = () => rows.filter({ hasText: period }).first();
     const oldNumber = (await first.getByRole('button', { name: /^Quittance Q-/ }).innerText()).replace('Quittance ', '').trim();
     await first.getByLabel('Actions').click();
@@ -947,7 +962,7 @@ async function main() {
     await page.getByLabel('Filtrer par bail').selectOption({ index: 1 });
     await page.getByLabel('Afficher').selectOption('toutes');
     // doublon : même montant, même date qu'un paiement existant
-    const link = (await page.locator('.pay-line').first().getByRole('button', { name: /^\d{2}\/\d{2}\/\d{4} · / }).innerText()).replace(/[  ]/g, ' ');
+    const link = ((await page.locator('.pay-line').first().getByRole('button', { name: /^\d{2}\/\d{2}\/\d{4} · / }).getAttribute('aria-label')) ?? '').replace(/[  ]/g, ' ');
     const full = page.locator('.pay-line').first().locator('.muted.small', { hasText: /^ sur / });
     const [dpart, apart] = link.split(' · ');
     const [d, m, y] = dpart!.trim().split('/');
@@ -971,7 +986,8 @@ async function main() {
     // bouton Supprimer visible sur chaque paiement
     assert.ok(await page.locator('.pay-line').getByRole('button', { name: /^Supprimer le paiement du / }).count() > 0, 'suppression directe par paiement');
     // modification des paiements en grille
-    await page.getByRole('button', { name: 'Modifier les paiements en grille' }).click();
+    await page.getByRole('button', { name: 'Modifier en grille' }).click();
+    await page.getByRole('button', { name: 'Par paiement' }).click();
     const ref = page.getByLabel(/^Référence – paiement du /).first();
     await ref.fill('GRILLE-01');
     await page.getByRole('button', { name: 'Enregistrer (1)' }).click();
@@ -981,7 +997,7 @@ async function main() {
     // une quittance supprimée se réémet depuis la ligne du mois, toujours réglé
     const qRow = page.locator('table.dt-table tbody tr').filter({ has: page.getByRole('button', { name: /^Quittance Q-/ }) }).first();
     const qn = (await qRow.getByRole('button', { name: /^Quittance Q-/ }).innerText()).replace('Quittance ', '').trim();
-    const qPeriod = (await qRow.locator('td').nth(2).innerText()).split('\n')[0]!.trim();
+    const qPeriod = (await qRow.locator('td').nth(1).innerText()).split('\n')[0]!.trim();
     await qRow.getByLabel('Actions').click();
     await qRow.getByRole('menuitem', { name: `Supprimer la quittance ${qn}` }).click();
     dlg = page.locator('dialog[open]');
@@ -1109,7 +1125,7 @@ async function main() {
     // depuis Loyers et paiements : menu d'actions de la ligne et filtre « Annulés »
     await page.goto(url + '#/loyers');
     await page.getByLabel('Afficher').selectOption('toutes');
-    await page.locator('table.dt-table tbody tr').first().getByLabel('Actions').click();
+    await page.locator('table.dt-table tbody tr:not(.dt-group)').first().getByLabel('Actions').click();
     await page.getByRole('menuitem', { name: 'Modifier la ligne' }).first().waitFor();
     await page.keyboard.press('Escape');
     // menu regroupé : 6 vues, les annulés seulement avec « Tous » et la case dédiée

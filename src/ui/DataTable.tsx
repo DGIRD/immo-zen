@@ -39,7 +39,16 @@ interface Props<T> {
   empty: ReactNode;
   initialSort?: { id: string; dir: 'asc' | 'desc' };
   pageSize?: number;
+  /**
+   * Regroupement des lignes sous des bandeaux repliables (ex. un bandeau par bail).
+   * `order` range les groupes ; à l'intérieur d'un groupe, le tri choisi s'applique.
+   */
+  groupBy?: (row: T) => { key: string; order: string | number };
+  /** Contenu du bandeau d'un groupe (titre, totaux, actions), calculé sur toutes ses lignes filtrées. */
+  groupHeader?: (key: string, rows: T[]) => ReactNode;
 }
+
+type Item<T> = { type: 'group'; key: string; rows: T[]; cont?: boolean } | { type: 'row'; row: T };
 
 const PREFS = 'immozen:ui:table:';
 
@@ -54,13 +63,14 @@ function loadHidden(id: string, columns: { id: string; defaultHidden?: boolean }
 const collator = new Intl.Collator('fr', { sensitivity: 'base', numeric: true });
 const normalize = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-export function DataTable<T>({ id, rows, columns, rowKey, onOpen, rowActions, bulkActions, toolbar, searchPlaceholder = 'Rechercher…', empty, initialSort, pageSize = 25 }: Props<T>) {
+export function DataTable<T>({ id, rows, columns, rowKey, onOpen, rowActions, bulkActions, toolbar, searchPlaceholder = 'Rechercher…', empty, initialSort, pageSize = 25, groupBy, groupHeader }: Props<T>) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState(initialSort ?? null);
   const [page, setPage] = useState(0);
   const [hidden, setHidden] = useState(() => loadHidden(id, columns));
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [size, setSize] = useState(pageSize);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     try { localStorage.setItem(PREFS + id, JSON.stringify([...hidden])); } catch { /* quota */ }
@@ -93,12 +103,55 @@ export function DataTable<T>({ id, rows, columns, rowKey, onOpen, rowActions, bu
         });
       }
     }
+    if (groupBy) {
+      // groupes dans leur ordre, tri choisi conservé à l'intérieur (tri stable)
+      const g = new Map(out.map((r) => [r, groupBy(r)]));
+      out = [...out].sort((a, b) => {
+        const x = g.get(a)!.order, y = g.get(b)!.order;
+        return typeof x === 'number' && typeof y === 'number' ? x - y : collator.compare(String(x), String(y));
+      });
+    }
     return out;
-  }, [rows, columns, query, sort]);
+  }, [rows, columns, query, sort, groupBy]);
 
-  const pages = Math.max(1, Math.ceil(filtered.length / size));
+  // pages : `size` lignes par page ; un groupe coupé entre deux pages reprend son bandeau (« suite »)
+  const pageItems = useMemo(() => {
+    if (!groupBy) {
+      const out: Item<T>[][] = [];
+      for (let i = 0; i < filtered.length; i += size) out.push(filtered.slice(i, i + size).map((row) => ({ type: 'row', row })));
+      return out.length ? out : [[]];
+    }
+    const groups = new Map<string, T[]>();
+    for (const r of filtered) { const k = groupBy(r).key; const l = groups.get(k); if (l) l.push(r); else groups.set(k, [r]); }
+    const out: Item<T>[][] = [];
+    let cur: Item<T>[] = [];
+    let n = 0;
+    for (const [key, list] of groups) {
+      if (n >= size) { out.push(cur); cur = []; n = 0; }
+      cur.push({ type: 'group', key, rows: list });
+      if (collapsed.has(key)) continue;
+      for (const row of list) {
+        if (n >= size) { out.push(cur); cur = [{ type: 'group', key, rows: list, cont: true }]; n = 0; }
+        cur.push({ type: 'row', row });
+        n++;
+      }
+    }
+    out.push(cur);
+    return out;
+  }, [filtered, size, groupBy, collapsed]);
+  const pages = pageItems.length;
   const current = Math.min(page, pages - 1);
-  const slice = filtered.slice(current * size, current * size + size);
+  const items = pageItems[current] ?? [];
+  const slice = items.flatMap((it) => (it.type === 'row' ? [it.row] : []));
+  const toggleGroup = (k: string) => setCollapsed((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const span = visible.length + (bulkActions ? 1 : 0) + (rowActions ? 1 : 0);
+  const groupBand = (it: Extract<Item<T>, { type: 'group' }>) => (
+    <div className="dt-group-band">
+      <button type="button" className="dt-group-toggle" aria-expanded={!collapsed.has(it.key)} onClick={() => toggleGroup(it.key)}
+        aria-label={collapsed.has(it.key) ? 'Déplier le groupe' : 'Replier le groupe'}>{collapsed.has(it.key) ? '▸' : '▾'}</button>
+      <div className="dt-group-body">{groupHeader ? groupHeader(it.key, it.rows) : it.key}{it.cont && <span className="muted small"> (suite)</span>}</div>
+    </div>
+  );
   const selectedRows = rows.filter((r) => selected.has(rowKey(r)));
   const allOnPage = slice.length > 0 && slice.every((r) => selected.has(rowKey(r)));
 
@@ -166,7 +219,9 @@ export function DataTable<T>({ id, rows, columns, rowKey, onOpen, rowActions, bu
                 </tr>
               </thead>
               <tbody>
-                {slice.map((r) => {
+                {items.map((it) => {
+                  if (it.type === 'group') return <tr key={`g:${it.key}${it.cont ? ':suite' : ''}`} className="dt-group"><td colSpan={span}>{groupBand(it)}</td></tr>;
+                  const r = it.row;
                   const k = rowKey(r);
                   return (
                     <tr key={k} className={selected.has(k) ? 'selected' : ''}>
@@ -185,7 +240,9 @@ export function DataTable<T>({ id, rows, columns, rowKey, onOpen, rowActions, bu
           </div>
 
           <ul className="dt-cards">
-            {slice.map((r) => {
+            {items.map((it) => {
+              if (it.type === 'group') return <li key={`g:${it.key}${it.cont ? ':suite' : ''}`} className="dt-card-group">{groupBand(it)}</li>;
+              const r = it.row;
               const k = rowKey(r);
               const primary = columns.find((c) => c.primary) ?? columns[0]!;
               return (

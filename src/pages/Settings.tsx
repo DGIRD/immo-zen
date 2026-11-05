@@ -218,6 +218,7 @@ function RentalSettingsSection() {
   const [receivedMode, setReceivedMode] = useState<'auto' | 'confirmation'>(rs.received_mode === 'confirmation' ? 'confirmation' : 'auto');
   const [startMode, setStartMode] = useState<'bail' | 'date'>(rs.ledger_start_mode === 'date' ? 'date' : 'bail');
   const [startDate, setStartDate] = useState(rs.ledger_start_date ?? '');
+  const [receiptsFrom, setReceiptsFrom] = useState(rs.receipts_from ?? '');
   const setTpl = (i: number, k: keyof ReminderTemplate, v: string) => setTpls((x) => x.map((t, j) => (j === i ? { ...t, [k]: v } : t)));
   const LEVELS = ['Niveau 1 – rappel', 'Niveau 2 – second rappel', 'Niveau 3 – dernier rappel amiable'];
   return (
@@ -227,7 +228,8 @@ function RentalSettingsSection() {
         if (tpls.some((t) => !t.subject.trim() || !t.body.trim())) { notify('Chaque modèle doit avoir un objet et un message.', 'error'); return; }
         if (startMode === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) { notify('Indiquez la date à partir de laquelle les lignes mensuelles sont créées.', 'error'); return; }
         if (await saveSettings({ rental_settings: { ...rs, landlord_name: name.trim(), landlord_address: address.trim(), reminder_templates: tpls,
-          received_mode: receivedMode, ledger_start_mode: startMode, ledger_start_date: startMode === 'date' ? startDate : null } })) notify('Paramètres de gestion locative enregistrés.');
+          received_mode: receivedMode, ledger_start_mode: startMode, ledger_start_date: startMode === 'date' ? startDate : null,
+          receipts_from: /^\d{4}-\d{2}$/.test(receiptsFrom) ? receiptsFrom : null } })) notify('Paramètres de gestion locative enregistrés.');
       }}>Enregistrer</Button>
     </>}>
       <p className="muted small">Identité du bailleur proposée pour chaque nouveau bail (elle figure sur les quittances).</p>
@@ -245,6 +247,8 @@ function RentalSettingsSection() {
           options={[['bail', 'Depuis le début de chaque bail'], ['date', 'Depuis une date choisie']] as const}
           hint="À la saisie des dates d’un bail, une ligne est créée pour chaque mois passé ; puis une nouvelle ligne le 1er de chaque mois." />
         {startMode === 'date' && <TextInput label="À partir du" type="date" value={startDate} onChange={setStartDate} hint="Ex. début d’utilisation d’Immo-Zen : aucune ligne avant ce mois. Les lignes antérieures sans paiement ni quittance sont retirées." />}
+        <TextInput label="Quittances proposées à partir de" type="month" value={receiptsFrom} onChange={setReceiptsFrom}
+          hint="Mois réglés plus anciens : plus signalés « à émettre » ni comptés dans « À traiter » (une quittance reste possible depuis le menu de la ligne). Vide : tous les mois." />
       </div>
       <h3>Modèles de relance amiable</h3>
       <p className="muted small">Variables : {TEMPLATE_VARIABLES.join(', ')}. Pas de pénalité ni de formule juridique : ces messages restent des rappels amiables, relus avant chaque envoi.</p>
