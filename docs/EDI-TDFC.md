@@ -78,12 +78,57 @@ Le procédé est reproduit d'après `signer_donnees.c` de la DGFiP et vérifié 
 
 **Clé privée** : elle est générée par Immo-Zen (RSA 2048, exposant 65537), conservée comme secret de la fonction serveur (`TDFC_PRIVATE_KEY`, `TDFC_PRIVATE_KEY_PASSPHRASE`) et ne passe jamais par le navigateur. Seule la clé publique (PEM) est remise au correspondant téléprocédures, qui délivre en retour l'accréditation.
 
+## Fonction serveur `tdfc`
+
+| Fichier | Rôle |
+| --- | --- |
+| `supabase/functions/tdfc/index.ts` | Enveloppe Deno : session, lecture des données avec les droits de l'abonné (RLS), mandat, clé, archive |
+| `supabase/functions/tdfc/core.ts` | Cœur pur : liasse, contrôles, numéro séquentiel, interchange signé, auto-vérification de la signature |
+| `scripts/build-functions.mjs` | Regroupe `core.ts` et `src/domain` dans `core.bundle.js` (ignoré par git), avant le déploiement |
+| `supabase/migrations/20261107000100_tdfc.sql` | `tdfc_declarants`, `tdfc_mandates`, `tdfc_submissions`, `tdfc_sequences`, `iz_tdfc_next_sequence`, `iz_tdfc_revoke_mandate` |
+| `tests/tdfcServer.test.ts`, `supabase/tests/99c_tdfc.test.sql` | 7 tests du cœur (dont le fichier regroupé) et 29 vérifications SQL (droits, mandat, archive, compteur) |
+
+**Actions** (POST, session de l'abonné) :
+- `{ action: 'preview', year }` : renvoie les données qui seraient transmises (formulaire, code, libellé, valeur) et les contrôles. Il n'y a ni numéro, ni signature, ni archive.
+- `{ action: 'prepare', year }` : enchaîne les étapes suivantes.
+  1. Exige un mandat en vigueur et aucun contrôle bloquant.
+  2. Prend le numéro séquentiel du jour (heure de Paris, 999 au plus).
+  3. Signe l'interchange.
+  4. **Vérifie la signature avec la clé publique de l'accréditation** avant toute archive.
+  5. Archive dans `tdfc_submissions` (fichier en base 64, SHA-256, signature, résumé, contrôles, mandat).
+  6. Renvoie le fichier `TDFC_<référence>[_TEST].edi`.
+
+**Sécurité** :
+- Les données sont lues avec la session de l'abonné : les règles RLS s'appliquent, et la fonction ne voit que ses propres lignes.
+- L'archive et le compteur sont écrits par le rôle service seul : l'abonné ne peut que les lire.
+- Le mandat est horodaté par la base, ne peut être ni modifié ni supprimé, et sa révocation reste dans l'historique.
+- La clé privée est chargée une fois par instance. Elle est refusée si elle ne correspond pas à la clé certifiée par l'accréditation.
+
+**Vérifié** :
+- `deno check` sur l'enveloppe.
+- Exécution réelle sous Deno 2.9 face à un faux Supabase :
+  - refus sans session ;
+  - aperçu de 69 données ;
+  - interchange signé de 6 427 octets, archivé ;
+  - signature vérifiée avec la clé de l'accréditation du partenaire fictif DGFiP.
+
+### Mise en service
+
+1. **Clé de signature**, générée sur un poste de confiance comme dans le pack DGFiP :
+   `openssl genrsa -aes256 -out cle_privee_immozen.pem 2048`, puis `openssl rsa -in cle_privee_immozen.pem -pubout -out cle_publique_immozen.pem`.
+   La clé publique est remise au correspondant téléprocédures. La clé privée n'est déposée nulle part ailleurs que dans les secrets Supabase.
+2. **Secrets Supabase** (Edge Functions → Secrets ; jamais dans GitHub) :
+   - `TDFC_PRIVATE_KEY` (PEM, les `\n` littéraux sont acceptés) et `TDFC_PRIVATE_KEY_PASSPHRASE` ;
+   - `TDFC_ACCREDITATION` (1368 caractères), `TDFC_AGREMENT`, `TDFC_TRANSFER_ALIAS`, `TDFC_TRANSFER_MODE` (`T` par défaut) ;
+   - `TDFC_ATTESTATION` (référence EDIFICAS), `TDFC_PARTNER_NAME`, `TDFC_PARTNER_ADDRESS` (JSON `{"street","zip","city"}`) ;
+   - `TDFC_MODE` : `test` par défaut, `reel` seulement après la phase de tests DGFiP.
+3. **Migration** `20261107000100_tdfc.sql`, puis le workflow « Fonctions serveur Supabase ». Il regroupe le cœur et déploie `tdfc`.
+
 ## Reste à faire
 
-1. **Fonction serveur `tdfc`** : construire la liasse, signer avec la clé secrète, archiver l'interchange et sa référence.
-2. **Transfert SFTP (PassTrans)** et lecture des retours : accusé de réception (INFENT-RCS), CONTRL, compte rendu (INFENT-CR, signé par la DGFiP et vérifiable avec `dgfip_cle_publique_pedi.pem`).
-3. **Interface de télétransmission** : SIREN, ROF, mandat de l'abonné, aperçu de l'interchange, historique des dépôts (l'écran de relecture du bilan est livré).
-4. **Campagne 2027** : intégrer le nouveau cahier des charges dès sa publication (mars 2027).
+1. **Transfert SFTP (PassTrans)** et lecture des retours : accusé de réception (INFENT-RCS), CONTRL, compte rendu (INFENT-CR, signé par la DGFiP et vérifiable avec `dgfip_cle_publique_pedi.pem`).
+2. **Interface de télétransmission** : SIREN, ROF, mandat de l'abonné, aperçu de l'interchange, historique des dépôts (l'écran de relecture du bilan est livré).
+3. **Campagne 2027** : intégrer le nouveau cahier des charges dès sa publication (mars 2027).
 
 ## Points à faire valider
 

@@ -5,9 +5,11 @@
  * La clé privée (PEM, éventuellement protégée par mot de passe) est un secret de la fonction serveur
  * (variables TDFC_PRIVATE_KEY et TDFC_PRIVATE_KEY_PASSPHRASE) ; elle ne transite jamais par le navigateur.
  */
+import { Buffer } from 'node:buffer';
 import { constants, createPrivateKey, createPublicKey, privateEncrypt, publicDecrypt, type KeyObject } from 'node:crypto';
-import type { RawRsaSigner } from '../../../src/domain/edi/autack.ts';
-import { parseAccreditation } from '../../../src/domain/edi/autack.ts';
+
+/** Signataire RSA « brut » (même forme que RawRsaSigner de src/domain/edi/autack.ts). */
+export type RawRsaSigner = (block: Uint8Array) => Promise<Uint8Array>;
 
 export function loadPrivateKey(pem: string, passphrase?: string): KeyObject {
   const key = createPrivateKey({ key: pem, format: 'pem', passphrase });
@@ -27,9 +29,10 @@ export function recoverBlock(publicKey: string, signatureHex: string): Uint8Arra
   return new Uint8Array(publicDecrypt({ key: createPublicKey(pem), padding: constants.RSA_PKCS1_PADDING }, Buffer.from(signatureHex, 'hex')));
 }
 
-/** L'accréditation a-t-elle été délivrée pour cette clé privée ? (clé publique certifiée = clé du signataire) */
-export function accreditationMatchesKey(accreditationText: string, key: KeyObject): boolean {
-  const certified = parseAccreditation(accreditationText).publicKeySpki;
-  const own = createPublicKey(key).export({ type: 'spki', format: 'der' }).toString('base64');
-  return certified === own;
+/**
+ * L'accréditation a-t-elle été délivrée pour cette clé privée ? Compare la clé publique certifiée
+ * (SPKI base 64, voir parseAccreditation) à celle de la clé du signataire.
+ */
+export function accreditationMatchesKey(certifiedSpki: string, key: KeyObject): boolean {
+  return createPublicKey(key).export({ type: 'spki', format: 'der' }).toString('base64') === certifiedSpki;
 }

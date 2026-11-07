@@ -25,7 +25,7 @@ test('accréditation : décodage et correspondance avec la clé du partenaire fi
   assert.equal(a.siretExtended, '079555421000190000000001');
   assert.equal(a.device, 'ABCDEFABCDEF');
   assert.equal(a.dgfipSignature.length, 512);
-  assert.ok(accreditationMatchesKey(accreditation, partnerKey));
+  assert.ok(accreditationMatchesKey(a.publicKeySpki, partnerKey));
   assert.throws(() => parseAccreditation('ABC'), /1368/);
 });
 

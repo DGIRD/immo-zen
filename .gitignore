@@ -6,3 +6,6 @@ dist/
 *.log
 test-results/
 .tmp/
+
+# Cœur des fonctions serveur regroupé avant déploiement (scripts/build-functions.mjs)
+supabase/functions/*/core.bundle.js

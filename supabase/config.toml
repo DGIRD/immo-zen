@@ -22,3 +22,7 @@ verify_jwt = true
 [functions.dvf]
 # Appelée par l'application avec la session de l'utilisateur.
 verify_jwt = true
+
+[functions.tdfc]
+# Appelée par l'application avec la session de l'utilisateur ; signe avec la clé secrète TDFC_PRIVATE_KEY.
+verify_jwt = true
