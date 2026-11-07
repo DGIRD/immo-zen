@@ -174,6 +174,25 @@ export interface TaxPropertyInputs {
   meuble_kind?: MeubleKind;
   /** Déficits fonciers antérieurs non encore imputés (case 4BD), saisis depuis l'avis d'imposition. */
   prior_deficits?: number;
+  /** Bilan 2033-A : capital restant dû au 31/12 selon le tableau d'amortissement de la banque (prioritaire sur le calcul). */
+  loan_remaining_bank?: number;
+  /** Bilan 2033-A (foyer, par année) : trésorerie d'un compte dédié au 31/12 de l'année et de l'année précédente. */
+  bilan_cash?: number;
+  bilan_cash_previous?: number;
+  /** Bilan 2033-A (foyer, par année) : capitaux propres d'ouverture repris du bilan N-1 déposé hors de l'application. */
+  bilan_opening_equity?: number;
+  /** Bilan 2033-A (foyer, par année) : corrections manuelles, conservées même annulées. */
+  bilan_corrections?: BilanCorrection[];
+}
+
+/** Correction manuelle d'une ligne du bilan, avec son motif ; une correction annulée reste dans l'historique. */
+export interface BilanCorrection {
+  id: string;
+  field: 'receivables' | 'depositsHeld' | 'payables';
+  amount: number;
+  reason: string;
+  at: string;
+  revoked_at?: string | null;
 }
 export type MeubleKind = 'longue_duree' | 'tourisme_classe' | 'chambre_hotes' | 'tourisme_non_classe';
 export type TaxInputs = Record<string, Record<string, TaxPropertyInputs>>;

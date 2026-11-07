@@ -1,4 +1,6 @@
-# Déploiement des fonctions serveur Supabase (daily, marche, platform, stripe-webhook, assistant, dvf, annonce) et de leurs secrets.
+# Déploiement des fonctions serveur Supabase (daily, marche, platform, stripe-webhook, assistant, dvf, annonce, tdfc) et de leurs secrets.
+# Les secrets de télétransmission (TDFC_*, dont la clé privée) se saisissent directement dans Supabase
+# (Edge Functions → Secrets), jamais dans GitHub : voir docs/EDI-TDFC.md.
 # Lancement manuel : Actions → « Fonctions serveur Supabase » → Run workflow.
 # À définir dans Settings → Secrets and variables → Actions :
 #   Secret obligatoire : SUPABASE_ACCESS_TOKEN (supabase.com → Account → Access Tokens)
@@ -90,6 +92,16 @@ jobs:
         run: supabase functions deploy dvf --project-ref "$PROJECT_REF"
       - name: Fonction annonce (lecture d'une annonce à partir de son lien)
         run: supabase functions deploy annonce --project-ref "$PROJECT_REF"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Regrouper le cœur de la fonction tdfc (réutilise src/domain)
+        run: |
+          npm ci --no-audit --no-fund
+          node scripts/build-functions.mjs
+      - name: Fonction tdfc (télétransmission EDI-TDFC de la liasse LMNP)
+        run: supabase functions deploy tdfc --project-ref "$PROJECT_REF"
       - name: Adresses à utiliser
         run: |
           echo "Webhook Stripe : https://${PROJECT_REF}.supabase.co/functions/v1/stripe-webhook" >> "$GITHUB_STEP_SUMMARY"

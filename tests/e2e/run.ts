@@ -1203,10 +1203,44 @@ async function main() {
     const liasse = page.locator('table.tax-2033');
     await liasse.waitFor();
     assert.match((await liasse.innerText()).replace(/[\u202f\u00a0]/g, ' '), /218[\s\S]*242[\s\S]*254[\s\S]*310/);
+    // relecture du bilan 2033-A : origine des lignes, équilibre, correction motivée et conservée
+    const bilan = page.getByRole('region', { name: 'Relecture du bilan 2033-A' });
+    await bilan.getByRole('heading', { name: 'Bilan simplifié au 31/12/2024 (2033-A)' }).waitFor();
+    await bilan.getByText(/Actif = passif = /).waitFor();
+    await bilan.locator('caption', { hasText: 'Actif' }).waitFor();
+    await bilan.getByText('Convention', { exact: true }).first().waitFor();
+    await bilan.getByRole('button', { name: 'Ajouter la correction' }).click();
+    await bilan.getByText('Motif requis').waitFor();
+    await bilan.getByLabel('Ligne').selectOption('payables');
+    await bilan.getByLabel('Montant retenu').fill('120');
+    await bilan.getByLabel(/^Motif/).fill('Facture du syndic reçue en janvier');
+    await bilan.getByRole('button', { name: 'Ajouter la correction' }).click();
+    const hist = bilan.locator('table.bilan-history');
+    await hist.getByText('En vigueur').waitFor();
+    await bilan.locator('table.bilan-table').getByText('Corrigé', { exact: true }).waitFor();
+    await bilan.getByText(/Actif = passif = /).waitFor();
+    await page.screenshot({ path: join(out, '45-bilan-2033a.png'), fullPage: true });
+    await hist.getByRole('button', { name: 'Annuler' }).click();
+    await hist.getByText(/^Annulée le /).waitFor();
+    assert.equal(await hist.locator('tbody tr').count(), 1, 'correction annulée conservée dans l’historique');
+    await page.setViewportSize({ width: 390, height: 844 });
+    try {
+      // écran du bilan à 390 px : rien ne dépasse, hors tableaux à défilement propre
+      const wide = await bilan.evaluate((root) => [root, ...root.querySelectorAll('*')].filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1)
+        .filter((e) => !e.parentElement?.closest('.dt-scroll')).slice(0, 5).map((e) => `${e.tagName}.${(e as HTMLElement).className} ${Math.round(e.getBoundingClientRect().right)}px`));
+      await bilan.screenshot({ path: join(out, '46-bilan-2033a-mobile.png') });
+      assert.deepEqual(wide, [], `bilan 2033-A trop large à 390 px : ${wide.join(' | ')}`);
+    } finally {
+      await page.setViewportSize({ width: 1360, height: 900 });
+    }
     await guide.getByText('Location meublée au réel (LMNP) : liasse 2031 et 2033').waitFor();
     await guide.getByText('Espace professionnel').first().waitFor();
     await guide.getByText(/tuile « Résultat »/).first().waitFor();
     await page.screenshot({ path: join(out, '34-declaration-lmnp.png'), fullPage: true });
+    // service fermé aux abonnés : bouton et page masqués tant que l'aperçu n'est pas activé
+    assert.equal(await page.getByRole('button', { name: 'Télétransmettre la liasse' }).count(), 0, 'bouton masqué avant ouverture');
+    // aperçu activé pour l'étape « télétransmission » (pris en compte au prochain affichage de la page)
+    await page.evaluate(() => localStorage.setItem('iz-tdfc-preview', '1'));
     // micro-BIC : case selon la nature du meublé
     await page.getByLabel('Régime de Parking détenu').selectOption('micro_bic');
     await page.getByText(/Case 5ND/).first().waitFor();
@@ -1216,6 +1250,98 @@ async function main() {
     await page.getByLabel('Régime de Parking détenu').selectOption('reel_foncier');
     await page.getByRole('button', { name: 'Enregistrer les saisies' }).click();
     await page.getByText('Saisies enregistrées.').last().waitFor();
+  });
+
+  await step('télétransmission : identité fiscale, mandat, vérification, préparation', async () => {
+    // le bien de test passe en LMNP au réel pour les revenus 2025 le temps de l'étape
+    const lastYear = String(Number(new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' }).slice(0, 4)) - 1);
+    const setRegime = async (regime: string) => {
+      await page.goto(url + '#/declaration');
+      await page.getByLabel('Année des revenus').selectOption(lastYear);
+      // le régime est enregistré sur le bien dès qu'il est choisi
+      await page.getByLabel('Régime de Parking détenu').selectOption(regime);
+      await page.waitForFunction((r) => (document.querySelector('select[aria-label="Régime de Parking détenu"]') as HTMLSelectElement | null)?.value === r, regime);
+      await page.waitForTimeout(500);
+    };
+    // une recette et une charge de l'année, pour que le bien figure dans la déclaration
+    const addLine = async (category: string, label: string, amount: string) => {
+      const quick = page.getByRole('form', { name: 'Ajout rapide d’une dépense' });
+      await quick.getByLabel('Date').fill(`${lastYear}-06-15`);
+      await quick.getByLabel('Bien').selectOption({ label: 'Parking détenu' });
+      await quick.getByLabel('Catégorie').selectOption(category);
+      await quick.getByLabel('Libellé').fill(label);
+      await quick.getByLabel('Montant').fill(amount);
+      await quick.getByRole('button', { name: '+ Ajouter' }).click();
+      await page.getByText('Ligne ajoutée.').last().waitFor();
+    };
+    await page.goto(url + '#/depenses');
+    await addLine('loyer', 'Loyers TDFC e2e', '6000');
+    await addLine('assurance', 'PNO TDFC e2e', '120');
+    await setRegime('reel_bic');
+    await page.getByRole('button', { name: 'Télétransmettre la liasse' }).click();
+    await page.getByRole('heading', { name: 'Télétransmission de la liasse' }).waitFor();
+    for (const t of ['Identité fiscale', 'Mandat de télétransmission', 'Vérification de la déclaration', 'Préparation et signature']) await page.getByRole('heading', { name: new RegExp(t) }).waitFor();
+    const prepareBtn = page.getByRole('button', { name: 'Préparer et signer la déclaration' });
+    assert.ok(await prepareBtn.isDisabled(), 'préparation fermée tant que les étapes ne sont pas faites');
+    assert.ok(await page.getByRole('button', { name: /^Vérifier ma déclaration/ }).isDisabled(), 'vérification après l’identité fiscale');
+    // identité fiscale : contrôles puis enregistrement
+    await page.getByLabel('SIREN *').fill('123456789');
+    await page.getByLabel('Nom et prénom *').fill('MONSIEUR 01');
+    await page.getByRole('button', { name: 'Enregistrer l’identité fiscale' }).click();
+    await page.getByText('SIREN invalide (clé de contrôle).').waitFor();
+    await page.getByText('Adresse requise.').first().waitFor();
+    await page.getByLabel('SIREN *').fill('079555934');
+    await page.getByLabel('Adresse de l’activité *').fill('252 RUE ALPHANUMERIQUE');
+    await page.getByLabel('Code postal *', { exact: true }).fill('44001');
+    await page.getByLabel('Ville *', { exact: true }).fill('NANTES');
+    await page.getByRole('button', { name: 'Enregistrer l’identité fiscale' }).click();
+    await page.getByText('Identité fiscale enregistrée.').last().waitFor();
+    await page.getByText('Enregistrée.', { exact: true }).waitFor();
+    // mandat : acceptation obligatoire, signature horodatée, révocation conservée
+    const signBtn = page.getByRole('button', { name: 'Signer le mandat' });
+    assert.ok(await signBtn.isDisabled(), 'signature après acceptation');
+    await page.getByLabel('J’ai lu le mandat et je l’accepte').check();
+    await signBtn.click();
+    await page.getByText(/^Signé le /).waitFor();
+    // vérification : la déclaration est recalculée, rien n'est transmis
+    await page.getByRole('button', { name: /^Vérifier ma déclaration/ }).click();
+    const result = page.getByLabel('Résultat de la vérification');
+    await result.getByRole('heading', { name: 'Points à vérifier' }).waitFor();
+    await result.getByText('Données qui seront transmises').waitFor();
+    await result.getByText('Résultat fiscal', { exact: true }).waitFor();
+    await result.getByText(/n’a pas encore terminé son habilitation/).waitFor();
+    await result.getByText('2033-A – Bilan simplifié').click();
+    await result.locator('td', { hasText: 'Total général du passif' }).waitFor();
+    if (await prepareBtn.isEnabled()) {
+      await prepareBtn.click();
+      await page.getByText(/Mode démonstration : la préparation signée/).waitFor();
+    } else {
+      // un point bloquant propre à la déclaration de test : la préparation reste fermée
+      await result.locator('li.bad').first().waitFor();
+    }
+    await page.screenshot({ path: join(out, '47-teletransmission.png'), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    try {
+      const wide = await page.locator('.tdfc-page').evaluate((root) => [root, ...root.querySelectorAll('*')].filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1)
+        .filter((e) => !e.parentElement?.closest('.dt-scroll')).slice(0, 5).map((e) => `${e.tagName}.${(e as HTMLElement).className} ${Math.round(e.getBoundingClientRect().right)}px`));
+      await page.locator('.tdfc-page').screenshot({ path: join(out, '48-teletransmission-mobile.png') });
+      assert.deepEqual(wide, [], `télétransmission trop large à 390 px : ${wide.join(' | ')}`);
+    } finally {
+      await page.setViewportSize({ width: 1360, height: 900 });
+    }
+    await page.getByRole('button', { name: 'Révoquer le mandat' }).click();
+    await page.getByText(/Historique : signé le .*, révoqué le /).waitFor();
+    await page.getByRole('button', { name: 'Signer le mandat' }).waitFor();
+    await setRegime('reel_foncier');
+    await page.goto(url + '#/depenses');
+    await page.getByLabel('Année').selectOption(lastYear);
+    // les deux lignes ajoutées sont les seules du 15/06 de l'année
+    const added = page.getByRole('button', { name: new RegExp(`^Supprimer la dépense du 15/06/${lastYear}`) });
+    for (let i = 0; i < 2; i++) {
+      await added.first().click();
+      await page.locator('dialog[open]').getByRole('button', { name: 'Supprimer' }).click();
+      await page.waitForFunction((n) => document.querySelectorAll(`button[aria-label^="Supprimer la dépense du 15/06/"]`).length === n, 1 - i);
+    }
   });
 
   await step('documents : dépôt privé, contrôle du type', async () => {

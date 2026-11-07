@@ -601,3 +601,60 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 .usury-pair { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; align-items: end; }
 .usury-pair > .label { grid-column: 1 / -1; }
 .market-rent { display: flex; flex-direction: column; gap: .7rem; }
+
+/* Relecture du bilan 2033-A */
+.bilan-review { margin: 1.2rem 0; padding-top: .6rem; border-top: 1px solid var(--line); }
+.bilan-status { padding: .55rem .8rem; border-radius: var(--radius); margin: .6rem 0 1rem; }
+.bilan-ok { background: var(--vert-tint); color: var(--vert); }
+.bilan-avertissement { background: var(--ocre-tint); color: var(--ocre); }
+.bilan-bloquant { background: var(--brique-tint); color: var(--brique); }
+.bilan-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: 1rem; }
+.bilan-side { min-width: 0; }
+.bilan-table caption { text-align: left; font-weight: 600; padding: .3rem 0; }
+.bilan-table td { vertical-align: top; }
+.bilan-table tr.subtotal td { border-top: 1px solid var(--line-strong); font-weight: 600; }
+.bilan-table .pill { margin-left: 0; white-space: nowrap; }
+.bilan-table summary { cursor: pointer; }
+.bilan-detail { list-style: none; padding: .3rem 0 0; margin: 0; font-size: .85rem; }
+.bilan-detail li { display: flex; justify-content: space-between; gap: .8rem; padding: .1rem 0; border-bottom: 1px dotted var(--line); }
+.bilan-warnings { padding-left: 0; list-style: none; margin: .6rem 0; }
+.bilan-correction-action { align-self: end; }
+.bilan-history tr.revoked td { color: var(--ink-soft); text-decoration: line-through; }
+.bilan-history tr.revoked td:last-child, .bilan-history tr.revoked td:nth-last-child(2) { text-decoration: none; }
+.bilan-table td:nth-child(2) { white-space: normal; }
+.bilan-origin-inline { display: none; }
+@media (max-width: 640px) {
+  .bilan-table th:nth-child(1), .bilan-table td:nth-child(1), .bilan-table th:nth-child(4), .bilan-table td:nth-child(4) { display: none; }
+  .bilan-origin-inline { display: inline-block; margin: .2rem 0 0; }
+  .bilan-table td.num { white-space: nowrap; }
+}
+
+/* Télétransmission EDI-TDFC */
+.tdfc-page .tdfc-year { max-width: 22rem; margin-bottom: 1rem; }
+.tdfc-step-title { display: inline-flex; align-items: center; gap: .55rem; flex-wrap: wrap; }
+.tdfc-step-n { display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--vert); color: #fff; font-size: .85rem; font-weight: 700; }
+.tdfc-step-title .pill { margin-left: 0; }
+.tdfc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-top: .8rem; }
+.tdfc-mandate-text { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: .8rem 1rem; max-width: 70ch; }
+.tdfc-mandate-text ul { padding-left: 1.1rem; }
+.tdfc-banner { padding: .6rem .85rem; border-radius: var(--radius); margin: .8rem 0; }
+.tdfc-banner p { margin: .2rem 0; }
+.tdfc-banner.ok { background: var(--vert-tint); color: var(--vert); }
+.tdfc-banner.warn { background: var(--ocre-tint); color: var(--ocre); }
+.tdfc-banner.bad { background: var(--brique-tint); color: var(--brique); }
+.tdfc-ok { color: var(--vert); }
+.tdfc-checks { list-style: none; padding: 0; margin: .4rem 0; }
+.tdfc-checks li { padding: .35rem .6rem; border-left: 3px solid var(--line-strong); margin-bottom: .3rem; background: var(--paper); }
+.tdfc-checks li.bad { border-color: var(--brique); }
+.tdfc-checks li.warn { border-color: var(--ocre); }
+.tdfc-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .6rem; margin: .8rem 0; }
+.tdfc-summary div { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: .5rem .7rem; }
+.tdfc-summary dt { font-size: .8rem; color: var(--ink-soft); }
+.tdfc-summary dd { margin: .15rem 0 0; font-weight: 600; font-size: 1.05rem; }
+.tdfc-form { margin: .35rem 0; }
+.tdfc-form summary { cursor: pointer; padding: .35rem 0; font-weight: 600; }
+.tdfc-form td:nth-child(2) { white-space: normal; }
+.tdfc-prereq { list-style: none; padding: 0; margin: .5rem 0; }
+.tdfc-prereq li::before { content: '○ '; color: var(--ink-soft); }
+.tdfc-prereq li.ok::before { content: '✓ '; color: var(--vert); font-weight: 700; }
+.tdfc-hash { word-break: break-all; font-size: .8rem; }

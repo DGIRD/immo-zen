@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../data/store.tsx';
-import type { MeubleKind, TaxInputs, TaxPropertyInputs, TaxRegime } from '../data/types.ts';
+import type { BilanCorrection, MeubleKind, TaxInputs, TaxPropertyInputs, TaxRegime } from '../data/types.ts';
 import { downloadBlob, stamp, toXlsx } from '../domain/exporting.ts';
 import { money2, todayParis } from '../domain/format.ts';
 import { DEFAULT_TAX_INPUTS, depreciationItems, FONCIER_DEFICIT_LIMIT, fiscalSummary, MEUBLE_KIND_LABELS, MICRO_BIC_LIMIT, MICRO_FONCIER_LIMIT, type FiscalSummary } from '../domain/fiscal.ts';
@@ -8,13 +8,17 @@ import { declarationGuide, guideSections } from '../domain/taxGuide.ts';
 import { buildDocPdf } from '../domain/docPdf.ts';
 import { TAX_REGIME_LABELS } from '../domain/labels.ts';
 import { Button, EmptyState, NumberInput, PageHeader, Section, Select } from '../ui/components.tsx';
+import { reviewBilan } from '../domain/bilanReview.ts';
+import { navigate } from '../ui/router.ts';
+import { BilanReviewSection } from './FiscalBilan.tsx';
 import { href } from '../ui/router.ts';
+import { tdfcVisible } from '../data/tdfc.ts';
 
 interface Box { form: string; code: string; label: string; amount: number; property?: string }
 
 const PARAMS = 'params';
 const FOYER = 'foyer';
-type NumKey = Exclude<keyof TaxPropertyInputs, 'meuble_kind'>;
+type NumKey = Exclude<keyof TaxPropertyInputs, 'meuble_kind' | 'bilan_corrections'>;
 
 export function FiscalPage() {
   const { data, update, saveSettings, notify } = useStore();
@@ -30,7 +34,7 @@ export function FiscalPage() {
   const [draft, setDraft] = useState<TaxInputs | null>(null);
   const inputs = draft ?? saved;
   const get = (pid: string, y: number): TaxPropertyInputs => ({ ...(inputs[PARAMS]?.[pid] ?? {}), ...(inputs[String(y)]?.[pid] ?? {}) });
-  const setInput = (scope: string, pid: string, k: NumKey | 'meuble_kind', v: number | MeubleKind | null) => setDraft((d) => {
+  const setInput = (scope: string, pid: string, k: NumKey | 'meuble_kind' | 'bilan_corrections', v: number | MeubleKind | BilanCorrection[] | null) => setDraft((d) => {
     const base = structuredClone(d ?? saved);
     const cur: Record<string, unknown> = { ...(base[scope]?.[pid] ?? {}) };
     if (v === null) delete cur[k]; else cur[k] = v;
@@ -54,6 +58,11 @@ export function FiscalPage() {
   }).filter((x) => x.items.length > 0);
   for (const a of amort) for (const i of a.items) boxes.push({ form: 'Amortissements', code: `${i.years} ans`, label: i.label, amount: i.amount, property: a.p.title });
   const owned = data.properties.filter((p) => p.status === 'acquis');
+  const foyer = inputs[String(year)]?.[FOYER] ?? {};
+  const reelProps = fiscal.reelBic ? fiscal.reelBic.perProperty.map((r) => data.properties.find((p) => p.id === r.propertyId)!).filter(Boolean) : [];
+  const bilanReview = useMemo(() => fiscal.reelBic ? reviewBilan(year, { ...fiscalData, deposits: data.deposits }, reelProps, fiscal.reelBic.liasse, get, foyer) : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fiscal, data.deposits, foyer]);
   const priorDeficits = inputs[String(year)]?.[FOYER]?.prior_deficits ?? 0;
   const guide = declarationGuide(fiscal, data.properties, { priorDeficits });
   async function exportPdf() {
@@ -139,12 +148,12 @@ export function FiscalPage() {
 
           {boxes.some((b) => b.form.startsWith('2042') && !b.property) && (
             <Section title={`À reporter en ${year + 1}`}>
-              <table className="dt-table compact tax-boxes">
+              <div className="dt-scroll"><table className="dt-table compact tax-boxes">
                 <thead><tr><th>Déclaration</th><th>Case</th><th>Libellé</th><th className="num">Montant</th></tr></thead>
                 <tbody>{boxes.filter((b) => b.form.startsWith('2042') && !b.property).map((b) => (
                   <tr key={b.form + b.code}><td>{b.form}</td><td><strong>{b.code}</strong></td><td>{b.label}</td><td className="num"><strong>{money2(b.amount)}</strong></td></tr>
                 ))}</tbody>
-              </table>
+              </table></div>
             </Section>
           )}
 
@@ -243,7 +252,8 @@ export function FiscalPage() {
           )}
 
           {fiscal.reelBic && (
-            <Section title="Location meublée au réel (LMNP) — 2031, 2033 et 2042-C-PRO">
+            <Section title="Location meublée au réel (LMNP) — 2031, 2033 et 2042-C-PRO"
+              actions={tdfcVisible() ? <Button variant="primary" onClick={() => navigate('/declaration/teletransmission')}>Télétransmettre la liasse</Button> : undefined}>
               <KeyRows rows={[['Case 5NA : bénéfice', fiscal.reelBic.box5NA], ['Case 5NY : déficit', fiscal.reelBic.box5NY]]} />
               <h3>Compte de résultat simplifié (2033-B)</h3>
               <div className="dt-scroll"><table className="dt-table compact tax-2033">
@@ -251,6 +261,11 @@ export function FiscalPage() {
                 <tbody>{fiscal.reelBic.liasse.lines.map((l) => <tr key={l.code + l.label} className={['270', '310', '352', '354'].includes(l.code) ? 'subtotal' : ''}><td><strong>{l.code}</strong></td><td>{l.label}</td><td className="num">{money2(l.amount)}</td></tr>)}
                   {fiscal.reelBic.liasse.deferredUsed > 0 && <tr><td>—</td><td>Imputation des amortissements différés des exercices précédents</td><td className="num">{money2(fiscal.reelBic.liasse.deferredUsed)}</td></tr>}</tbody>
               </table></div>
+              {bilanReview && (
+                <BilanReviewSection year={year} review={bilanReview} properties={reelProps} get={get} foyer={foyer}
+                  setFoyer={(k, v) => setInput(String(year), FOYER, k, v)} setLoanBank={(pid, v) => setInput(String(year), pid, 'loan_remaining_bank', v)}
+                  setCorrections={(list) => setInput(String(year), FOYER, 'bilan_corrections', list)} />
+              )}
               {fiscal.reelBic.perProperty.map((r) => {
                 const prm = { ...DEFAULT_TAX_INPUTS, ...get(r.propertyId, year) };
                 return (

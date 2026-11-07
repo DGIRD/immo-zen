@@ -16,5 +16,5 @@
     "types": ["node"],
     "resolveJsonModule": true
   },
-  "include": ["src", "tests", "scripts/*.ts", "supabase/functions/_shared"]
+  "include": ["src", "tests", "scripts/*.ts", "supabase/functions/_shared", "supabase/functions/tdfc/core.ts"]
 }
