@@ -12,6 +12,17 @@ import { partnerFromEnv, preview as computePreview, type Preview, type TdfcSnaps
 
 export type { Preview };
 
+/**
+ * Ouverture du service aux abonnés. Tant qu'elle vaut false (habilitation DGFiP et relecture du mandat
+ * en cours), le bouton « Télétransmettre la liasse » et la page sont masqués. Pour tester l'écran avant
+ * l'ouverture : localStorage.setItem('iz-tdfc-preview', '1') dans la console du navigateur.
+ */
+export const TDFC_OPEN = false;
+export function tdfcVisible(storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): boolean {
+  if (TDFC_OPEN) return true;
+  try { return storage?.getItem('iz-tdfc-preview') === '1'; } catch { return false; }
+}
+
 /** Version du texte du mandat présenté à l'abonné (enregistrée avec la signature). */
 export const MANDATE_VERSION = '2026-11';
 

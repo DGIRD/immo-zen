@@ -126,6 +126,11 @@ Le procédé est reproduit d'après `signer_donnees.c` de la DGFiP et vérifié 
 
 ## Écran de télétransmission
 
+**Service fermé aux abonnés** : `TDFC_OPEN = false` dans `src/data/tdfc.ts` masque le bouton
+« Télétransmettre la liasse » et la page `#/declaration/teletransmission`. Pour voir l'écran avant
+l'ouverture : `localStorage.setItem('iz-tdfc-preview', '1')` dans la console du navigateur. Ouverture :
+passer `TDFC_OPEN` à `true` une fois l'habilitation obtenue, les secrets saisis et le mandat relu.
+
 Le bouton **Télétransmettre la liasse** de la section LMNP mène à `#/declaration/teletransmission`, réservé aux formules qui incluent la déclaration fiscale. L'écran comporte quatre étapes ; chacune affiche son état (À faire, Fait, À corriger).
 
 1. **Identité fiscale** (`tdfc_declarants`) : SIREN (clé de contrôle), référence d'obligation fiscale (BIC1 par défaut), nom, code NAF (6820A), adresse de l'activité, et le domicile s'il diffère. Les contrôles sont ceux de la base (35 caractères, code postal, formats).

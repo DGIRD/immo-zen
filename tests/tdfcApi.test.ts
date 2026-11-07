@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createDemoTdfc, declarantErrors, TdfcUnavailable, type TdfcDeclarant } from '../src/data/tdfc.ts';
+import { createDemoTdfc, declarantErrors, tdfcVisible, TDFC_OPEN, TdfcUnavailable, type TdfcDeclarant } from '../src/data/tdfc.ts';
 import { RepoError } from '../src/data/repo.ts';
 import { data } from './fixtures/lmnp.ts';
 
@@ -77,4 +77,13 @@ test('aperçu : nature des données pour l’affichage (montant, date, texte)', 
   assert.equal(get('F-IDENTIF', 'CC').kind, 'texte', 'durée en mois');
   assert.equal(get('F-IDENTIF', 'AA').kind, 'texte');
   assert.ok(preview.items.filter((i) => i.kind === 'montant').some((i) => i.value.startsWith('-')), 'montant négatif conservé avec son signe');
+});
+
+test('service fermé : écran visible seulement avec l’aperçu activé', () => {
+  assert.equal(TDFC_OPEN, false);
+  const m = memory();
+  assert.equal(tdfcVisible(m), false);
+  m.setItem('iz-tdfc-preview', '1');
+  assert.equal(tdfcVisible(m), true);
+  assert.equal(tdfcVisible(undefined), false);
 });

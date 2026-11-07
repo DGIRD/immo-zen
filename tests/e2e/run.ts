@@ -1237,7 +1237,10 @@ async function main() {
     await guide.getByText('Espace professionnel').first().waitFor();
     await guide.getByText(/tuile « Résultat »/).first().waitFor();
     await page.screenshot({ path: join(out, '34-declaration-lmnp.png'), fullPage: true });
-    await page.getByRole('button', { name: 'Télétransmettre la liasse' }).waitFor();
+    // service fermé aux abonnés : bouton et page masqués tant que l'aperçu n'est pas activé
+    assert.equal(await page.getByRole('button', { name: 'Télétransmettre la liasse' }).count(), 0, 'bouton masqué avant ouverture');
+    // aperçu activé pour l'étape « télétransmission » (pris en compte au prochain affichage de la page)
+    await page.evaluate(() => localStorage.setItem('iz-tdfc-preview', '1'));
     // micro-BIC : case selon la nature du meublé
     await page.getByLabel('Régime de Parking détenu').selectOption('micro_bic');
     await page.getByText(/Case 5ND/).first().waitFor();
