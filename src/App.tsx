@@ -6,6 +6,7 @@ import { ComingSoonPage } from './pages/ComingSoon.tsx';
 import { ContactDetailPage, ContactsPage } from './pages/Contacts.tsx';
 import { DashboardPage } from './pages/Dashboard.tsx';
 import { FiscalPage } from './pages/Fiscal.tsx';
+import { TeletransmissionPage } from './pages/Teletransmission.tsx';
 import { AdminPage } from './pages/Admin.tsx';
 import { SubscriptionPage } from './pages/Subscription.tsx';
 import { OwnedPage } from './pages/Owned.tsx';
@@ -87,7 +88,7 @@ export function App() {
   else if (a === 'documents') { active = 'documents'; page = <DocumentsPage />; }
   else if (a === 'declaration' || a === 'synthese') {
     active = 'fiscal';
-    page = plan.features.fiscal ? <FiscalPage /> : (
+    page = plan.features.fiscal ? (b === 'teletransmission' ? <TeletransmissionPage key={key} /> : <FiscalPage />) : (
       <><PageHeader title="Déclaration fiscale" />
         <PlanLock title="Déclaration fiscale non incluse dans votre formule">Montants à reporter sur la 2044, la 2042 et la 2042-C-PRO (micro-foncier, réel, micro-BIC, LMNP au réel avec amortissements) et export Excel. Inclus dans la formule Pro, ou avec le pack fiscal ({FISCAL_PACK_PRICE} € pour 12 mois) en formule Essentiel ou Patrimoine. Vos loyers et dépenses restent consultables et exportables dans leurs rubriques.</PlanLock></>
     );

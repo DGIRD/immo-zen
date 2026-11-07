@@ -9,6 +9,7 @@ import type { ListingData } from '../../supabase/functions/_shared/listing.ts';
 import { demoPlan, type PlanInfo, type TierCode } from '../domain/plans.ts';
 import { createDemoMarket, createSupabaseMarket, type MarketApi } from './market.ts';
 import { todayParis } from '../domain/format.ts';
+import { createDemoTdfc, createSupabaseTdfc, type TdfcApi } from './tdfc.ts';
 
 export type SubscriptionStatus = 'none' | 'trialing' | 'active' | 'past_due' | 'unpaid' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'paused';
 
@@ -77,6 +78,8 @@ export interface PlatformApi {
   setSupportAccess(until: string | null): Promise<void>;
   /** Données de marché : loyers (Carte des loyers, encadrement) et taux de crédit. */
   market: MarketApi;
+  /** Télétransmission EDI-TDFC de la liasse LMNP. */
+  tdfc: TdfcApi;
   admin: {
     users(): Promise<AdminUser[]>;
     setManualAccess(userId: string, until: string | null, note: string, tier?: TierCode): Promise<void>;
@@ -191,6 +194,7 @@ export function createSupabasePlatform(sb: SupabaseClient): PlatformApi {
       else check(await sb.from('support_access').delete().eq('user_id', uid));
     },
     market: createSupabaseMarket(sb),
+    tdfc: createSupabaseTdfc(sb),
     admin: {
       async users() { return check(await sb.rpc('iz_admin_users')) as AdminUser[]; },
       async setManualAccess(userId, until, note, tier = 'pro') { check(await sb.rpc('iz_admin_set_manual_access', { p_user: userId, p_until: until, p_note: note, p_tier: tier })); },
@@ -261,6 +265,7 @@ export function createDemoPlatform(storage: Storage, userId: () => string | null
     invoiceUrl: async () => noPay(),
     async setSupportAccess(until) { const d = read(); d.supportUntil = until; write(d); },
     market: createDemoMarket(storage, () => todayParis()),
+    tdfc: createDemoTdfc(storage),
     admin: {
       async users() {
         const id = userId() ?? 'demo';

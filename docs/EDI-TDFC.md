@@ -124,10 +124,35 @@ Le procédé est reproduit d'après `signer_donnees.c` de la DGFiP et vérifié 
    - `TDFC_MODE` : `test` par défaut, `reel` seulement après la phase de tests DGFiP.
 3. **Migration** `20261107000100_tdfc.sql`, puis le workflow « Fonctions serveur Supabase ». Il regroupe le cœur et déploie `tdfc`.
 
+## Écran de télétransmission
+
+Le bouton **Télétransmettre la liasse** de la section LMNP mène à `#/declaration/teletransmission`, réservé aux formules qui incluent la déclaration fiscale. L'écran comporte quatre étapes ; chacune affiche son état (À faire, Fait, À corriger).
+
+1. **Identité fiscale** (`tdfc_declarants`) : SIREN (clé de contrôle), référence d'obligation fiscale (BIC1 par défaut), nom, code NAF (6820A), adresse de l'activité, et le domicile s'il diffère. Les contrôles sont ceux de la base (35 caractères, code postal, formats).
+2. **Mandat** (`tdfc_mandates`) : le texte du mandat (version `2026-11`, `MANDATE_VERSION`) s'affiche. La signature exige une case « J'ai lu et j'accepte ». La révocation est possible à tout moment et reste dans l'historique.
+3. **Vérification** : aperçu calculé par la fonction serveur (localement en démonstration).
+   - Il affiche les recettes, le résultat fiscal, le total du bilan et le nombre de données.
+   - Il liste les points à vérifier propres à l'abonné.
+   - Il montre les données qui seront transmises, par formulaire, à déplier (montants, dates et textes mis en forme).
+   - Les blocages qui relèvent d'Immo-Zen (agrément, accréditation, configuration : `scope: 'partenaire'`) sont regroupés dans un bandeau « habilitation en cours » : ils n'apparaissent pas comme des erreurs de l'abonné.
+4. **Préparation et signature** : ouverte quand l'identité fiscale est enregistrée, le mandat signé et la vérification sans point bloquant. Elle télécharge le fichier `.edi`, affiche la référence et l'empreinte SHA-256, et alimente l'historique.
+
+**Historique** (`tdfc_submissions`) : date, année, référence, mode (test ou réel), état, résultat fiscal, et un nouveau téléchargement à l'identique.
+
+**Démonstration** : l'identité fiscale et le mandat sont conservés dans le navigateur, et l'aperçu est calculé localement. La préparation signée est refusée avec un message explicite (aucune clé de signature).
+
+**Code** :
+- `src/data/tdfc.ts` : API en ligne et démonstration, contrôles de saisie, texte du mandat.
+- `src/pages/Teletransmission.tsx` : l'écran.
+- `tests/tdfcApi.test.ts` : 6 tests.
+- Étape de bout en bout « télétransmission » : identité invalide puis valide, mandat, aperçu complet en LMNP au réel, préparation refusée en démonstration, rendu à 390 px, révocation.
+
+**À faire relire par un juriste** : le texte du mandat (`MandateText` dans `Teletransmission.tsx`). Toute modification du texte doit changer `MANDATE_VERSION`.
+
 ## Reste à faire
 
 1. **Transfert SFTP (PassTrans)** et lecture des retours : accusé de réception (INFENT-RCS), CONTRL, compte rendu (INFENT-CR, signé par la DGFiP et vérifiable avec `dgfip_cle_publique_pedi.pem`).
-2. **Interface de télétransmission** : SIREN, ROF, mandat de l'abonné, aperçu de l'interchange, historique des dépôts (l'écran de relecture du bilan est livré).
+2. **Accès réservé au pack fiscal** côté serveur : la fonction `tdfc` doit aussi vérifier la formule (l'écran est déjà réservé).
 3. **Campagne 2027** : intégrer le nouveau cahier des charges dès sa publication (mars 2027).
 
 ## Points à faire valider

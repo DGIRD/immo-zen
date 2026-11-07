@@ -9,6 +9,7 @@ import { buildDocPdf } from '../domain/docPdf.ts';
 import { TAX_REGIME_LABELS } from '../domain/labels.ts';
 import { Button, EmptyState, NumberInput, PageHeader, Section, Select } from '../ui/components.tsx';
 import { reviewBilan } from '../domain/bilanReview.ts';
+import { navigate } from '../ui/router.ts';
 import { BilanReviewSection } from './FiscalBilan.tsx';
 import { href } from '../ui/router.ts';
 
@@ -250,7 +251,8 @@ export function FiscalPage() {
           )}
 
           {fiscal.reelBic && (
-            <Section title="Location meublée au réel (LMNP) — 2031, 2033 et 2042-C-PRO">
+            <Section title="Location meublée au réel (LMNP) — 2031, 2033 et 2042-C-PRO"
+              actions={<Button variant="primary" onClick={() => navigate('/declaration/teletransmission')}>Télétransmettre la liasse</Button>}>
               <KeyRows rows={[['Case 5NA : bénéfice', fiscal.reelBic.box5NA], ['Case 5NY : déficit', fiscal.reelBic.box5NY]]} />
               <h3>Compte de résultat simplifié (2033-B)</h3>
               <div className="dt-scroll"><table className="dt-table compact tax-2033">

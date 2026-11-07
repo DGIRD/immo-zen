@@ -467,7 +467,12 @@ export async function secureInterchange(m: TdfcMessage, accreditationText: strin
 
 // ------------------------------------------------------------------ contrôles avant envoi
 
-export interface TdfcCheck { level: 'bloquant' | 'avertissement'; message: string }
+export interface TdfcCheck {
+  level: 'bloquant' | 'avertissement';
+  message: string;
+  /** « partenaire » : relève d'Immo-Zen (habilitation, accréditation, configuration), pas de l'abonné. */
+  scope?: 'partenaire';
+}
 
 /** Clé de Luhn du SIREN. */
 export function validSiren(siren: string): boolean {
@@ -502,11 +507,13 @@ export function checkRequest(r: TdfcRequest): TdfcCheck[] {
     out.push({ level: 'bloquant', message: 'Période de l’exercice invalide.' });
   else if (months(period) > 24) out.push({ level: 'bloquant', message: 'Exercice de plus de 24 mois.' });
 
-  if (!/^\d{7}$/.test(p.agrement)) out.push({ level: 'bloquant', message: 'Numéro d’agrément du partenaire EDI absent ou invalide (7 chiffres) : à recevoir après l’habilitation DGFiP.' });
-  if (!/^[A-Z0-9]{8}$/.test(p.transfer.alias)) out.push({ level: 'bloquant', message: 'Alias de transfert absent ou invalide (8 caractères) : communiqué par l’ESI de Strasbourg.' });
-  if (!p.attestation.trim()) out.push({ level: 'bloquant', message: 'Référence de l’attestation de conformité EDIFICAS manquante.' });
-  if (!p.software.editor.trim() || !p.software.program.trim() || !p.software.version.trim()) out.push({ level: 'bloquant', message: 'Références du logiciel émetteur incomplètes.' });
+  if (!/^\d{7}$/.test(p.agrement)) out.push({ level: 'bloquant', message: 'Numéro d’agrément du partenaire EDI absent ou invalide (7 chiffres) : à recevoir après l’habilitation DGFiP.', scope: 'partenaire' });
+  if (!/^[A-Z0-9]{8}$/.test(p.transfer.alias)) out.push({ level: 'bloquant', message: 'Alias de transfert absent ou invalide (8 caractères) : communiqué par l’ESI de Strasbourg.', scope: 'partenaire' });
+  if (!p.attestation.trim()) out.push({ level: 'bloquant', message: 'Référence de l’attestation de conformité EDIFICAS manquante.', scope: 'partenaire' });
+  if (!p.software.editor.trim() || !p.software.program.trim() || !p.software.version.trim()) out.push({ level: 'bloquant', message: 'Références du logiciel émetteur incomplètes.', scope: 'partenaire' });
+  const before = out.length;
   checkAddress('Adresse du partenaire EDI', p.address, out);
+  for (const c of out.slice(before)) c.scope = 'partenaire';
 
   if (!validSiren(d.siren)) out.push({ level: 'bloquant', message: `SIREN du déclarant invalide (${d.siren || 'vide'}).` });
   if (!ROF.test(d.rof)) out.push({ level: 'bloquant', message: `Référence d’obligation fiscale invalide (${d.rof || 'vide'}) : attendu BIC suivi d’un numéro sans zéro initial, ex. BIC1.` });
@@ -546,12 +553,12 @@ export function checkRequest(r: TdfcRequest): TdfcCheck[] {
     if (Math.abs(e.other) >= 1) parts.push(`non expliqué ${e.other} € (retenues sur dépôt, années hors réel, saisies manuelles)`);
     out.push({ level: Math.abs(e.other) >= 1 ? 'bloquant' : 'avertissement', message: `2033-A : écart de ${bil.gap} € entre le bilan et le compte de l’exploitant suivi (${bil.tracked} €) : ${parts.join(', ')}. Le résultat étant calculé sur les encaissements, les impayés et charges à payer créent cet écart.` });
   }
-  if (!p.accreditation) out.push({ level: 'bloquant', message: 'Accréditation DGFiP absente : l’interchange ne peut pas être signé (à obtenir auprès du correspondant téléprocédures).' });
+  if (!p.accreditation) out.push({ level: 'bloquant', message: 'Accréditation DGFiP absente : l’interchange ne peut pas être signé (à obtenir auprès du correspondant téléprocédures).', scope: 'partenaire' });
   else {
     try {
       parseAccreditation(p.accreditation);
     } catch (e) {
-      out.push({ level: 'bloquant', message: (e as Error).message });
+      out.push({ level: 'bloquant', message: (e as Error).message, scope: 'partenaire' });
     }
   }
 

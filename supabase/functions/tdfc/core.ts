@@ -79,7 +79,8 @@ export function inputsGetter(t: TaxInputs) {
 export interface Preview {
   year: number;
   /** Données transmises, pour l'aperçu. */
-  items: { form: string; code: string; label: string; value: string }[];
+  /** kind : montant en euros, date (AAAAMMJJ) ou texte. */
+  items: { form: string; code: string; label: string; value: string; kind: 'montant' | 'date' | 'texte' }[];
   checks: TdfcCheck[];
   blocking: boolean;
   summary: { properties: number; fiscalResult: number; turnover: number; assetsNet: number };
@@ -109,7 +110,7 @@ export function buildRequest(year: number, snap: TdfcSnapshot, declarant: Declar
   const foyer = snap.taxInputs[String(year)]?.[FOYER] ?? {};
   const review = reviewBilan(year, { ...data, deposits: snap.deposits }, props, fiscal.reelBic.liasse, inputs, foyer);
   if (!declarant) checks.push({ level: 'bloquant', message: 'Identité fiscale du déclarant non renseignée (SIREN, référence d’obligation fiscale, adresse).' });
-  for (const e of cfg.errors) checks.push({ level: 'bloquant', message: `Configuration du partenaire EDI : ${e}` });
+  for (const e of cfg.errors) checks.push({ level: 'bloquant', message: `Configuration du partenaire EDI : ${e}`, scope: 'partenaire' });
   const decl: TdfcDeclarant = declarant
     ? { siren: declarant.siren, rof: declarant.rof, name: declarant.name, address: declarant.address, home: declarant.home ?? undefined, naf: declarant.naf ?? undefined, activity: declarant.activity ?? undefined }
     : { siren: '', rof: '', name: '', address: { street: '', zip: '', city: '' } };
@@ -128,7 +129,10 @@ export function preview(year: number, snap: TdfcSnapshot, declarant: DeclarantRo
   if (!request || !review || !campaignFor(request.period.end)) {
     return { year, items: [], checks, blocking: true, summary: { properties: 0, fiscalResult: 0, turnover: 0, assetsNet: 0 } };
   }
-  const items = buildInterchange(request).items.map((i) => ({ form: i.form, code: i.code, label: i.label, value: itemValue(i) }));
+  const items = buildInterchange(request).items.map((i) => ({
+    form: i.form, code: i.code, label: i.label, value: itemValue(i),
+    kind: i.value.seg === 'MOA' ? 'montant' as const : i.value.seg === 'DTM' && i.value.format === '102' ? 'date' as const : 'texte' as const,
+  }));
   return {
     year, items, checks, blocking,
     summary: {
