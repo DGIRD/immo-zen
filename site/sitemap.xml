@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://immo-zen.fr/</loc><lastmod>2026-11-04</lastmod></url>
+  <url><loc>https://immo-zen.fr/outils/</loc><lastmod>2026-11-04</lastmod></url>
+  <url><loc>https://immo-zen.fr/outils/simulateur-cash-flow.html</loc><lastmod>2026-11-04</lastmod></url>
+  <url><loc>https://immo-zen.fr/outils/plafond-loyer-paris.html</loc><lastmod>2026-11-04</lastmod></url>
+  <url><loc>https://immo-zen.fr/outils/revision-loyer-irl.html</loc><lastmod>2026-11-04</lastmod></url>
   <url><loc>https://immo-zen.fr/guides/</loc><lastmod>2026-11-04</lastmod></url>
   <url><loc>https://immo-zen.fr/guides/premier-investissement-locatif.html</loc><lastmod>2026-11-04</lastmod></url>
   <url><loc>https://immo-zen.fr/guides/calculer-rentabilite-locative.html</loc><lastmod>2026-11-04</lastmod></url>

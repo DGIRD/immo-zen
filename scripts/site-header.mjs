@@ -11,18 +11,19 @@ export const NAV_LINKS = [
   { label: 'Gérer', anchor: 'gerer' },
   { label: 'Déclarer', anchor: 'declarer' },
   { label: 'Tarifs', anchor: 'tarifs' },
+  { label: 'Outils', page: 'outils/' },
   { label: 'Guides', page: 'guides/' },
 ];
 
 /**
- * @param {{ prefix?: string, home?: boolean, current?: 'guides' | null }} o
+ * @param {{ prefix?: string, home?: boolean, current?: 'guides' | 'outils' | null }} o
  *   prefix : chemin vers la racine du site ('' ou '../') ; home : page d'accueil (ancres locales) ;
- *   current : rubrique de la page affichée (lien marqué aria-current="page").
+ *   current : rubrique de la page affichée ('guides' ou 'outils') (lien marqué aria-current="page").
  */
 export function siteHeader({ prefix = '', home = false, current = null } = {}) {
   const links = NAV_LINKS.map((l) => {
     const href = l.page ? `${prefix}${l.page}` : home ? `#${l.anchor}` : `${prefix}#${l.anchor}`;
-    const isCurrent = l.page && current === 'guides';
+    const isCurrent = l.page && current && l.page === `${current}/`;
     return `<a href="${href}"${isCurrent ? ' aria-current="page"' : ''}>${l.label}</a>`;
   }).join('\n        ');
   return `<header class="top">
