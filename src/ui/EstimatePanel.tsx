@@ -34,7 +34,6 @@ const FLOOR = [['rdc', 'Rez-de-chaussée'], ['bas', '1er à 3e étage'], ['haut'
 const OUTDOOR = [['aucun', 'Aucun'], ['balcon', 'Balcon ou terrasse'], ['jardin', 'Jardin privatif']] as const;
 const CONDITION = [['a_renover', 'Travaux importants à prévoir'], ['bon', 'Bon état'], ['renove', 'Rénové récemment']] as const;
 const YESNO = [['oui', 'Oui'], ['non', 'Non']] as const;
-const DPES = (['A', 'B', 'C', 'D', 'E', 'F', 'G'] as const).map((x) => [x, x] as const);
 const yn = (b: boolean | null | undefined) => (b === true ? 'oui' : b === false ? 'non' : null);
 
 /**
@@ -51,7 +50,9 @@ export function EstimatePanel({ value, input, onChange, compareTo, compareLabel,
   const [showSales, setShowSales] = useState(false);
   const d = value.estimate_details;
   const ctx = ctxOf(input);
-  const features: EstimateFeatures = { dpe: input.dpe ?? null, ...(d?.features ?? {}) };
+  // le DPE vient de la fiche du bien ; les autres caractéristiques se déclarent ici
+  const features: EstimateFeatures = { ...(d?.features ?? {}), dpe: input.dpe ?? null };
+  const dpeChanged = !!d?.adjustments && (d.features?.dpe ?? null) !== (input.dpe ?? null);
   const base = d?.base ?? (d && value.estimate_low != null && value.estimate_high != null && value.estimate_median != null
     ? { low: value.estimate_low, median: value.estimate_median, high: value.estimate_high } : null);
   const fromDvfData = !!d?.perM2 && value.estimate_source !== 'Saisie manuelle';
@@ -109,9 +110,9 @@ export function EstimatePanel({ value, input, onChange, compareTo, compareLabel,
       )}
       <details className="estimate-features" open={adjustments.length > 0}>
         <summary>Affiner avec les caractéristiques du bien{adjustments.length > 0 ? ` (${totalPct > 0 ? '+' : ''}${String(totalPct).replace('.', ',')} %)` : ''}</summary>
-        <p className="muted small">Les ventes publiques ne décrivent ni l’étage, ni l’état, ni l’extérieur, ni le DPE : l’estimation de base vaut pour un bien moyen du secteur. Chaque caractéristique applique un écart publié par une étude (total plafonné à ±25 %).</p>
+        <p className="muted small">Les ventes publiques ne décrivent ni l’étage, ni l’état, ni l’extérieur, ni le DPE : l’estimation de base vaut pour un bien moyen du secteur. Chaque caractéristique applique un écart publié par une étude (total plafonné à ±25 %). Le DPE est celui de la fiche du bien{input.dpe ? ` (${input.dpe})` : ' (non renseigné)'}.</p>
+        {dpeChanged && editable && <p className="estimate-warning" role="note">Le DPE de la fiche a changé depuis le dernier calcul. <button type="button" className="link" onClick={() => setFeature({})}>Mettre à jour l’estimation</button></p>}
         <div className="grid">
-          <Select label="DPE" value={features.dpe ?? null} allowEmpty="Non renseigné" options={DPES} onChange={(v) => editable && setFeature({ dpe: v })} />
           <Select label="État" value={features.condition ?? null} allowEmpty="Non renseigné" options={CONDITION} onChange={(v) => editable && setFeature({ condition: v })} />
           {ctx.apartment && <Select label="Étage" value={features.floor ?? null} allowEmpty="Non renseigné" options={FLOOR} onChange={(v) => editable && setFeature({ floor: v })} />}
           {ctx.apartment && <Select label="Ascenseur" value={yn(features.elevator)} allowEmpty="Non renseigné" options={YESNO} onChange={(v) => editable && setFeature({ elevator: v === null ? null : v === 'oui' })} />}

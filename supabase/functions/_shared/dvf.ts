@@ -250,7 +250,8 @@ export function confidenceOf(c: { effective: number; dispersion: number; radius:
   else if (c.dispersion > 0.22) { score -= 1; reasons.push('Prix au m² assez dispersés dans le secteur.'); }
   if (!c.located) { score -= 1; reasons.push('Adresse non localisée au numéro : ventes de toute la commune.'); }
   else if (c.radius === null || c.radius >= 1200) { score -= 1; reasons.push('Ventes comparables éloignées du bien.'); }
-  if (yearsBetween(c.lastSale, c.today) > 1.5) { score -= 1; reasons.push('Pas de vente comparable récente.'); }
+  // les ventes sont publiées avec 6 à 12 mois de décalage : au-delà de 2 ans, le marché a pu bouger
+  if (yearsBetween(c.lastSale, c.today) > 2) { score -= 1; reasons.push('Pas de vente comparable depuis plus de deux ans.'); }
   const s = clamp(score, 1, 5) as DvfConfidence['score'];
   return { score: s, label: CONFIDENCE_LABELS[s], reasons };
 }
