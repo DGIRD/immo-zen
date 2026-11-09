@@ -321,3 +321,41 @@ main > section.apercu { padding: clamp(2rem, 5vw, 3.5rem) 0 clamp(2.5rem, 6vw, 4
   .menu-btn { padding: .42rem .5rem; gap: .35rem; }
   .top .btn-espace { padding: .45rem .6rem; }
 }
+
+/* outils gratuits */
+.tool h1 { max-width: 26ch; }
+.tool-pitch { font-size: 1.12rem; color: var(--ardoise); max-width: 60ch; margin-bottom: 1.8rem; }
+.tool-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: clamp(1.2rem, 3vw, 2.2rem); align-items: start; }
+.tool-form h2 { font-size: 1.15rem; margin: 1.4rem 0 .8rem; }
+.tool-form h2:first-child { margin-top: 0; }
+.tool-form .small { margin: 1rem 0 0; }
+.calc label.check { flex-direction: row; align-items: center; gap: .5rem; font-size: .95rem; color: var(--encre); }
+.tool-out { position: sticky; top: 5rem; background: var(--blanc); border: 1px solid var(--trait); border-radius: 4px; padding: 1.4rem; }
+.tool-out.blocked .calc-figure { color: var(--ardoise); }
+.tool-dl { margin: 1rem 0; display: grid; gap: 0; }
+.tool-dl div { display: flex; justify-content: space-between; gap: 1rem; padding: .5rem 0; border-bottom: 1px solid var(--trait); font-size: .95rem; }
+.tool-dl dt { color: var(--ardoise); }
+.tool-dl dd { margin: 0; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.tool-note { font-size: .85rem; color: var(--ardoise); margin: .8rem 0; }
+.tool-letter { display: flex; flex-direction: column; gap: .4rem; font-size: .9rem; color: var(--ardoise); margin-top: 1rem; }
+.tool-letter textarea { width: 100%; font: .88rem/1.45 var(--sans); color: var(--encre); background: var(--papier); border: 1px solid var(--trait); border-radius: 4px; padding: .7rem; resize: vertical; }
+.btn-link { background: none; border: 0; padding: .6rem 0 0; font: inherit; font-size: .9rem; color: var(--sapin); text-decoration: underline; cursor: pointer; }
+#pl-verdict.ok { color: var(--sapin); }
+#pl-verdict.ko { color: #9b3b2a; }
+.formula { background: var(--lichen); border-radius: 4px; padding: .8rem 1rem; font-weight: 600; }
+.tool-prose { max-width: 46rem; margin-top: 3rem; }
+.tool-cards { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; }
+.tool-cards a { display: flex; flex-direction: column; gap: .4rem; height: 100%; padding: 1.3rem; background: var(--blanc); border: 1px solid var(--trait); border-top: 6px solid var(--sapin); border-radius: 4px; text-decoration: none; color: var(--encre); }
+.tool-cards a:hover { border-color: var(--sapin); }
+.tool-cards strong { font: 600 1.25rem var(--serif); }
+.tool-cards span:last-child { color: var(--ardoise); font-size: .95rem; }
+.calc-more { margin: .8rem 0 0; font-size: .92rem; }
+@media (max-width: 860px) {
+  .tool-grid { grid-template-columns: 1fr; }
+  .tool-out { position: static; }
+}
+@media (max-width: 1040px) and (min-width: 901px) {
+  .site-nav { gap: .9rem; font-size: .95rem; }
+}
+.tool-link { margin: 2rem 0 0; padding: 1rem 1.2rem; border: 1px solid var(--trait); border-left: 4px solid var(--sapin); border-radius: 4px; background: var(--blanc); }
+.tool-link a { font-weight: 600; }

@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from 'nod
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BRAND_SVG, siteHeader } from './site-header.mjs';
+import { TOOLS, toolPage, toolsIndex } from './outils.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const srcDir = join(root, 'content/guides');
@@ -51,7 +52,7 @@ function polish(html) {
 
 const BRAND = BRAND_SVG;
 
-function shell({ title, description, canonical, body, jsonld, prefix }) {
+function shell({ title, description, canonical, body, jsonld, prefix, current = 'guides', ogType = 'article' }) {
   return `<!doctype html>
 <html lang="fr">
 <head>
@@ -60,7 +61,7 @@ function shell({ title, description, canonical, body, jsonld, prefix }) {
   <title>${esc(title)}</title>
   <meta name="description" content="${esc(description)}">
   <link rel="canonical" href="${canonical}">
-  <meta property="og:type" content="article">
+  <meta property="og:type" content="${ogType}">
   <meta property="og:title" content="${esc(title)}">
   <meta property="og:description" content="${esc(description)}">
   <meta property="og:url" content="${canonical}">
@@ -73,14 +74,14 @@ function shell({ title, description, canonical, body, jsonld, prefix }) {
 </head>
 <body>
   <a class="skip" href="#contenu">Aller au contenu</a>
-  ${siteHeader({ prefix, current: 'guides' })}
+  ${siteHeader({ prefix, current })}
   <main id="contenu" class="page">
 ${body}
   </main>
   <footer class="foot">
     <div class="wrap foot-in">
       <p>© 2026 Immo-Zen</p>
-      <nav aria-label="Liens du site"><a href="${prefix}">Accueil</a><a href="${prefix}guides/">Guides</a><a href="${prefix}mentions-legales.html">Mentions légales</a><a href="mailto:contact@immo-zen.fr">contact@immo-zen.fr</a></nav>
+      <nav aria-label="Liens du site"><a href="${prefix}">Accueil</a><a href="${prefix}outils/">Outils gratuits</a><a href="${prefix}guides/">Guides</a><a href="${prefix}mentions-legales.html">Mentions légales</a><a href="mailto:contact@immo-zen.fr">contact@immo-zen.fr</a></nav>
     </div>
   </footer>
   <script src="${prefix}site.js" defer></script>
@@ -91,7 +92,17 @@ ${body}
 
 const DISCLAIMER = `<p class="small disclaimer">Ce guide donne des repères généraux, à jour au ${DATE_FR}. Les règles fiscales et juridiques évoluent : vérifiez-les avec les notices officielles (impots.gouv.fr, service-public.fr) ou un professionnel avant de décider. Les exemples chiffrés reposent sur des hypothèses d'illustration.</p>`;
 
+const TOOL_FOR = {
+  'cash-flow-investissement-locatif': 'simulateur-cash-flow',
+  'calculer-rentabilite-locative': 'simulateur-cash-flow',
+  'financer-investissement-locatif': 'simulateur-cash-flow',
+  'premier-investissement-locatif': 'simulateur-cash-flow',
+  'revision-loyer-irl': 'revision-loyer-irl',
+};
+
 function articlePage(a, all) {
+  const tool = TOOLS.find((t) => t.slug === TOOL_FOR[a.slug]);
+  const toolBox = tool ? `<p class="tool-link"><span class="cat">Outil gratuit</span><a href="../outils/${tool.slug}.html">${esc(tool.short)}</a> : ${esc(tool.card)}</p>` : '';
   const toc = [...a.body.matchAll(/<h2 id="([^"]+)">([\s\S]*?)<\/h2>/g)].map(([, id, t]) => `<li><a href="#${id}">${t}</a></li>`).join('');
   const related = a.related.map((s) => {
     const r = all.find((x) => x.slug === s);
@@ -110,6 +121,7 @@ function articlePage(a, all) {
         <aside class="toc" aria-label="Sommaire"><p class="toc-title">Sommaire</p><ol>${toc}</ol></aside>
         <div class="prose">
 ${polish(a.body)}
+          ${toolBox}
           <div class="cta">
             <p>${esc(a.cta)}</p>
             <a class="btn btn-main" href="../app/">Essayer Immo-Zen gratuitement</a>
@@ -163,7 +175,28 @@ for (const a of all) writeFileSync(join(outDir, `${a.slug}.html`), articlePage(a
 writeFileSync(join(outDir, 'index.html'), indexPage(all));
 
 // Plan du site pour les moteurs de recherche.
-const urls = [`${SITE}/`, `${SITE}/guides/`, ...all.map((a) => `${SITE}/guides/${a.slug}.html`), `${SITE}/mentions-legales.html`];
+// Outils gratuits : pages, indices IRL repris de l'application (source unique : src/domain/irl.ts).
+const outilsDir = join(root, 'site/outils');
+mkdirSync(outilsDir, { recursive: true });
+const irlSrc = readFileSync(join(root, 'src/domain/irl.ts'), 'utf8');
+const irl = Object.fromEntries([...irlSrc.matchAll(/'(\d{4}-T[1-4])': ([\d.]+)/g)].map(([, k, v]) => [k, Number(v)]));
+const lastKey = Object.keys(irl).sort().at(-1);
+const [ly, lq] = lastKey.split('-T');
+const prevVal = irl[`${Number(ly) - 1}-T${lq}`];
+const fr = (x) => String(x).replace('.', ',');
+const lastIrl = `Le dernier indice publié dans ce calculateur est celui du ${lq === '1' ? '1er' : `${lq}e`} trimestre ${ly} : ${fr(irl[lastKey])}, soit ${fr(((irl[lastKey] / prevVal - 1) * 100).toFixed(2))} % sur un an (${fr(prevVal)} un an plus tôt).`;
+writeFileSync(join(outilsDir, 'irl.js'), `/* Indices de référence des loyers (INSEE), repris de src/domain/irl.ts par scripts/guides.mjs. */\nwindow.IRL_VALUES = ${JSON.stringify(irl)};\n`);
+const TOOLS_DATE_FR = '9 novembre 2026';
+for (const t of TOOLS) {
+  const p = toolPage(t, { site: SITE, dateFr: TOOLS_DATE_FR, lastIrl });
+  writeFileSync(join(outilsDir, `${t.slug}.html`), shell({ ...p, prefix: '../', current: 'outils', ogType: 'website' }));
+}
+{
+  const p = toolsIndex({ site: SITE });
+  writeFileSync(join(outilsDir, 'index.html'), shell({ ...p, prefix: '../', current: 'outils', ogType: 'website' }));
+}
+
+const urls = [`${SITE}/`, `${SITE}/outils/`, ...TOOLS.map((t) => `${SITE}/outils/${t.slug}.html`), `${SITE}/guides/`, ...all.map((a) => `${SITE}/guides/${a.slug}.html`), `${SITE}/mentions-legales.html`];
 writeFileSync(join(root, 'site/sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${u}</loc><lastmod>${SITEMAP_LASTMOD}</lastmod></url>`).join('\n')}\n</urlset>\n`);
 writeFileSync(join(root, 'site/robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${SITE}/sitemap.xml\n`);
 
