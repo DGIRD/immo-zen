@@ -69,6 +69,38 @@ export function planCharges(lease: Pick<Lease, 'start_date' | 'end_date' | 'rent
   return out;
 }
 
+/**
+ * Période d'un loyer à remettre en conformité avec les dates du bail : un mois coupé par une ancienne
+ * date de fin (bail prolongé depuis) retrouve le mois entier ; un mois entier dépassant une nouvelle date
+ * de fin est coupé. L'échéance suit si elle n'avait pas été changée à la main ; les montants sont
+ * recalculés au prorata seulement s'ils étaient eux-mêmes le prorata du bail (sinon, saisie conservée).
+ * Renvoie null si la ligne est déjà conforme.
+ */
+export function periodFix(lease: Pick<Lease, 'start_date' | 'end_date'> & Partial<Pick<Lease, 'rent_hc' | 'charges_amount' | 'payment_day'>>,
+  c: Pick<RentCharge, 'kind' | 'period_start' | 'period_end' | 'due_date' | 'rent_amount' | 'charges_amount'>): Partial<Pick<RentCharge, 'period_end' | 'due_date' | 'rent_amount' | 'charges_amount'>> | null {
+  if (c.kind !== 'loyer') return null;
+  const [y, m] = parts(c.period_start);
+  const dim = daysInMonth(y, m);
+  const me = iso(y, m, dim);
+  if (lease.end_date && lease.end_date < c.period_start) return null; // hors bail : traité ailleurs
+  const pe = lease.end_date ? minDate(me, lease.end_date) : me;
+  if (c.period_end === pe || c.period_end > me) return null;
+  const out: Partial<Pick<RentCharge, 'period_end' | 'due_date' | 'rent_amount' | 'charges_amount'>> = { period_end: pe };
+  if (lease.payment_day) {
+    const dueOf = (end: string) => minDate(maxDate(iso(y, m, lease.payment_day!), c.period_start), end);
+    if (c.due_date === dueOf(c.period_end)) { const d = dueOf(pe); if (d !== c.due_date) out.due_date = d; }
+  }
+  if (lease.rent_hc !== undefined && lease.charges_amount !== undefined) {
+    const ratio = (end: string) => (dayDiff(c.period_start, end) + 1) / dim;
+    const was = ratio(c.period_end), now = ratio(pe);
+    if (c.rent_amount === round2(lease.rent_hc * was) && c.charges_amount === round2(lease.charges_amount * was)) {
+      out.rent_amount = round2(lease.rent_hc * now);
+      out.charges_amount = round2(lease.charges_amount * now);
+    }
+  }
+  return out;
+}
+
 // ---------- Date de début du bail ----------
 /** Bornes de saisie : une date hors de ces bornes est une erreur de frappe (ex. 0090 au lieu de 2024). */
 export const LEASE_START_MIN = '1950-01-01';
