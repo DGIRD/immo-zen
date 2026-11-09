@@ -65,7 +65,8 @@ async function main() {
     const seen: string[] = [];
     for (const [label, heading] of [['Tableau de bord', 'Tableau de bord'], ['Prospection', 'Prospection'], ['Mes biens', 'Mes biens'], ['Locataires et baux', /Locataires et baux|Baux/], ['Loyers et paiements', 'Loyers et paiements'], ['Dépenses', 'Dépenses'], ['Contacts', 'Contacts'], ['Documents', 'Documents'], ['Déclaration fiscale', 'Déclaration fiscale'], ['Mon abonnement', 'Mon abonnement'], ['Paramètres', 'Paramètres']] as const) {
       await page.locator('#main-nav').getByRole('link', { name: label }).click();
-      await page.locator('main h1').first().waitFor();
+      // attendre le titre de la rubrique ouverte, pas celui de la page précédente encore affichée
+      await page.locator('main h1', { hasText: heading }).first().waitFor().catch(() => undefined);
       const h = await page.locator('main h1').first().innerText();
       assert.ok(typeof heading === 'string' ? h.includes(heading) : heading.test(h), `${label} → titre « ${h} »`);
       assert.equal(await page.locator('#main-nav a[aria-current="page"]').count(), 1, `${label} : entrée active`);
