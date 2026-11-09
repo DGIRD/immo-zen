@@ -219,7 +219,16 @@ Signalement du 04/11/2026 : enregistrement non automatique ; en saisie de plusie
 | Indicateurs : Loyers impayés (réceptions à confirmer en complément), Quittances à émettre | Implémenté | — |
 | Un seul bouton « Modifier en grille », choix Par mois / Par paiement dans la grille | Implémenté et testé | e2e |
 
-## Restant
+## Loyers comptés une seule fois (9 novembre 2026, ANO-013)
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Une recette « Loyer » de relevé d'un bien loué est « déjà comptée » quand le bail a un paiement le même mois (date ou mois de rattachement) ou du même montant à 7 jours près ; elle n'est plus additionnée (fiche du bien, tableau de bord, bilan, déclaration, totaux de Dépenses) — `src/domain/incomeOverlap.ts` | Implémenté et testé | unitaires + e2e |
+| Mois sans paiement saisi, bien sans bail : la recette importée reste comptée | Implémenté et testé | unitaires |
+| Dépenses : montant grisé « déjà dans les loyers », indicateur « hors … déjà dans les loyers », avertissement de la déclaration remplacé par un message explicite | Implémenté et testé | unitaires + e2e |
+| Import de relevé : loyer d'un bien loué déjà saisi → « Déjà saisi dans Loyers », non importé ; autre montant le même mois → à vérifier ; sinon enregistré comme paiement du bail (option cochée par défaut) avec remise à jour de « Réglé » | Implémenté et testé | unitaires + e2e |
+| Nettoyage : « Voir et nettoyer ces doublons » liste les recettes en double, coche les montants identiques, supprime après confirmation | Implémenté et testé (mode démonstration) ; **non exécuté sur les données en ligne** | e2e |
+
 
 Tout le périmètre du cahier des charges est livré. Reste **à configurer** : compte Stripe et fonctions `platform` / `stripe-webhook` ([ABONNEMENTS](ABONNEMENTS.md)), premier administrateur, envoi réel des e-mails (Resend). Pistes ultérieures : vérification de l'abonnement dans les fonctions serveur (quittances, relances), réimport de la gestion locative depuis une sauvegarde, liasse 2031/2033 complète, travaux de rénovation énergétique et déficits antérieurs dans la déclaration.
 

@@ -4,6 +4,7 @@
  * Le serveur est la source de vérité ; ces fonctions servent à l'affichage, au mode
  * démonstration et aux tests. Les montants sont arrondis au centime.
  */
+import { isCoveredIncome, leaseIncomeIndex } from './incomeOverlap.ts';
 import type { Allocation, Expense, Lease, LeaseTenant, Payment, Receipt, RentCharge, Tenant } from '../data/types.ts';
 import { round2 } from './simulator.ts';
 
@@ -275,9 +276,11 @@ export function propertyRentalSummary(propertyId: string, year: number, today: s
   const ledger = leaseLedger(charges, payments, d.allocations.filter((a) => chargeIds.has(a.charge_id)), today);
   const y = String(year);
   const inYear = d.expenses.filter((e) => e.property_id === propertyId && e.payment_status === 'paye' && (e.paid_on ?? e.expense_date).startsWith(y));
-  const importedIncome = round2(inYear.filter(isIncome).reduce((a, e) => a + e.amount, 0));
+  // recettes de relevé déjà saisies en paiements sur le bail : comptées une seule fois (ANO-013)
+  const idx = leaseIncomeIndex(d.leases, d.payments);
+  const importedIncome = round2(inYear.filter((e) => isIncome(e) && !isCoveredIncome(e, idx)).reduce((a, e) => a + e.amount, 0));
   const expensesPaid = round2(inYear.filter((e) => !isIncome(e)).reduce((a, e) => a + e.amount, 0));
-  // encaissements = paiements saisis sur les baux + recettes importées d'un relevé
+  // encaissements = paiements saisis sur les baux + recettes importées d'un relevé non saisies sur le bail
   const received = round2(payments.filter((p) => p.paid_on.startsWith(y)).reduce((a, p) => a + p.amount, 0) + importedIncome);
   return { activeLeases, tenantNames, received, expensesPaid, balance: ledger.balance, overdue: ledger.overdue, cashflow: round2(received - expensesPaid) };
 }
@@ -329,8 +332,10 @@ export function defaultNature(category: Expense['category']): Expense['nature'] 
 }
 
 export interface ExpenseTotals {
-  /** Recettes importées (catégorie « Loyer »), exclues des dépenses. */
+  /** Recettes importées (catégorie « Loyer ») comptées, exclues des dépenses. */
   income: number;
+  /** Recettes importées déjà comptées dans Loyers et paiements (non additionnées). */
+  incomeCovered: number;
   total: number;
   paid: number;
   toPay: number;
@@ -338,10 +343,14 @@ export interface ExpenseTotals {
   byNature: Record<Expense['nature'], number>;
   byCategory: Partial<Record<Expense['category'], number>>;
 }
-export function expenseTotals(list: Expense[]): ExpenseTotals {
-  const t: ExpenseTotals = { income: 0, total: 0, paid: 0, toPay: 0, recoverable: 0, byNature: { charge: 0, immobilisation: 0, remboursement_capital: 0, tresorerie: 0 }, byCategory: {} };
+export function expenseTotals(list: Expense[], covered: Set<string> = new Set()): ExpenseTotals {
+  const t: ExpenseTotals = { income: 0, incomeCovered: 0, total: 0, paid: 0, toPay: 0, recoverable: 0, byNature: { charge: 0, immobilisation: 0, remboursement_capital: 0, tresorerie: 0 }, byCategory: {} };
   for (const e of list) {
-    if (isIncome(e)) { t.income = round2(t.income + e.amount); continue; }
+    if (isIncome(e)) {
+      if (covered.has(e.id)) t.incomeCovered = round2(t.incomeCovered + e.amount);
+      else t.income = round2(t.income + e.amount);
+      continue;
+    }
     t.total = round2(t.total + e.amount);
     if (e.payment_status === 'paye') t.paid = round2(t.paid + e.amount); else t.toPay = round2(t.toPay + e.amount);
     t.recoverable = round2(t.recoverable + e.recoverable_amount);

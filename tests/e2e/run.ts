@@ -802,6 +802,63 @@ async function main() {
     await dlg.getByRole('button', { name: 'Fermer' }).first().click();
   });
 
+  await step('loyers comptés une seule fois : relevé rapproché du bail, recette en double signalée puis nettoyée', async () => {
+    const T = (...c: string[]) => c.join('\t');
+    const fr = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+    const todayIso = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()));
+    const [y, m] = todayIso.split('-').map(Number) as [number, number];
+    const next = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-02`;
+    // 645,50 € du jour : déjà saisi sur le bail (import de loyers) ; 700 € : autre montant le même mois ; mois suivant : paiement du bail
+    const text = [
+      T('Date', 'Libellé', 'Montant', 'Catégorie', 'Appartement'),
+      T(fr(todayIso), 'VIR LOYER LEA MARTIN', '645,50', 'Loyer', 'Parking détenu'),
+      T(fr(todayIso), 'VIR AUTRE', '700,00', 'Loyer', 'Parking détenu'),
+      T(fr(next), 'VIR LOYER SUIVANT', '825,50', 'Loyer', 'Parking détenu'),
+    ].join('\n');
+    await page.goto(url + '#/depenses');
+    await page.getByRole('button', { name: 'Importer (Excel, CSV)' }).click();
+    let dlg = page.locator('dialog[open]');
+    await dlg.getByLabel(/collez les lignes/).fill(text);
+    await dlg.getByRole('button', { name: 'Analyser le texte collé' }).click();
+    await dlg.getByText('1 loyer(s) déjà saisi(s) dans Loyers').waitFor();
+    await dlg.getByText('dont 1 en paiements du bail').waitFor();
+    await dlg.getByText('1 à vérifier').waitFor();
+    await dlg.getByText(/Déjà saisi dans Loyers \(paiement du /).waitFor();
+    await dlg.getByText('Paiement du bail', { exact: true }).waitFor();
+    // option décochée : le loyer du mois suivant redevient une recette
+    await dlg.getByLabel(/comme paiements du bail/).uncheck();
+    await dlg.getByText('dont 1 en paiements du bail').waitFor({ state: 'detached' });
+    await dlg.getByLabel(/comme paiements du bail/).check();
+    await page.screenshot({ path: join(out, '21b-import-loyers-rapproches.png'), fullPage: true });
+    await dlg.getByRole('button', { name: 'Fermer' }).first().click();
+    // une recette saisie à la main en double d'un paiement du bail : affichée, non additionnée, puis nettoyée
+    await page.getByRole('button', { name: 'Ajouter une dépense' }).first().click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByLabel('Bien').selectOption({ label: 'Parking détenu' });
+    await dlg.getByLabel('Catégorie').selectOption('loyer');
+    await dlg.getByLabel('Montant reçu').fill('645,50');
+    await dlg.getByRole('button', { name: 'Enregistrer' }).click();
+    await page.getByText('Dépense enregistrée.').waitFor();
+    await page.getByLabel('Année').selectOption(String(y));
+    const row = page.locator('table.dt-table tbody tr', { hasText: 'déjà dans les loyers' });
+    await row.waitFor();
+    assert.match((await page.locator('.figure', { hasText: 'Recettes importées' }).innerText()).replace(/[\u202f\u00a0]/g, ' '), /hors 645,50 € déjà dans les loyers/);
+    const note = page.locator('.income-dup-note');
+    assert.match(await note.innerText(), /^1 recette importée d’un relevé est aussi saisie en paiement sur le bail/);
+    await note.getByRole('button', { name: 'Voir et nettoyer ces doublons' }).click();
+    dlg = page.locator('dialog[open]');
+    await dlg.getByRole('heading', { name: 'Recettes importées en double des loyers' }).waitFor();
+    const box = dlg.getByRole('checkbox', { name: /Supprimer la recette du .*645,50/ });
+    await box.waitFor();
+    assert.ok(await box.isChecked(), `montant identique coché par défaut : ${(await dlg.locator('tbody').innerText()).replace(/\s+/g, ' ')}`);
+    await page.screenshot({ path: join(out, '21c-nettoyage-recettes.png'), fullPage: true });
+    await dlg.getByRole('button', { name: /^Supprimer 1 recette \(645,50/ }).click();
+    await page.locator('dialog[open]').last().getByRole('button', { name: 'Supprimer', exact: true }).click();
+    await page.getByText('1 recette en double supprimée.').waitFor();
+    await note.waitFor({ state: 'detached' });
+    await row.waitFor({ state: 'detached' });
+  });
+
   await step('contrat de bail : points bloquants, aperçu, PDF et enregistrement partagé', async () => {
     await page.goto(leaseUrl);
     await page.getByRole('button', { name: 'Contrat de bail' }).click();

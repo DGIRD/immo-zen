@@ -3,7 +3,9 @@ import { useStore } from '../../data/store.tsx';
 import type { ExpenseCategory } from '../../data/types.ts';
 import { downloadBlob, toXlsx } from '../../domain/exporting.ts';
 import { date, money2 } from '../../domain/format.ts';
-import { buildImportRows, IMPORT_COLUMNS, parseDelimited, readImportFile, rowStatus, toExpense, type Cell, type ImportRow } from '../../domain/importing.ts';
+import { buildImportRows, IMPORT_COLUMNS, parseDelimited, readImportFile, rentRoute, rowStatus, toExpense, toLeasePayment, type Cell, type ImportRow, type RentContext } from '../../domain/importing.ts';
+import { leaseIncomeIndex } from '../../domain/incomeOverlap.ts';
+import { syncLedgerWith } from './ledgerSync.ts';
 import { EXPENSE_CATEGORY_LABELS, MAIN_EXPENSE_CATEGORIES, OTHER_EXPENSE_CATEGORIES } from '../../domain/rental.ts';
 import { Button, Modal, NotAvailable } from '../../ui/components.tsx';
 
@@ -35,8 +37,15 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [onlyIssues, setOnlyIssues] = useState(false);
+  /** Loyers des biens loués enregistrés comme paiements du bail (une seule source pour les loyers, ANO-013). */
+  const [asPayments, setAsPayments] = useState(true);
+  const { leases, payments } = store.data;
+  const rent: RentContext = useMemo(() => ({
+    idx: leaseIncomeIndex(leases, payments), leases,
+    paymentRefs: new Set(payments.map((p) => p.import_ref).filter((r): r is string => !!r)), asPayments,
+  }), [leases, payments, asPayments]);
 
-  const reset = () => { setRows(null); setSource(''); setPaste(''); setError(null); setOnlyIssues(false); };
+  const reset = () => { setRows(null); setSource(''); setPaste(''); setError(null); setOnlyIssues(false); setAsPayments(true); };
   const close = () => { reset(); onClose(); };
 
   function load(cells: Cell[][], name: string) {
@@ -48,11 +57,18 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
     setSource(name);
   }
 
-  const statuses = rows?.map((r) => rowStatus(r, existingRefs)) ?? [];
+  const statuses = rows?.map((r) => rowStatus(r, existingRefs, rent)) ?? [];
   const ready = rows?.filter((_, i) => statuses[i]!.status === 'ok') ?? [];
+  const routes = new Map(ready.map((r) => [r, rentRoute(r, rent)]));
+  const toPayments = ready.filter((r) => routes.get(r)?.kind === 'paiement');
+  const toExpenses = ready.filter((r) => routes.get(r)?.kind !== 'paiement');
+  const sumOf = (list: ImportRow[]) => list.reduce((a, r) => a + Math.abs(r.signed!), 0);
+  const incomeSum = sumOf(toExpenses.filter((r) => r.category === 'loyer'));
+  const expenseSum = sumOf(toExpenses.filter((r) => r.category !== 'loyer'));
+  const paymentSum = sumOf(toPayments);
+  // le choix n'a de sens que s'il y a des loyers de biens loués à enregistrer
+  const leasedRents = ready.some((r) => rentRoute(r, { ...rent, asPayments: true })?.kind === 'paiement');
   const count = (s: string) => statuses.filter((x) => x.status === s).length;
-  const incomeSum = ready.filter((r) => r.category === 'loyer').reduce((a, r) => a + Math.abs(r.signed!), 0);
-  const expenseSum = ready.filter((r) => r.category !== 'loyer').reduce((a, r) => a + Math.abs(r.signed!), 0);
   // valeurs distinctes de la colonne « Appartement » : un choix s'applique à toutes leurs lignes
   const places = rows ? [...new Map(rows.map((r) => [r.rawProperty ?? '', r])).keys()] : [];
 
@@ -63,14 +79,24 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
     if (!ready.length) return;
     setBusy(true);
     try {
-      let n = 0;
-      for (let i = 0; i < ready.length; i += BATCH) {
-        const created = await store.createMany('expenses', ready.slice(i, i + BATCH).map(toExpense));
-        if (!created) break;
-        n += created.length;
-      }
-      if (n) {
-        store.notify(`${n} ligne(s) importée(s) depuis ${source}.`);
+      const out = await store.call(async (repo) => {
+        let n = 0, p = 0;
+        for (let i = 0; i < toExpenses.length; i += BATCH) n += (await repo.insertMany('expenses', toExpenses.slice(i, i + BATCH).map(toExpense))).length;
+        // loyers des biens loués : paiements sur le bail, puis colonne « Réglé » recalculée
+        const byLease = new Map<string, ImportRow[]>();
+        for (const r of toPayments) {
+          const route = routes.get(r);
+          if (route?.kind === 'paiement') byLease.set(route.leaseId, [...(byLease.get(route.leaseId) ?? []), r]);
+        }
+        for (const [leaseId, list] of byLease) {
+          list.sort((a, b) => a.date!.localeCompare(b.date!));
+          p += (await repo.insertMany('payments', list.map((r) => toLeasePayment(r, leaseId)))).length;
+        }
+        if (byLease.size) await syncLedgerWith(repo, { leaseIds: [...byLease.keys()] });
+        return { n, p };
+      });
+      if (out && out.n + out.p) {
+        store.notify(`${out.n + out.p} ligne(s) importée(s) depuis ${source}${out.p ? ` (dont ${out.p} loyer(s) enregistré(s) en paiements du bail)` : ''}.`);
         close();
       }
     } finally {
@@ -113,7 +139,9 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
             {count('incomplet') > 0 && <span className="pill pill-warn">{count('incomplet')} à compléter</span>}
             {count('signe') > 0 && <span className="pill pill-warn">{count('signe')} à vérifier</span>}
             {count('doublon') > 0 && <span className="pill pill-neutral">{count('doublon')} déjà importée(s)</span>}
-            <span className="muted">Dépenses {money2(expenseSum)} · recettes {money2(incomeSum)}</span>
+            {count('deja') > 0 && <span className="pill pill-neutral">{count('deja')} loyer(s) déjà saisi(s) dans Loyers</span>}
+            {toPayments.length > 0 && <span className="pill pill-ok">dont {toPayments.length} en paiements du bail</span>}
+            <span className="muted">Dépenses {money2(expenseSum)} · recettes {money2(incomeSum)}{paymentSum > 0 ? ` · paiements du bail ${money2(paymentSum)}` : ''}</span>
           </div>
           {places.length > 0 && (
             <fieldset className="import-places">
@@ -131,6 +159,10 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
               })}
             </fieldset>
           )}
+          {leasedRents && (
+            <label className="checkbox"><input type="checkbox" checked={asPayments} onChange={(e) => setAsPayments(e.target.checked)} />
+              <span>Enregistrer les loyers des biens loués comme paiements du bail (recommandé) : ils remplissent la colonne « Réglé » de Loyers et paiements et ne sont comptés qu’une fois</span></label>
+          )}
           <label className="checkbox"><input type="checkbox" checked={onlyIssues} onChange={(e) => setOnlyIssues(e.target.checked)} /><span>Afficher seulement les lignes à compléter ou vérifier</span></label>
           <div className="dt-scroll tall">
             <table className="dt-table compact import-table">
@@ -138,33 +170,34 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
               <tbody>
                 {rows.map((r, i) => {
                   const st = statuses[i]!;
-                  if (onlyIssues && (st.status === 'ok' || st.status === 'doublon')) return null;
+                  const done = st.status === 'doublon' || st.status === 'deja';
+                  if (onlyIssues && (st.status === 'ok' || done)) return null;
                   return (
-                    <tr key={r.ref + i} className={st.status === 'ok' ? '' : st.status === 'doublon' ? 'muted' : 'row-warn'}>
+                    <tr key={r.ref + i} className={st.status === 'ok' ? '' : done ? 'muted' : 'row-warn'}>
                       <td>{r.line}</td>
                       <td>{r.date ? date(r.date) : '—'}</td>
                       <td className="wrap">{r.label || '—'}{r.notes && <small className="muted"> · {r.notes}</small>}</td>
                       <td className={`num ${r.signed !== null && r.signed > 0 ? 'pos' : ''}`}>{r.signed === null ? '—' : money2(r.signed)}</td>
                       <td>
-                        <select aria-label={`Catégorie ligne ${r.line}`} value={r.category ?? ''} disabled={st.status === 'doublon'} onChange={(e) => patch(i, { category: (e.target.value || null) as ExpenseCategory | null })}>
+                        <select aria-label={`Catégorie ligne ${r.line}`} value={r.category ?? ''} disabled={done} onChange={(e) => patch(i, { category: (e.target.value || null) as ExpenseCategory | null })}>
                           <option value="">Choisir…</option>
                           {CATEGORY_OPTIONS.map((k) => <option key={k} value={k}>{EXPENSE_CATEGORY_LABELS[k]}</option>)}
                         </select>
                       </td>
                       <td>
-                        <select aria-label={`Logement ligne ${r.line}`} value={r.propertyId ?? ''} disabled={st.status === 'doublon'} onChange={(e) => patch(i, { propertyId: e.target.value || null })}>
+                        <select aria-label={`Logement ligne ${r.line}`} value={r.propertyId ?? ''} disabled={done} onChange={(e) => patch(i, { propertyId: e.target.value || null })}>
                           <option value="">Choisir…</option>
                           {owned.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
                         </select>
                       </td>
-                      <td><span className={`pill pill-${st.status === 'ok' ? 'ok' : st.status === 'doublon' ? 'neutral' : 'warn'}`}>{st.message}</span></td>
+                      <td><span className={`pill pill-${st.status === 'ok' ? 'ok' : done ? 'neutral' : 'warn'}`}>{st.message}</span></td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-          <p className="muted small">Chaque ligne devient une dépense payée à la date du relevé (ou une recette pour « Loyer »). Un relevé réimporté ne crée pas de doublon. Ajoutez ensuite, si besoin, la part récupérable (ex. taxe d’ordures ménagères) et le justificatif en modifiant la dépense.</p>
+          <p className="muted small">Chaque ligne devient une dépense payée à la date du relevé. Un loyer d’un bien loué devient un paiement du bail (ou n’est pas importé s’il y est déjà saisi) ; sans bail, il reste une recette « Loyer ». Un relevé réimporté ne crée pas de doublon. Ajoutez ensuite, si besoin, la part récupérable (ex. taxe d’ordures ménagères) et le justificatif en modifiant la dépense.</p>
         </>
       )}
     </Modal>
