@@ -349,7 +349,8 @@ export const EXPENSE_CATEGORY_LABELS: Record<Expense['category'], string> = {
   gestion: 'Gestion locative', interets: 'Intérêts d’emprunt', travaux: 'Travaux', autre: 'Autres dépenses',
 };
 /** Catégories proposées en premier (ordre de saisie) ; les suivantes restent disponibles. */
-export const MAIN_EXPENSE_CATEGORIES: Expense['category'][] = ['credit', 'assurance_credit', 'copropriete', 'assurance', 'taxe_fonciere', 'entretien_amortissable', 'entretien', 'loyer', 'frais_bancaires', 'mobilier', 'frais_credit'];
+/** « Loyer » n'en fait plus partie : les loyers se saisissent dans Loyers et paiements (anciennes recettes conservées). */
+export const MAIN_EXPENSE_CATEGORIES: Expense['category'][] = ['credit', 'assurance_credit', 'copropriete', 'assurance', 'taxe_fonciere', 'entretien_amortissable', 'entretien', 'frais_bancaires', 'mobilier', 'frais_credit'];
 export const OTHER_EXPENSE_CATEGORIES: Expense['category'][] = ['gestion', 'interets', 'travaux', 'autre'];
 /** La catégorie « Loyer » enregistre une recette (mouvement crédité sur le compte), pas une dépense. */
 export const isIncome = (e: Pick<Expense, 'category'>) => e.category === 'loyer';

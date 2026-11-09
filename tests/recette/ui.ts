@@ -362,14 +362,19 @@ async function main() {
     await page.goto(url + '#/depenses');
     const quick = page.getByRole('form', { name: 'Ajout rapide d’une dépense' });
     await quick.getByLabel('Bien').selectOption({ label: 'T2 recette' });
-    await quick.getByLabel('Catégorie').selectOption('loyer');
-    await quick.getByLabel('Libellé').fill('Loyer encaissé hors application');
-    await quick.getByLabel('Montant').fill('750');
+    // depuis le 09/11/2026 : les loyers se saisissent dans Loyers et paiements, plus en recette dans Dépenses
+    assert.equal(await quick.getByLabel('Catégorie').locator('option[value="loyer"]').count(), 0, '« Loyer » encore proposé');
+    await quick.getByLabel('Catégorie').selectOption('assurance');
+    await quick.getByLabel('Libellé').fill('Assurance PNO recette');
+    await quick.getByLabel('Montant').fill('150');
     await quick.getByRole('button', { name: '+ Ajouter' }).click();
     await page.getByText('Ligne ajoutée.').waitFor();
-    const figs = T(await page.locator('.figures').first().innerText());
-    assert.match(figs, /[Rr]ecette|[Ee]ncaiss/, figs);
-    return figs.replace(/\s+/g, ' ').slice(0, 200);
+    const filter = page.locator('label.inline-select', { hasText: 'Catégorie' }).locator('select');
+    await filter.selectOption('assurance');
+    const shown = await page.locator('table.dt-table tbody tr').allInnerTexts();
+    assert.ok(shown.length >= 1 && shown.every((t) => /Assurance/.test(t)), shown.join(' | '));
+    await filter.selectOption('');
+    return `« Loyer » absent des catégories ; filtre Catégorie = Assurance : ${shown.length} ligne(s), toutes en Assurance`;
   });
 
   await c('DEP-06', async () => {

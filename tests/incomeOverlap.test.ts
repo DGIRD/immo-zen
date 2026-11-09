@@ -113,9 +113,9 @@ const SAMPLE = [
   '05/04/2025\tVIR LOYER STUDIO\t500\tLoyer\tStudio',
 ].join('\n');
 const PROPS = [{ id: 'p1', title: 'T2', address: null, zip: null, city: null }, { id: 'p2', title: 'Studio', address: null, zip: null, city: null }];
-const ctx = (payments: Payment[], o: Partial<RentContext> = {}): RentContext => ({ idx: leaseIncomeIndex([lease()], payments), leases: [lease()], paymentRefs: new Set(), asPayments: true, ...o });
+const ctx = (payments: Payment[], o: Partial<RentContext> = {}): RentContext => ({ idx: leaseIncomeIndex([lease()], payments), leases: [lease()], paymentRefs: new Set(), ...o });
 
-test('import : loyer déjà saisi non importé, loyer manquant en paiement du bail, bien sans bail en recette', () => {
+test('import : loyer déjà saisi non importé, loyer manquant en paiement du bail, bien sans bail à créer d’abord', () => {
   const { rows } = buildImportRows(parseDelimited(SAMPLE), PROPS);
   const c = ctx([pay('2025-03-05'), pay('2025-05-02', 450)]);
   const st = rows.map((r) => rowStatus(r, new Set(), c));
@@ -125,15 +125,15 @@ test('import : loyer déjà saisi non importé, loyer manquant en paiement du ba
   assert.equal(st[2]!.status, 'signe', 'mai : 450 € déjà reçus, montant différent → à vérifier');
   assert.match(st[2]!.message.replace(/[\u202f\u00a0]/g, " "), /450,00 €/);
   assert.deepEqual(st[3], { status: 'ok', message: 'Dépense' });
-  assert.deepEqual(st[4], { status: 'ok', message: 'Recette' }, 'studio sans bail : recette dans Dépenses');
+  assert.equal(st[4]!.status, 'signe', 'studio sans bail : pas de recette dans Dépenses, bail à créer');
+  assert.match(st[4]!.message, /Aucun bail à cette date/);
+  assert.deepEqual(rentRoute(rows[4]!, c), { kind: 'sans_bail' });
   assert.deepEqual(rentRoute(rows[1]!, c), { kind: 'paiement', leaseId: 'l1' });
   assert.equal(rentRoute(rows[3]!, c), null);
 });
 
-test('import : option décochée → recette ; relevé réimporté → déjà importée', () => {
+test('import : relevé réimporté → déjà importée', () => {
   const { rows } = buildImportRows(parseDelimited(SAMPLE), PROPS);
-  assert.deepEqual(rowStatus(rows[1]!, new Set(), ctx([], { asPayments: false })), { status: 'ok', message: 'Recette' });
-  assert.equal(rentRoute(rows[1]!, ctx([], { asPayments: false }))?.kind, 'recette');
   assert.equal(rowStatus(rows[1]!, new Set(), ctx([], { paymentRefs: new Set([rows[1]!.ref]) })).status, 'doublon');
   assert.deepEqual(rowStatus(rows[1]!, new Set()), { status: 'ok', message: 'Recette' }, 'sans contexte : comportement d’origine');
 });
@@ -157,4 +157,9 @@ test('import : loyer payé en plusieurs virements saisis (même total sur le moi
   assert.equal(rowStatus(rows[1]!, new Set(), c).status, 'deja');
   const byPeriod = ctx([pay('2025-06-02', 900, { period_month: '2025-04-01' })]);
   assert.equal(rowStatus(rows[1]!, new Set(), byPeriod).status, 'deja', 'paiement saisi plus tard, rattaché à avril');
+});
+
+test('Dépenses : la catégorie « Loyer » n’est plus proposée à la saisie', async () => {
+  const { MAIN_EXPENSE_CATEGORIES, OTHER_EXPENSE_CATEGORIES } = await import('../src/domain/rental.ts');
+  assert.ok(![...MAIN_EXPENSE_CATEGORIES, ...OTHER_EXPENSE_CATEGORIES].includes('loyer'));
 });

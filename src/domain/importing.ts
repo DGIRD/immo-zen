@@ -292,23 +292,22 @@ export function buildImportRows(rows: Cell[][], properties: Pick<Property, 'id' 
 export type ImportStatus = 'ok' | 'doublon' | 'incomplet' | 'signe' | 'deja';
 
 /**
- * Loyers d'un bien loué (ANO-013) : un loyer du relevé est rapproché des paiements saisis sur le bail.
- * Déjà saisi → non importé ; sinon enregistré comme paiement du bail (ou comme recette si `asPayments` est faux).
+ * Loyers du relevé : ils vont dans Loyers et paiements, jamais dans Dépenses. Rapprochés des paiements
+ * saisis sur le bail : déjà saisi → non importé ; sinon enregistré comme paiement du bail ; sans bail → à créer d'abord.
  */
 export interface RentContext {
   idx: LeaseIncomeIndex;
   leases: Pick<Lease, 'id' | 'property_id' | 'start_date' | 'end_date'>[];
   /** Empreintes des paiements déjà importés depuis un relevé. */
   paymentRefs: Set<string>;
-  asPayments: boolean;
 }
 
-/** Où va une ligne « Loyer » positive d'un bien : null = recette dans Dépenses (pas de bail). */
+/** Où va une ligne « Loyer » positive d'un bien (null : pas une ligne de loyer complète). */
 export type RentRoute =
   | { kind: 'deja'; payment: Pick<Payment, 'amount' | 'paid_on'> }
   | { kind: 'mois'; total: number }
   | { kind: 'paiement'; leaseId: string }
-  | { kind: 'recette'; leaseId: string };
+  | { kind: 'sans_bail' };
 
 const ym = (d: string) => d.slice(0, 7);
 const frDate = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
@@ -316,7 +315,7 @@ const frDate = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4
 export function rentRoute(r: ImportRow, ctx: RentContext): RentRoute | null {
   if (r.category !== 'loyer' || !r.propertyId || !r.date || r.signed === null || r.signed <= 0) return null;
   const lease = leaseAt(ctx.leases, r.propertyId, r.date);
-  if (!lease) return null;
+  if (!lease) return { kind: 'sans_bail' };
   const amount = Math.abs(r.signed);
   const pay = matchingPayment(ctx.idx, r.propertyId, r.date, amount);
   if (pay) return { kind: 'deja', payment: pay };
@@ -326,7 +325,7 @@ export function rentRoute(r: ImportRow, ctx: RentContext): RentRoute | null {
   if (month.length && Math.abs(total - amount) < 0.005) return { kind: 'deja', payment: month[0]! };
   // d'autres paiements le même mois, d'un autre montant : à vérifier plutôt qu'à ajouter
   if (month.length) return { kind: 'mois', total };
-  return ctx.asPayments ? { kind: 'paiement', leaseId: lease.id } : { kind: 'recette', leaseId: lease.id };
+  return { kind: 'paiement', leaseId: lease.id };
 }
 
 /** État d'une ligne avant import. */
@@ -341,6 +340,7 @@ export function rowStatus(r: ImportRow, existingRefs: Set<string>, rent?: RentCo
   if (route?.kind === 'deja') return { status: 'deja', message: `Déjà saisi dans Loyers (paiement du ${frDate(route.payment.paid_on)})` };
   if (route?.kind === 'mois') return { status: 'signe', message: `Le bail a déjà ${money2(route.total)} reçus ce mois-ci : ajoutez ce versement dans Loyers et paiements s’il est en plus` };
   if (route?.kind === 'paiement') return { status: 'ok', message: 'Paiement du bail' };
+  if (route?.kind === 'sans_bail') return { status: 'signe', message: 'Aucun bail à cette date : créez-le dans Loyers et paiements pour importer ce loyer' };
   return { status: 'ok', message: r.category === 'loyer' ? 'Recette' : 'Dépense' };
 }
 

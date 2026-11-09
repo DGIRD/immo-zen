@@ -16,6 +16,8 @@ import { Button, EmptyState, Modal, NumberInput, PageHeader, Select, TextArea, T
 import { checkFile, openDocument, useUpload } from './Documents.tsx';
 
 const CATS = [...MAIN_EXPENSE_CATEGORIES, ...OTHER_EXPENSE_CATEGORIES].map((k) => [k, EXPENSE_CATEGORY_LABELS[k]] as [ExpenseCategory, string]);
+/** Ancienne recette « Loyer » : catégorie gardée pour l'afficher, plus proposée à la saisie (loyers dans Loyers et paiements). */
+const LEGACY_LOYER: [ExpenseCategory, string] = ['loyer', 'Loyer (ancienne recette, à saisir dans Loyers et paiements)'];
 const NATURES = Object.entries(EXPENSE_NATURE_LABELS) as [ExpenseNature, string][];
 const NATURE_HINT: Record<ExpenseNature, string> = {
   charge: 'Dépense courante de l’année (entretien, taxe, assurance, intérêts…).',
@@ -33,6 +35,7 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
   const [property, setProperty] = useState(propertyId ?? '');
   const [year, setYear] = useState(todayParis().slice(0, 4));
   const [status, setStatus] = useState<'' | 'paye' | 'a_payer' | 'doublons'>('');
+  const [category, setCategory] = useState<'' | ExpenseCategory>('');
   const [grid, setGrid] = useState(false);
   const dups = useMemo(() => expenseDuplicates(data.expenses), [data.expenses]);
   // recettes de relevé déjà saisies en paiements sur le bail : affichées, non additionnées (ANO-013)
@@ -42,7 +45,10 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
   const titles = new Map(data.properties.map((p) => [p.id, p.title]));
   const owned = data.properties.filter((p) => p.status === 'acquis');
   const years = useMemo(() => [...new Set([todayParis().slice(0, 4), ...data.expenses.map((e) => e.expense_date.slice(0, 4))])].sort().reverse(), [data.expenses]);
-  const rows = data.expenses.filter((e) => (!property || e.property_id === property) && (!year || e.expense_date.startsWith(year)) && (!status || (status === 'doublons' ? dups.ids.has(e.id) : e.payment_status === status)));
+  const hasLegacyRent = data.expenses.some(isIncome);
+  const catFilter = hasLegacyRent ? [...CATS, LEGACY_LOYER] : CATS;
+  const rows = data.expenses.filter((e) => (!property || e.property_id === property) && (!year || e.expense_date.startsWith(year)) && (!category || e.category === category)
+    && (!status || (status === 'doublons' ? dups.ids.has(e.id) : e.payment_status === status)));
   const extraShown = dups.extra.filter((e) => (!property || e.property_id === property) && (!year || e.expense_date.startsWith(year)));
   const t = expenseTotals(rows, covered);
 
@@ -81,7 +87,7 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
   const gridCols: GridColumn<Expense>[] = [
     { id: 'expense_date', label: 'Date', type: 'date', get: (e) => e.expense_date, validate: (x) => (x ? null : 'Date obligatoire') },
     { id: 'property_id', label: 'Bien', type: 'select', options: owned.map((p) => [p.id, p.title] as const), get: (e) => e.property_id },
-    { id: 'category', label: 'Catégorie', type: 'select', options: CATS, get: (e) => e.category },
+    { id: 'category', label: 'Catégorie', type: 'select', options: rows.some(isIncome) ? [...CATS, LEGACY_LOYER] : CATS, get: (e) => e.category },
     { id: 'label', label: 'Libellé', type: 'text', get: (e) => e.label, width: '10rem', validate: (x) => (String(x ?? '').length > 300 ? '300 caractères au plus' : null) },
     { id: 'supplier', label: 'Fournisseur', type: 'text', get: (e) => e.supplier, validate: (x) => (String(x ?? '').length > 200 ? '200 caractères au plus' : null) },
     { id: 'amount', label: 'Montant', type: 'money', get: (e) => e.amount, validate: (x) => (x === null || !((x as number) > 0) ? 'Montant positif' : null) },
@@ -145,13 +151,14 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
         <GridEditor rows={[...rows].sort((a, b) => b.expense_date.localeCompare(a.expense_date))} columns={gridCols} rowKey={(e) => e.id}
           rowLabel={(e) => `dépense du ${date(e.expense_date)}`}
           flag={(e) => (dups.ids.has(e.id) ? <span className="pill pill-warn dup-flag">doublon possible</span> : null)}
-          note="Lignes affichées selon les filtres (bien, année, paiement). La nature suit la catégorie, sauf si vous l’aviez choisie à la main ; justificatifs, notes et amortissement se modifient dans la fiche."
+          note="Lignes affichées selon les filtres (bien, année, catégorie, paiement). La nature suit la catégorie, sauf si vous l’aviez choisie à la main ; justificatifs, notes et amortissement se modifient dans la fiche."
           onSave={saveGrid} onClose={() => setGrid(false)} />
       ) : (
       <DataTable id="depenses" rows={rows} columns={columns} rowKey={(e) => e.id} initialSort={{ id: 'date', dir: 'desc' }} onOpen={(e) => setEdit(e)}
         toolbar={<>
           <label className="inline-select">Bien<select value={property} onChange={(e) => setProperty(e.target.value)}><option value="">Tous</option>{owned.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
           <label className="inline-select">Année<select value={year} onChange={(e) => setYear(e.target.value)}><option value="">Toutes</option>{years.map((y) => <option key={y} value={y}>{y}</option>)}</select></label>
+          <label className="inline-select">Catégorie<select value={category} onChange={(e) => setCategory(e.target.value as '' | ExpenseCategory)}><option value="">Toutes</option>{catFilter.map(([k, l]) => <option key={k} value={k}>{k === 'loyer' ? 'Loyer (anciennes recettes)' : l}</option>)}</select></label>
           <label className="inline-select">Afficher<select value={status} onChange={(e) => setStatus(e.target.value as '' | 'paye' | 'a_payer' | 'doublons')}><option value="">Toutes</option><option value="paye">Payées</option><option value="a_payer">À payer</option><option value="doublons">Doublons possibles ({dups.ids.size})</option></select></label>
           <Button size="sm" onClick={() => setGrid(true)} disabled={!rows.length}>Modifier en grille</Button>
         </>}
@@ -233,7 +240,7 @@ export function ExpenseDialog({ expense, onClose, propertyId }: { expense: Expen
       <div className="grid">
         <Select label="Bien" value={d.property_id || null} onChange={(v) => set('property_id', v ?? '')} allowEmpty="Choisir…" options={owned.map((p) => [p.id, p.title] as const)} />
         <TextInput label="Date" type="date" value={d.expense_date} onChange={(v) => set('expense_date', v)} />
-        <Select label="Catégorie" value={d.category!} onChange={(v) => setD((x) => ({ ...x, category: v ?? 'autre', nature: existing ? x.nature : defaultNature(v ?? 'autre') }))} options={CATS} />
+        <Select label="Catégorie" value={d.category!} onChange={(v) => setD((x) => ({ ...x, category: v ?? 'autre', nature: existing ? x.nature : defaultNature(v ?? 'autre') }))} options={existing?.category === 'loyer' ? [...CATS, LEGACY_LOYER] : CATS} />
         <Select label="Nature" value={d.nature!} onChange={(v) => set('nature', v ?? 'charge')} options={NATURES} hint={NATURE_HINT[d.nature!]} />
         <TextInput label="Fournisseur" value={d.supplier} onChange={(v) => set('supplier', v)} maxLength={200} />
         <TextInput label="Libellé" value={d.label} onChange={(v) => set('label', v)} maxLength={300} />
