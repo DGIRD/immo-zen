@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Allocation, Lease, Payment, Receipt, RentCharge } from '../src/data/types.ts';
 import { addMonths, emptyPlan, ledgerPlan, ledgerRows, ledgerSettings, monthQuittance, paymentMonth, reportLabel, type LedgerPlan, type LedgerSettings } from '../src/domain/ledger.ts';
-import { chargeViews, planCharges } from '../src/domain/rental.ts';
+import { chargeViews, periodFix, planCharges } from '../src/domain/rental.ts';
 
 const T = '2026-01-01T00:00:00Z';
 let seq = 0;
@@ -279,4 +279,56 @@ test('quittance : « Reste dû MM/AAAA réglé » sur une ligne distincte, sans 
   assert.deepEqual(l.detail.map(([k]) => k), ['Loyer hors charges', 'Provision pour charges', 'Reste dû 08/2026 réglé', 'Total réglé']);
   assert.match(l.statement, /reste dû des mois précédents \(Reste dû 08\/2026 réglé\)/);
   assert.doesNotMatch(l.statement, /rappel de charges/);
+});
+
+// ---------- bail prolongé : le dernier mois coupé retrouve le mois entier (signalé le 09/11/2026) ----------
+test('bail prolongé : période, échéance et prorata du mois coupé remis en conformité', () => {
+  const l = lease({ start_date: '2025-09-01', end_date: '2027-04-01', rent_hc: 815.18, charges_amount: 150 });
+  const cut = { kind: 'loyer' as const, period_start: '2026-04-01', period_end: '2026-04-01', due_date: '2026-04-01' };
+  // montants au prorata d'un jour : recalculés pour le mois entier
+  assert.deepEqual(periodFix(l, { ...cut, rent_amount: 27.17, charges_amount: 5 }), { period_end: '2026-04-30', due_date: '2026-04-05', rent_amount: 815.18, charges_amount: 150 });
+  // montants saisis à la main : conservés
+  assert.deepEqual(periodFix(l, { ...cut, rent_amount: 815.18, charges_amount: 150 }), { period_end: '2026-04-30', due_date: '2026-04-05' });
+  // échéance changée à la main : conservée
+  assert.deepEqual(periodFix(l, { ...cut, due_date: '2026-03-28', rent_amount: 815.18, charges_amount: 150 }), { period_end: '2026-04-30' });
+  assert.equal(periodFix(l, { kind: 'loyer', period_start: '2026-05-01', period_end: '2026-05-31', due_date: '2026-05-05', rent_amount: 815.18, charges_amount: 150 }), null, 'mois conforme');
+  assert.equal(periodFix(l, { kind: 'report', period_start: '2026-04-01', period_end: '2026-04-01', due_date: '2026-04-01', rent_amount: 6.37, charges_amount: 0 }), null, 'report : jamais touché');
+  // bail écourté au 15/04 : mois entier coupé, prorata recalculé
+  const short = lease({ start_date: '2025-09-01', end_date: '2026-04-15', rent_hc: 900, charges_amount: 100 });
+  assert.deepEqual(periodFix(short, { kind: 'loyer', period_start: '2026-04-01', period_end: '2026-04-30', due_date: '2026-04-05', rent_amount: 900, charges_amount: 100 }), { period_end: '2026-04-15', rent_amount: 450, charges_amount: 50 });
+});
+
+test('bail prolongé : le cas du F3 Paris 19 (loyer révisé en avril, régularisé en mai) se solde à zéro', () => {
+  const ended = lease({ start_date: '2025-09-01', end_date: '2026-04-01', rent_hc: 815.18, charges_amount: 150 });
+  const d = db(ended, '2026-11-09');
+  // loyer avant révision ; bail ensuite prolongé d'un an (lignes de mai à novembre créées par le générateur)
+  for (const c of d.charges) if (c.period_start < '2026-04-01') c.rent_amount = 808.81;
+  const l = { ...ended, end_date: '2027-04-01' };
+  d.leases = [l];
+  for (const c of planCharges(l, '2026-11-09').filter((x) => x.period_start >= '2026-05-01')) d.charges.push({ id: id('c'), user_id: 'u', version: 1, created_at: T, updated_at: T, lease_id: 'L1', kind: 'loyer', label: null, cancelled_at: null, ...c } as RentCharge);
+  assert.equal(loyerOf(d, '2026-04').rent_amount, 27.17, 'avant correction : avril coupé au 01/04');
+  for (const m of ['09', '10', '11', '12']) pay(d, 958.81, `2025-${m}-06`);
+  for (const m of ['01', '02', '03', '04', '05']) pay(d, 958.81, `2026-${m}-06`);
+  pay(d, 12.74, '2026-05-21');
+  for (const m of ['06', '07', '08', '09', '10']) pay(d, 965.18, `2026-${m}-06`);
+  sync(d, '2026-11-09');
+  const apr = loyerOf(d, '2026-04');
+  assert.deepEqual([apr.period_end, apr.due_date, apr.rent_amount, apr.charges_amount], ['2026-04-30', '2026-04-05', 815.18, 150]);
+  assert.equal(row(d, '2026-11-09', '2026-04').status, 'reportee', 'avril : 6,37 € de révision non payés, reportés');
+  assert.equal(row(d, '2026-11-09', '2026-05').status, 'reglee', 'mai : régularisation de 12,74 € (avril + mai)');
+  for (const m of ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10']) {
+    const r = row(d, '2026-11-09', m);
+    assert.equal(r.carryIn, 0, `${m} : aucune dette reportée`);
+    assert.equal(r.status, 'reglee', m);
+  }
+});
+
+test('bail prolongé : un mois coupé déjà quittancé reste figé', () => {
+  const ended = lease({ start_date: '2025-09-01', end_date: '2026-04-01', rent_hc: 815.18, charges_amount: 150 });
+  const d = db(ended, '2026-04-30');
+  d.leases = [{ ...ended, end_date: '2027-04-01' }];
+  const apr = loyerOf(d, '2026-04');
+  d.receipts.push({ id: 'q1', charge_id: apr.id, kind: 'quittance', cancelled_at: null } as Receipt);
+  const plan = ledgerPlan({ lease: d.leases[0]!, charges: d.charges, payments: d.payments, allocations: d.allocations, receipts: d.receipts, settings: S, today: '2026-04-30' });
+  assert.ok(!plan.updateCharges.some((u) => u.charge.id === apr.id && 'period_end' in u.patch));
 });

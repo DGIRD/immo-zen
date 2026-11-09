@@ -19,7 +19,7 @@
  * écriture quand tout est déjà conforme) ; `ledgerRows` construit les lignes affichées.
  */
 import type { Allocation, Insert, Lease, Payment, Receipt, RentalSettings, RentCharge } from '../data/types.ts';
-import { chargeTotal, monthOf } from './rental.ts';
+import { chargeTotal, monthOf, periodFix } from './rental.ts';
 import { round2 } from './simulator.ts';
 
 // ---------- Mois (AAAA-MM) ----------
@@ -83,7 +83,7 @@ const byFillOrder = (a: RentCharge, b: RentCharge) => fillRank(a) - fillRank(b) 
 
 // ---------- Plan de mise en conformité d'un bail ----------
 export interface LedgerInput {
-  lease: Pick<Lease, 'id' | 'start_date' | 'end_date'>;
+  lease: Pick<Lease, 'id' | 'start_date' | 'end_date'> & Partial<Pick<Lease, 'rent_hc' | 'charges_amount' | 'payment_day'>>;
   charges: RentCharge[];
   payments: Payment[];
   allocations: Allocation[];
@@ -141,7 +141,16 @@ export function ledgerPlan(input: LedgerInput): LedgerPlan {
       patch(c, { cancelled_at: null, cancel_reason: null });
     }
   }
-  const active = charges.filter((c) => !removed.has(c.id) && (!c.cancelled_at || restored.has(c.id)));
+  // 2 bis. période d'un loyer non quittancé remise d'accord avec les dates du bail (bail prolongé ou écourté)
+  const fixed = new Map<string, RentCharge>();
+  for (const c of charges) {
+    if (removed.has(c.id) || quittanced.has(c.id) || (c.cancelled_at && !restored.has(c.id))) continue;
+    const fix = periodFix(lease, c);
+    if (!fix) continue;
+    patch(c, fix);
+    fixed.set(c.id, { ...c, ...fix });
+  }
+  const active = charges.filter((c) => !removed.has(c.id) && (!c.cancelled_at || restored.has(c.id))).map((c) => fixed.get(c.id) ?? c);
 
   // 3. groupes par mois
   const groups = new Map<string, RentCharge[]>();
