@@ -665,3 +665,12 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 .tdfc-prereq li::before { content: '○ '; color: var(--ink-soft); }
 .tdfc-prereq li.ok::before { content: '✓ '; color: var(--vert); font-weight: 700; }
 .tdfc-hash { word-break: break-all; font-size: .8rem; }
+.estimate-confidence { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .7rem; }
+.estimate-confidence .confidence { letter-spacing: .15em; color: var(--sapin); }
+.estimate-confidence .confidence.c1, .estimate-confidence .confidence.c2 { color: var(--brique); }
+.estimate-confidence small { flex-basis: 100%; }
+.estimate-features { border: 1px solid var(--line); border-radius: var(--radius); padding: .6rem .9rem; }
+.estimate-features summary { cursor: pointer; font-weight: 600; }
+.estimate-features .grid { margin: .6rem 0; }
+.estimate-adj { margin: .4rem 0; }
+.estimate-warning { margin: .4rem 0 0; padding: .5rem .7rem; border-left: 3px solid var(--ocre); background: var(--ocre-tint); font-size: .9rem; }

@@ -30,7 +30,7 @@ export function dvfType(t: Property['property_type'] | null | undefined): DvfTyp
 
 export interface ValuationInput {
   address?: string | null; zip?: string | null; city?: string | null;
-  property_type?: Property['property_type'] | null; surface?: number | null;
+  property_type?: Property['property_type'] | null; surface?: number | null; rooms?: number | null; dpe?: Property['dpe'] | null;
 }
 
 /** Erreur explicative (affichée telle quelle). */
@@ -39,7 +39,7 @@ export class ValuationError extends Error {}
 export async function valuate(
   input: ValuationInput,
   today: string,
-  server: ((p: { citycode: string; type: DvfType; surface: number; lat: number | null; lon: number | null }) => Promise<DvfEstimate | null>) | null,
+  server: ((p: { citycode: string; type: DvfType; surface: number; rooms: number | null; lat: number | null; lon: number | null }) => Promise<DvfEstimate | null>) | null,
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ estimate: DvfEstimate; place: Located }> {
   const type = dvfType(input.property_type);
@@ -47,10 +47,10 @@ export async function valuate(
   if (!(input.surface && input.surface > 0)) throw new ValuationError('Renseignez la surface du logement.');
   const place = await locate(input.address, input.zip, input.city, fetchImpl).catch(() => null);
   if (!place) throw new ValuationError('Adresse introuvable : renseignez au moins le code postal et la ville.');
-  const payload = { citycode: place.citycode, type, surface: input.surface, lat: place.lat, lon: place.lon };
+  const payload = { citycode: place.citycode, type, surface: input.surface, rooms: input.rooms && input.rooms > 0 ? input.rooms : null, lat: place.lat, lon: place.lon };
   let est: DvfEstimate | null;
   try {
-    est = estimate(await loadSales(place.citycode, dvfYears(today), fetchImpl), payload);
+    est = estimate(await loadSales(place.citycode, dvfYears(today), fetchImpl), { ...payload, today });
   } catch (e) {
     // fichiers illisibles depuis le navigateur (réseau, sécurité du navigateur) : calcul par le serveur
     if (!server) throw new ValuationError('Données DVF inaccessibles depuis ce navigateur.');
