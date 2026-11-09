@@ -5,6 +5,8 @@ import { downloadBlob, stamp, toCsv, toXlsx, type ExportColumn } from '../../dom
 import { date, money2, todayParis } from '../../domain/format.ts';
 import { defaultNature, EXPENSE_CATEGORY_LABELS, EXPENSE_NATURE_LABELS, expenseTotals, isIncome, MAIN_EXPENSE_CATEGORIES, OTHER_EXPENSE_CATEGORIES } from '../../domain/rental.ts';
 import { ExpenseImportDialog } from './ExpenseImport.tsx';
+import { IncomeCleanupDialog } from './IncomeCleanup.tsx';
+import { coveredIncomeIds, incomeDuplicates } from '../../domain/incomeOverlap.ts';
 import { expenseYears, isDepreciable } from '../../domain/fiscal.ts';
 import { round2 } from '../../domain/simulator.ts';
 import { DataTable, type Column } from '../../ui/DataTable.tsx';
@@ -33,12 +35,16 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
   const [status, setStatus] = useState<'' | 'paye' | 'a_payer' | 'doublons'>('');
   const [grid, setGrid] = useState(false);
   const dups = useMemo(() => expenseDuplicates(data.expenses), [data.expenses]);
+  // recettes de relevé déjà saisies en paiements sur le bail : affichées, non additionnées (ANO-013)
+  const covered = useMemo(() => coveredIncomeIds(data.expenses, data.leases, data.payments), [data.expenses, data.leases, data.payments]);
+  const incomeDups = useMemo(() => incomeDuplicates(data.expenses, data.leases, data.payments), [data.expenses, data.leases, data.payments]);
+  const [cleanup, setCleanup] = useState(false);
   const titles = new Map(data.properties.map((p) => [p.id, p.title]));
   const owned = data.properties.filter((p) => p.status === 'acquis');
   const years = useMemo(() => [...new Set([todayParis().slice(0, 4), ...data.expenses.map((e) => e.expense_date.slice(0, 4))])].sort().reverse(), [data.expenses]);
   const rows = data.expenses.filter((e) => (!property || e.property_id === property) && (!year || e.expense_date.startsWith(year)) && (!status || (status === 'doublons' ? dups.ids.has(e.id) : e.payment_status === status)));
   const extraShown = dups.extra.filter((e) => (!property || e.property_id === property) && (!year || e.expense_date.startsWith(year)));
-  const t = expenseTotals(rows);
+  const t = expenseTotals(rows, covered);
 
   const columns: Column<Expense>[] = [
     { id: 'date', label: 'Date', value: (e) => e.expense_date, kind: 'date', render: (e) => date(e.expense_date), primary: true },
@@ -51,7 +57,10 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
     { id: 'label', label: 'Libellé', value: (e) => e.label, defaultHidden: true },
     { id: 'dup', label: 'Doublon', value: (e) => (dups.ids.has(e.id) ? 'doublon possible' : null), mobile: true,
       render: (e) => (dups.ids.has(e.id) ? <span className="pill pill-warn dup-flag" title="Même bien, même montant, même date (ou même catégorie à quelques jours)">doublon possible</span> : '') },
-    { id: 'amount', label: 'Montant', value: (e) => (isIncome(e) ? e.amount : -e.amount), kind: 'money', align: 'right', render: (e) => (isIncome(e) ? <span className="pos">+{money2(e.amount)}</span> : money2(e.amount)), mobile: true },
+    { id: 'amount', label: 'Montant', value: (e) => (isIncome(e) ? e.amount : -e.amount), kind: 'money', align: 'right', mobile: true,
+      render: (e) => (!isIncome(e) ? money2(e.amount) : covered.has(e.id)
+        ? <span className="muted counted-elsewhere" title="Déjà comptée dans Loyers et paiements : non additionnée">+{money2(e.amount)} <span className="pill pill-neutral">déjà dans les loyers</span></span>
+        : <span className="pos">+{money2(e.amount)}</span>) },
     { id: 'account', label: 'Compte', value: (e) => e.account ?? null, defaultHidden: true },
     { id: 'recoverable', label: 'Récupérable', value: (e) => e.recoverable_amount, kind: 'money', align: 'right', render: (e) => (e.recoverable_amount ? money2(e.recoverable_amount) : '—') },
     { id: 'status', label: 'Paiement', value: (e) => (e.payment_status === 'paye' ? `Payée le ${date(e.paid_on)}` : 'À payer'),
@@ -119,9 +128,14 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
         <div className="figure"><span className="figure-label">Charges</span><span className="figure-value">{money2(t.byNature.charge)}</span><span className="figure-hint">récupérables {money2(t.recoverable)}</span></div>
         <div className="figure"><span className="figure-label">Immobilisations</span><span className="figure-value">{money2(t.byNature.immobilisation)}</span></div>
         <div className="figure"><span className="figure-label">Capital et trésorerie</span><span className="figure-value">{money2(round2(t.byNature.remboursement_capital + t.byNature.tresorerie))}</span><span className="figure-hint">hors charges</span></div>
-        {t.income > 0 && <div className="figure"><span className="figure-label">Recettes importées</span><span className="figure-value pos">{money2(t.income)}</span><span className="figure-hint">catégorie Loyer, hors dépenses</span></div>}
+        {(t.income > 0 || t.incomeCovered > 0) && <div className="figure"><span className="figure-label">Recettes importées</span><span className="figure-value pos">{money2(t.income)}</span>
+          <span className="figure-hint">{t.incomeCovered > 0 ? `hors ${money2(t.incomeCovered)} déjà dans les loyers` : 'catégorie Loyer, hors dépenses'}</span></div>}
       </div>
       {owned.length > 0 && <QuickAdd owned={owned} defaultProperty={property || propertyId || (owned.length === 1 ? owned[0]!.id : '')} />}
+      {incomeDups.length > 0 && !grid && (
+        <p className="note note-info income-dup-note">{incomeDups.length} recette{incomeDups.length > 1 ? 's' : ''} importée{incomeDups.length > 1 ? 's' : ''} d’un relevé {incomeDups.length > 1 ? 'sont' : 'est'} aussi saisie{incomeDups.length > 1 ? 's' : ''} en paiement{incomeDups.length > 1 ? 's' : ''} sur le bail : elles ne sont comptées qu’une fois, depuis Loyers et paiements.{' '}
+          <button type="button" className="link" onClick={() => setCleanup(true)}>Voir et nettoyer ces doublons</button></p>
+      )}
       {extraShown.length > 0 && !grid && status !== 'doublons' && (
         <p className="note note-warn">{extraShown.length} ligne{extraShown.length > 1 ? 's semblent' : ' semble'} en double (même bien, même montant, même date ou même catégorie à quelques jours).{' '}
           <button type="button" className="link" onClick={() => setStatus('doublons')}>Afficher les doublons</button>{' · '}
@@ -160,6 +174,7 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
       <p className="muted small">La nature d’une dépense sert au suivi ; elle ne vaut pas qualification fiscale. Faites valider les cas particuliers (travaux, mobilier) par un professionnel.</p>
       <ExpenseDialog expense={edit} onClose={() => setEdit(null)} propertyId={property || propertyId} />
       <ExpenseImportDialog open={importing} onClose={() => setImporting(false)} />
+      <IncomeCleanupDialog open={cleanup} items={incomeDups} titles={titles} onClose={() => setCleanup(false)} />
       {dialog}
     </>
   );

@@ -8,6 +8,7 @@
  */
 import type { Allocation, Expense, ExpenseCategory, Lease, MeubleKind, Payment, Property, RentCharge, TaxPropertyInputs, TaxRegime } from '../data/types.ts';
 import { isIncome } from './rental.ts';
+import { isCoveredIncome, leaseIncomeIndex } from './incomeOverlap.ts';
 import { amortize, round2 } from './simulator.ts';
 import { loanInfo } from './property.ts';
 
@@ -123,7 +124,12 @@ export function yearAmounts(p: Property, year: number, d: FiscalData, inputs: Ta
   rentsHC += Math.max(0, advances);
 
   const exp = d.expenses.filter((e) => e.property_id === p.id && e.payment_status === 'paye' && inYear(e.paid_on ?? e.expense_date, year));
-  const income = exp.filter(isIncome);
+  // recettes de relevé déjà saisies en paiements sur le bail : comptées une seule fois (ANO-013)
+  const incomeIdx = leaseIncomeIndex(d.leases.filter((l) => l.property_id === p.id), d.payments);
+  const allIncome = exp.filter(isIncome);
+  const income = allIncome.filter((e) => !isCoveredIncome(e, incomeIdx));
+  const coveredIncome = sum(allIncome.filter((e) => !income.includes(e)).map((e) => e.amount));
+  if (coveredIncome > 0) warnings.push(`Recettes importées d’un relevé déjà saisies en paiements sur le bail (${coveredIncome} €) : comptées une seule fois, depuis Loyers et paiements.`);
   const importedIncome = sum(income.map((e) => e.amount));
   if (importedIncome > 0) {
     // une recette de relevé est un loyer charges comprises : répartition selon le loyer et la provision du bien
@@ -132,7 +138,6 @@ export function yearAmounts(p: Property, year: number, d: FiscalData, inputs: Ta
     rentsHC += importedIncome * share;
     chargesCollected += importedIncome * (1 - share);
     if (share === 1 && prov === 0 && !(rent > 0)) warnings.push('Loyers importés comptés en totalité hors charges : renseignez le loyer et la provision du bien pour en séparer les charges.');
-    if (d.payments.some((x) => leaseIds.has(x.lease_id) && inYear(x.paid_on, year))) warnings.push('Loyers saisis sur un bail ET importés d’un relevé : vérifiez qu’ils ne sont pas comptés deux fois.');
   }
 
   const byCategory: Partial<Record<ExpenseCategory, number>> = {};

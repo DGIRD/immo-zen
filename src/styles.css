@@ -571,6 +571,13 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 @media (max-width: 760px) { .grid-edit-actions { margin-left: 0; width: 100%; } }
 .note-warn { background: var(--ocre-tint); border-left: 4px solid var(--ocre); }
 .note-warn ul { margin: .4rem 0; padding-left: 1.2rem; }
+.note-info { background: var(--ardoise-tint); border-left: 4px solid var(--ardoise); }
+/* recette de relevé déjà comptée dans Loyers et paiements (ANO-013) */
+.counted-elsewhere { text-decoration: none; white-space: nowrap; }
+.counted-elsewhere .pill { margin-left: .3rem; }
+.income-cleanup-table td.num { white-space: nowrap; }
+.import-table td:last-child { min-width: 11rem; }
+.import-table td:last-child .pill { white-space: normal; display: inline-block; line-height: 1.3; }
 
 /* remplissage depuis une annonce */
 .listing-import { background: var(--paper); border: 1px dashed var(--line); border-radius: var(--radius); padding: .75rem 1rem; }

@@ -4,8 +4,10 @@
  * Date · Libellé · Compte du mouvement · Montant (EUROS) · Catégorie · Commentaires · Appartement
  */
 import JSZip from 'jszip';
-import type { Expense, ExpenseCategory, Insert, Property } from '../data/types.ts';
+import type { Expense, ExpenseCategory, Insert, Lease, Payment, Property } from '../data/types.ts';
 import { EXPENSE_CATEGORY_LABELS, defaultNature } from './rental.ts';
+import { leaseAt, matchingPayment, paymentsInMonth, type LeaseIncomeIndex } from './incomeOverlap.ts';
+import { money2 } from './format.ts';
 
 export type Cell = string | number | null;
 
@@ -287,17 +289,68 @@ export function buildImportRows(rows: Cell[][], properties: Pick<Property, 'id' 
   return { rows: out };
 }
 
-export type ImportStatus = 'ok' | 'doublon' | 'incomplet' | 'signe';
+export type ImportStatus = 'ok' | 'doublon' | 'incomplet' | 'signe' | 'deja';
+
+/**
+ * Loyers d'un bien loué (ANO-013) : un loyer du relevé est rapproché des paiements saisis sur le bail.
+ * Déjà saisi → non importé ; sinon enregistré comme paiement du bail (ou comme recette si `asPayments` est faux).
+ */
+export interface RentContext {
+  idx: LeaseIncomeIndex;
+  leases: Pick<Lease, 'id' | 'property_id' | 'start_date' | 'end_date'>[];
+  /** Empreintes des paiements déjà importés depuis un relevé. */
+  paymentRefs: Set<string>;
+  asPayments: boolean;
+}
+
+/** Où va une ligne « Loyer » positive d'un bien : null = recette dans Dépenses (pas de bail). */
+export type RentRoute =
+  | { kind: 'deja'; payment: Pick<Payment, 'amount' | 'paid_on'> }
+  | { kind: 'mois'; total: number }
+  | { kind: 'paiement'; leaseId: string }
+  | { kind: 'recette'; leaseId: string };
+
+const ym = (d: string) => d.slice(0, 7);
+const frDate = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
+
+export function rentRoute(r: ImportRow, ctx: RentContext): RentRoute | null {
+  if (r.category !== 'loyer' || !r.propertyId || !r.date || r.signed === null || r.signed <= 0) return null;
+  const lease = leaseAt(ctx.leases, r.propertyId, r.date);
+  if (!lease) return null;
+  const amount = Math.abs(r.signed);
+  const pay = matchingPayment(ctx.idx, r.propertyId, r.date, amount);
+  if (pay) return { kind: 'deja', payment: pay };
+  const month = paymentsInMonth(ctx.idx, r.propertyId, ym(r.date));
+  const total = Math.round(month.reduce((a, p) => a + p.amount, 0) * 100) / 100;
+  // loyer payé en plusieurs virements saisis : même total sur le mois
+  if (month.length && Math.abs(total - amount) < 0.005) return { kind: 'deja', payment: month[0]! };
+  // d'autres paiements le même mois, d'un autre montant : à vérifier plutôt qu'à ajouter
+  if (month.length) return { kind: 'mois', total };
+  return ctx.asPayments ? { kind: 'paiement', leaseId: lease.id } : { kind: 'recette', leaseId: lease.id };
+}
 
 /** État d'une ligne avant import. */
-export function rowStatus(r: ImportRow, existingRefs: Set<string>): { status: ImportStatus; message: string } {
-  if (existingRefs.has(r.ref)) return { status: 'doublon', message: 'Déjà importée' };
+export function rowStatus(r: ImportRow, existingRefs: Set<string>, rent?: RentContext): { status: ImportStatus; message: string } {
+  if (existingRefs.has(r.ref) || rent?.paymentRefs.has(r.ref)) return { status: 'doublon', message: 'Déjà importée' };
   if (!r.date || r.signed === null || r.signed === 0) return { status: 'incomplet', message: r.errors.join(', ') || 'Ligne incomplète' };
   if (!r.category) return { status: 'incomplet', message: 'Catégorie à choisir' };
   if (!r.propertyId) return { status: 'incomplet', message: 'Logement à choisir' };
   if (r.category === 'loyer' && r.signed < 0) return { status: 'signe', message: 'Loyer au débit : vérifiez (remboursement au locataire ?)' };
   if (r.category !== 'loyer' && r.signed > 0) return { status: 'signe', message: 'Montant crédité : remboursement ou recette ? Non importé par défaut' };
+  const route = rent ? rentRoute(r, rent) : null;
+  if (route?.kind === 'deja') return { status: 'deja', message: `Déjà saisi dans Loyers (paiement du ${frDate(route.payment.paid_on)})` };
+  if (route?.kind === 'mois') return { status: 'signe', message: `Le bail a déjà ${money2(route.total)} reçus ce mois-ci : ajoutez ce versement dans Loyers et paiements s’il est en plus` };
+  if (route?.kind === 'paiement') return { status: 'ok', message: 'Paiement du bail' };
   return { status: 'ok', message: r.category === 'loyer' ? 'Recette' : 'Dépense' };
+}
+
+/** Loyer du relevé → paiement sur le bail (rattaché au mois de sa date). */
+export function toLeasePayment(r: ImportRow, leaseId: string): Insert<Payment> & { import_ref: string } {
+  return {
+    lease_id: leaseId, amount: Math.round(Math.abs(r.signed!) * 100) / 100, paid_on: r.date!, period_month: `${ym(r.date!)}-01`,
+    method: 'virement', reference: r.label.slice(0, 120) || null, comment: r.notes?.slice(0, 500) ?? null,
+    source: 'import', date_defaulted: false, import_ref: r.ref,
+  };
 }
 
 /** Ligne prête → dépense (ou recette « Loyer ») payée à la date du relevé. */

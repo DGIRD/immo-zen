@@ -12,6 +12,7 @@
 import type { DepositMovement, Expense, TaxPropertyInputs } from '../data/types.ts';
 import { fiscalSummary, loanBalance, loanYear, type FiscalData } from './fiscal.ts';
 import { isIncome } from './rental.ts';
+import { isCoveredIncome, leaseIncomeIndex } from './incomeOverlap.ts';
 import { round2 } from './simulator.ts';
 
 export interface BilanData extends FiscalData {
@@ -68,6 +69,7 @@ function yearFlows(year: number, d: BilanData, propertyIds: Set<string>, inputs:
   const withdrawals: Line[] = [];
   const props = d.properties.filter((p) => propertyIds.has(p.id));
   const leaseIds = new Set(d.leases.filter((l) => propertyIds.has(l.property_id)).map((l) => l.id));
+  const incomeIdx = leaseIncomeIndex(d.leases, d.payments);
 
   for (const p of props) {
     if (inYear(p.acquired_at, year)) {
@@ -85,7 +87,8 @@ function yearFlows(year: number, d: BilanData, propertyIds: Set<string>, inputs:
     if (repaid > 0) contributions.push({ label: `${p.title} : échéances d'emprunt (capital, intérêts, assurance)`, amount: round2(repaid) });
     const paid = sum(exp.filter((e) => !isIncome(e) && !LOAN_CATEGORIES.has(e.category)).map((e) => e.amount));
     if (paid > 0) contributions.push({ label: `${p.title} : dépenses payées`, amount: paid });
-    const income = sum(exp.filter(isIncome).map((e) => e.amount));
+    // recettes de relevé déjà saisies en paiements sur le bail : comptées dans « Loyers et charges encaissés »
+    const income = sum(exp.filter((e) => isIncome(e) && !isCoveredIncome(e, incomeIdx)).map((e) => e.amount));
     if (income > 0) withdrawals.push({ label: `${p.title} : recettes encaissées (relevés)`, amount: income });
   }
   const rents = sum(d.payments.filter((x) => leaseIds.has(x.lease_id) && inYear(x.paid_on, year)).map((x) => x.amount));
