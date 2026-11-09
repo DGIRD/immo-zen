@@ -91,7 +91,14 @@ export interface EstimateDetails {
   from?: string;
   to?: string;
   surface?: number;
-  comparables?: { date: string; address: string; surface: number; value: number; perM2: number; distance: number | null }[];
+  comparables?: { date: string; address: string; surface: number; value: number; perM2: number; distance: number | null; adjPerM2?: number; weight?: number }[];
+  /** Estimation DVF avant ajustement par les caractéristiques du bien. */
+  base?: { low: number; median: number; high: number };
+  /** Caractéristiques déclarées et écarts appliqués (voir domain/valuationFeatures.ts). */
+  features?: import('../domain/valuationFeatures.ts').EstimateFeatures;
+  adjustments?: import('../domain/valuationFeatures.ts').FeatureAdjustment[];
+  confidence?: { score: number; label: string; reasons: string[] };
+  method?: { trendPerYear: number; sizeElasticity: number; effective: number };
 }
 
 export interface AcquisitionSnapshot {

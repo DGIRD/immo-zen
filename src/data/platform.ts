@@ -63,7 +63,7 @@ export interface PlatformApi {
   /** Réponse de l'assistant conversationnel (fonction « assistant »). */
   ask(messages: ChatMessage[], page: string): Promise<string>;
   /** Estimation DVF calculée par la fonction serveur « dvf » (repli). */
-  dvf(payload: { citycode: string; type: DvfType; surface: number; lat: number | null; lon: number | null }): Promise<DvfEstimate | null>;
+  dvf(payload: { citycode: string; type: DvfType; surface: number; rooms: number | null; lat: number | null; lon: number | null }): Promise<DvfEstimate | null>;
   /** Lecture d'une annonce par la fonction serveur « annonce » : lien de la page, ou texte collé (lecture assistée). */
   readListing(payload: { url: string } | { text: string }): Promise<{ listing: ListingData; url: string | null; assisted: boolean }>;
   /** null : tables du lot 3 absentes (migration non exécutée). */

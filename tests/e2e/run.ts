@@ -173,7 +173,7 @@ async function main() {
     await page.getByText(/DVF 2025–2025, 18 ventes d'appartements à moins de 300 m/).waitFor();
     const est = (await page.locator('.estimate').innerText()).replace(/[\u202f\u00a0]/g, ' ');
     assert.match(est, /\d[\d ]* € – \d[\d ]* €/, `fourchette affichée : ${est}`);
-    assert.match(est, /en dessous de l’estimation médiane \(313 000 €\)/, 'écart prix proposé / estimation');
+    assert.match(est, /au-dessus de l’estimation médiane \(309 000 €\)/, `écart prix proposé / estimation : ${est}`);
     assert.ok(dvfFiles.some((u) => u.endsWith('/2025/communes/93/93048.csv')), 'fichier DVF de la commune lu');
     await page.getByRole('button', { name: /Voir les ventes comparables/ }).click();
     assert.equal(await page.locator('.estimate tbody tr').count(), 10, '10 ventes comparables');
@@ -386,7 +386,7 @@ async function main() {
     const text = (await row.innerText()).replace(/[\u202f\u00a0]/g, ' ');
     assert.match(text, /4,87 %/, 'rendement brut affiché (16 200 / 332 500)');
     assert.match(text, /4 800 €/, 'prix au m² (300 000 / 62,5)');
-    assert.match(text, /-\d+,\d+ %/, `écart prix proposé / estimation DVF : ${text}`);
+    assert.match(text, /[-+]\d+,\d+ %/, `écart prix proposé / estimation DVF : ${text}`);
     await page.getByLabel(/Relances à faire/).check();
     assert.ok(await page.locator('tbody tr', { hasText: 'T3 test balcon' }).count() === 1);
     await page.getByLabel(/Relances à faire/).uncheck();
