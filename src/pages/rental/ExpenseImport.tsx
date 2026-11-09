@@ -9,7 +9,9 @@ import { syncLedgerWith } from './ledgerSync.ts';
 import { EXPENSE_CATEGORY_LABELS, MAIN_EXPENSE_CATEGORIES, OTHER_EXPENSE_CATEGORIES } from '../../domain/rental.ts';
 import { Button, Modal, NotAvailable } from '../../ui/components.tsx';
 
-const CATEGORY_OPTIONS = [...MAIN_EXPENSE_CATEGORIES, ...OTHER_EXPENSE_CATEGORIES];
+/** « Loyer » reste proposé à l'import : la ligne part dans Loyers et paiements (paiement du bail). */
+const CATEGORY_OPTIONS: ExpenseCategory[] = [...MAIN_EXPENSE_CATEGORIES, ...OTHER_EXPENSE_CATEGORIES, 'loyer'];
+const categoryLabel = (k: ExpenseCategory) => (k === 'loyer' ? 'Loyer (vers Loyers et paiements)' : EXPENSE_CATEGORY_LABELS[k]);
 const BATCH = 200;
 
 /** Modèle Excel vide avec les colonnes attendues. */
@@ -23,7 +25,7 @@ export async function downloadImportTemplate() {
     { label: IMPORT_COLUMNS[0], value: (r: R) => r.d, kind: 'date' }, { label: IMPORT_COLUMNS[1], value: (r: R) => r.l },
     { label: IMPORT_COLUMNS[2], value: (r: R) => r.c }, { label: IMPORT_COLUMNS[3], value: (r: R) => r.m, kind: 'money' },
     { label: IMPORT_COLUMNS[4], value: (r: R) => r.k }, { label: IMPORT_COLUMNS[5], value: (r: R) => r.n }, { label: IMPORT_COLUMNS[6], value: (r: R) => r.a },
-  ] }, { name: 'Catégories', rows: CATEGORY_OPTIONS.map((k) => ({ k })), columns: [{ label: 'Catégories acceptées', value: (r: { k: ExpenseCategory }) => EXPENSE_CATEGORY_LABELS[r.k].replace(' (recette)', '') }] }]);
+  ] }, { name: 'Catégories', rows: CATEGORY_OPTIONS.map((k) => ({ k })), columns: [{ label: 'Catégories acceptées', value: (r: { k: ExpenseCategory }) => categoryLabel(r.k) }] }]);
   downloadBlob(blob, 'immo-zen-modele-import-depenses.xlsx');
 }
 
@@ -37,15 +39,13 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [onlyIssues, setOnlyIssues] = useState(false);
-  /** Loyers des biens loués enregistrés comme paiements du bail (une seule source pour les loyers, ANO-013). */
-  const [asPayments, setAsPayments] = useState(true);
   const { leases, payments } = store.data;
   const rent: RentContext = useMemo(() => ({
     idx: leaseIncomeIndex(leases, payments), leases,
-    paymentRefs: new Set(payments.map((p) => p.import_ref).filter((r): r is string => !!r)), asPayments,
-  }), [leases, payments, asPayments]);
+    paymentRefs: new Set(payments.map((p) => p.import_ref).filter((r): r is string => !!r)),
+  }), [leases, payments]);
 
-  const reset = () => { setRows(null); setSource(''); setPaste(''); setError(null); setOnlyIssues(false); setAsPayments(true); };
+  const reset = () => { setRows(null); setSource(''); setPaste(''); setError(null); setOnlyIssues(false); };
   const close = () => { reset(); onClose(); };
 
   function load(cells: Cell[][], name: string) {
@@ -66,8 +66,6 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
   const incomeSum = sumOf(toExpenses.filter((r) => r.category === 'loyer'));
   const expenseSum = sumOf(toExpenses.filter((r) => r.category !== 'loyer'));
   const paymentSum = sumOf(toPayments);
-  // le choix n'a de sens que s'il y a des loyers de biens loués à enregistrer
-  const leasedRents = ready.some((r) => rentRoute(r, { ...rent, asPayments: true })?.kind === 'paiement');
   const count = (s: string) => statuses.filter((x) => x.status === s).length;
   // valeurs distinctes de la colonne « Appartement » : un choix s'applique à toutes leurs lignes
   const places = rows ? [...new Map(rows.map((r) => [r.rawProperty ?? '', r])).keys()] : [];
@@ -140,8 +138,8 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
             {count('signe') > 0 && <span className="pill pill-warn">{count('signe')} à vérifier</span>}
             {count('doublon') > 0 && <span className="pill pill-neutral">{count('doublon')} déjà importée(s)</span>}
             {count('deja') > 0 && <span className="pill pill-neutral">{count('deja')} loyer(s) déjà saisi(s) dans Loyers</span>}
-            {toPayments.length > 0 && <span className="pill pill-ok">dont {toPayments.length} en paiements du bail</span>}
-            <span className="muted">Dépenses {money2(expenseSum)} · recettes {money2(incomeSum)}{paymentSum > 0 ? ` · paiements du bail ${money2(paymentSum)}` : ''}</span>
+            {toPayments.length > 0 && <span className="pill pill-ok">dont {toPayments.length} loyer(s) vers Loyers et paiements</span>}
+            <span className="muted">Dépenses {money2(expenseSum)}{incomeSum > 0 ? ` · recettes ${money2(incomeSum)}` : ''}{paymentSum > 0 ? ` · loyers vers Loyers et paiements ${money2(paymentSum)}` : ''}</span>
           </div>
           {places.length > 0 && (
             <fieldset className="import-places">
@@ -158,10 +156,6 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
                 );
               })}
             </fieldset>
-          )}
-          {leasedRents && (
-            <label className="checkbox"><input type="checkbox" checked={asPayments} onChange={(e) => setAsPayments(e.target.checked)} />
-              <span>Enregistrer les loyers des biens loués comme paiements du bail (recommandé) : ils remplissent la colonne « Réglé » de Loyers et paiements et ne sont comptés qu’une fois</span></label>
           )}
           <label className="checkbox"><input type="checkbox" checked={onlyIssues} onChange={(e) => setOnlyIssues(e.target.checked)} /><span>Afficher seulement les lignes à compléter ou vérifier</span></label>
           <div className="dt-scroll tall">
@@ -181,7 +175,7 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
                       <td>
                         <select aria-label={`Catégorie ligne ${r.line}`} value={r.category ?? ''} disabled={done} onChange={(e) => patch(i, { category: (e.target.value || null) as ExpenseCategory | null })}>
                           <option value="">Choisir…</option>
-                          {CATEGORY_OPTIONS.map((k) => <option key={k} value={k}>{EXPENSE_CATEGORY_LABELS[k]}</option>)}
+                          {CATEGORY_OPTIONS.map((k) => <option key={k} value={k}>{categoryLabel(k)}</option>)}
                         </select>
                       </td>
                       <td>
@@ -197,7 +191,7 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
               </tbody>
             </table>
           </div>
-          <p className="muted small">Chaque ligne devient une dépense payée à la date du relevé. Un loyer d’un bien loué devient un paiement du bail (ou n’est pas importé s’il y est déjà saisi) ; sans bail, il reste une recette « Loyer ». Un relevé réimporté ne crée pas de doublon. Ajoutez ensuite, si besoin, la part récupérable (ex. taxe d’ordures ménagères) et le justificatif en modifiant la dépense.</p>
+          <p className="muted small">Chaque ligne devient une dépense payée à la date du relevé. Un loyer va dans Loyers et paiements : il devient un paiement du bail, ou n’est pas importé s’il y est déjà saisi (sans bail à sa date, créez d’abord le bail). Un relevé réimporté ne crée pas de doublon. Ajoutez ensuite, si besoin, la part récupérable (ex. taxe d’ordures ménagères) et le justificatif en modifiant la dépense.</p>
         </>
       )}
     </Modal>

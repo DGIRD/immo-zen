@@ -152,11 +152,14 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
   };
 
   const payText = (p: Payment) => `${date(p.paid_on)} ${money2(p.amount)} ${PAYMENT_METHOD_LABELS[p.method]}${p.reference ? ` ${p.reference}` : ''}`;
+  /** Libellé du virement et commentaire : au survol, pour garder la colonne « Réglé » étroite. */
+  const payNote = (p: Payment) => [p.reference?.trim(), p.comment?.trim()].filter(Boolean).join('\n');
   const payLine = (p: Payment) => (
     <div key={p.id} className="pay-line">
-      <button type="button" className="link" title={`Modifier le paiement du ${date(p.paid_on)} : ${money2(p.amount)}, ${PAYMENT_METHOD_LABELS[p.method]}${p.reference ? `, réf. ${p.reference}` : ''}`} aria-label={`${date(p.paid_on)} · ${money2(p.amount)}`} onClick={() => payActions.edit(p)}>{date(p.paid_on).slice(0, 5)} · {money2(p.amount)}</button>
+      <button type="button" className="link" title={`Modifier le paiement du ${date(p.paid_on)} : ${money2(p.amount)}, ${PAYMENT_METHOD_LABELS[p.method]}${payNote(p) ? `\n${payNote(p)}` : ''}`} aria-label={`${date(p.paid_on)} · ${money2(p.amount)}`} onClick={() => payActions.edit(p)}>{date(p.paid_on).slice(0, 5)} · {money2(p.amount)}</button>
       {/* moyen affiché seulement s'il n'est pas le virement habituel */}
-      {(p.method !== 'virement' || p.reference) && <span className="muted small">{[p.method !== 'virement' ? PAYMENT_METHOD_LABELS[p.method] : '', p.reference ?? ''].filter(Boolean).join(' · ')}</span>}
+      {p.method !== 'virement' && <span className="muted small">{PAYMENT_METHOD_LABELS[p.method]}</span>}
+      {payNote(p) && <span className="pay-note" tabIndex={0} role="note" title={payNote(p)} aria-label={`Libellé : ${payNote(p)}`}>ⓘ</span>}
       {p.period_month && p.period_month.slice(0, 7) !== p.paid_on.slice(0, 7) && <span className="pill pill-neutral" title="Paiement rattaché à ce mois, reçu un autre mois" aria-label="déplacé">⇄</span>}
       {p.date_defaulted && <span className="pill pill-warn" title="Date du jour utilisée par défaut lors de la confirmation">date par défaut</span>}
       {dupPays.ids.has(p.id) && <DupPill title="Même bail, même montant, à quelques jours d’un autre paiement" />}

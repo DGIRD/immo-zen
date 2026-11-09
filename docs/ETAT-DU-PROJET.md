@@ -238,6 +238,14 @@ Tout le périmètre du cahier des charges est livré. Reste **à configurer** : 
 |---|---|---|
 | Un loyer non quittancé dont la période ne correspond plus aux dates du bail (mois coupé par une ancienne date de fin, ou mois entier au-delà d'une nouvelle fin) est corrigé à la mise en conformité : fin de période, échéance si elle n'avait pas été changée à la main, montants au prorata seulement s'ils étaient le prorata du bail (`periodFix`) | Implémenté et testé | unitaires |
 
+## Colonne « Réglé » allégée, Dépenses sans catégorie Loyer (9 novembre 2026)
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Colonne « Réglé » : libellé du virement et commentaire au survol (ⓘ), moyen affiché seulement s'il n'est pas un virement | Implémenté et testé | e2e |
+| Dépenses : filtre par catégorie | Implémenté et testé | e2e + recette DEP-05 |
+| Catégorie « Loyer » retirée de la saisie des dépenses ; à l'import, un loyer va dans Loyers et paiements (paiement du bail), ou n'est pas importé sans bail ; anciennes recettes conservées et toujours nettoyables | Implémenté et testé | unitaires + e2e |
+
 ## Limites connues
 
 ### Lot 2

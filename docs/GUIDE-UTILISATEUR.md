@@ -79,6 +79,7 @@ Partage d'un document : case « Visible dans l'espace locataire » à l'ajout, o
 
 **À traiter** est rangé en trois blocs : **Loyers impayés** (avec le reste dû total), **À vérifier** (réceptions à confirmer, excédents à qualifier, paiements hors période ; « Marquer comme reçu » en une fois) et **Quittances à émettre** (« Émettre les N quittances » en une fois ; « Ne plus proposer avant… » écarte les mois réglés plus anciens, réglage repris dans Paramètres → Gestion locative → « Quittances proposées à partir de » ; une quittance reste possible depuis le menu « ⋯ » de la ligne).
 
+- **Colonne « Réglé »** : date et montant de chaque paiement ; le libellé du virement et le commentaire s'affichent au survol de ⓘ (ou du montant).
 - **Menu « Afficher »** : six vues ; chaque ligne garde son statut précis (Réglé, Partiel, Partiel reporté, Impayé, À venir, Annulé, Hors période).
   - **À traiter** (par défaut) : mois échus impayés ou partiels, réceptions à confirmer, excédents à qualifier, quittances à émettre, paiements hors période.
   - **Reste dû** : impayés, partiels et partiels reportés.
@@ -126,9 +127,11 @@ Par bien : date, fournisseur, montant, catégorie, **nature** (charge, immobilis
 
 ### Importer un relevé
 
+**Filtres de Dépenses** : bien, année, **catégorie** et paiement (payées, à payer, doublons possibles).
+
 **Dépenses → Importer (Excel, CSV)** : choisissez un fichier .xlsx ou .csv, ou collez les lignes copiées depuis Excel, avec les colonnes *Date · Libellé · Compte du mouvement · Montant (EUROS) · Catégorie · Commentaires · Appartement* (seules Date et Montant sont obligatoires ; un modèle Excel est proposé). Montants négatifs = dépenses, positifs = recettes (catégorie Loyer). L'aperçu reconnaît les catégories (Crédit, Assurance crédit, Charges de copropriété (dont travaux), Assurance, Taxe foncière, Entretien amortissable ou non, Loyer, Frais bancaires / financiers, Meuble, Frais de crédit) et le logement d'après l'adresse ou le titre du bien ; ce qui n'est pas reconnu se choisit ligne par ligne, ou une fois par adresse. Un relevé réimporté ne crée pas de doublon.
 
-**Loyers d'un bien loué.** Les loyers d'un bien qui a un bail sont suivis dans **Loyers et paiements**, et comptés une seule fois. À l'import d'un relevé, un loyer déjà saisi sur le bail (même montant à quelques jours près, ou même total sur le mois) est marqué « Déjà saisi dans Loyers » et n'est pas importé ; un loyer manquant est enregistré comme paiement du bail (option « Enregistrer les loyers des biens loués comme paiements du bail », cochée par défaut) ; un autre montant le même mois est signalé à vérifier. Sans bail, le loyer reste une recette dans Dépenses. Une recette déjà présente dans Dépenses et aussi saisie sur le bail apparaît grisée « déjà dans les loyers » et n'est pas additionnée ; **Voir et nettoyer ces doublons** propose de les supprimer (montants identiques cochés par défaut, suppression après confirmation).
+**Loyers.** Les loyers se saisissent dans **Loyers et paiements** : la catégorie « Loyer » n'est plus proposée dans Dépenses. À l'import d'un relevé, une ligne « Loyer » est rapprochée du bail : déjà saisie (même montant à quelques jours près, ou même total sur le mois), elle est marquée « Déjà saisi dans Loyers » et n'est pas importée ; manquante, elle est enregistrée comme paiement du bail ; un autre montant le même mois est signalé à vérifier ; sans bail à sa date, elle n'est pas importée (créez d'abord le bail). Les anciennes recettes « Loyer » restent affichées et comptées si aucun paiement ne les couvre. Une recette déjà présente dans Dépenses et aussi saisie sur le bail apparaît grisée « déjà dans les loyers » et n'est pas additionnée ; **Voir et nettoyer ces doublons** propose de les supprimer (montants identiques cochés par défaut, suppression après confirmation).
 
 ## Déclaration fiscale
 

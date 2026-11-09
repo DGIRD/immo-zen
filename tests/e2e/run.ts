@@ -15,6 +15,18 @@ import { csv, salesAround } from '../fixtures/dvf.ts';
 const root = join(import.meta.dirname, '..', '..');
 const dist = join(root, 'dist');
 const out = join(root, 'test-results');
+
+/** Ancienne recette « Loyer » de Dépenses (plus saisissable depuis le 09/11/2026), injectée dans les données de démonstration. */
+async function injectLegacyRent(page: import('playwright').Page, propertyTitle: string, day: string, amount: number, label: string) {
+  await page.evaluate(({ propertyTitle, day, amount, label }) => {
+    const db = JSON.parse(localStorage.getItem('immozen:demo:v1')!);
+    const prop = db.properties.find((p: { title: string }) => p.title === propertyTitle);
+    db.expenses.push({ ...db.expenses[0], id: crypto.randomUUID(), property_id: prop.id, category: 'loyer', nature: 'tresorerie', amount, recoverable_amount: 0,
+      expense_date: day, paid_on: day, payment_status: 'paye', label, supplier: null, import_ref: null, document_id: null, amortization_years: null, version: 1 });
+    localStorage.setItem('immozen:demo:v1', JSON.stringify(db));
+  }, { propertyTitle, day, amount, label });
+  await page.reload();
+}
 const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
 async function serve(): Promise<{ url: string; close: () => void }> {
@@ -785,19 +797,27 @@ async function main() {
     const dlg = page.locator('dialog[open]');
     await dlg.getByLabel(/collez les lignes/).fill(text);
     await dlg.getByRole('button', { name: 'Analyser le texte collé' }).click();
-    await dlg.getByText('6 prête(s)').waitFor();
+    await dlg.getByText('5 prête(s)').waitFor();
     await dlg.getByText('1 à compléter').waitFor();
+    // loyer de 2024, avant le bail du parking : pas de recette dans Dépenses, bail à créer d'abord
+    await dlg.getByText('1 à vérifier').waitFor();
+    await dlg.getByText(/Aucun bail à cette date/).waitFor();
     await page.screenshot({ path: join(out, '21-import-depenses.png'), fullPage: true });
     await dlg.getByLabel('Catégorie ligne 8').selectOption('entretien');
-    await dlg.getByRole('button', { name: 'Importer 7 ligne(s)' }).click();
-    await page.getByText('7 ligne(s) importée(s)').waitFor();
+    await dlg.getByRole('button', { name: 'Importer 6 ligne(s)' }).click();
+    await page.getByText('6 ligne(s) importée(s)').waitFor();
     await page.getByLabel('Année').selectOption('2024');
-    await page.getByText('Recettes importées').waitFor();
+    await page.locator('tbody tr', { hasText: 'Taxe foncière' }).first().waitFor();
+    assert.equal(await page.getByText('Recettes importées').count(), 0, 'aucune recette « Loyer » créée');
+    // filtre par catégorie
+    await page.locator('label.inline-select', { hasText: 'Catégorie' }).locator('select').selectOption('taxe_fonciere');
+    assert.equal(await page.locator('table.dt-table tbody tr').count(), 1);
+    await page.locator('label.inline-select', { hasText: 'Catégorie' }).locator('select').selectOption('');
     // réimport : rien n'est ajouté
     await page.getByRole('button', { name: 'Importer (Excel, CSV)' }).click();
     await dlg.getByLabel(/collez les lignes/).fill(text);
     await dlg.getByRole('button', { name: 'Analyser le texte collé' }).click();
-    await dlg.getByText('7 déjà importée(s)').waitFor();
+    await dlg.getByText('6 déjà importée(s)').waitFor();
     assert.ok(await dlg.getByRole('button', { name: 'Importer 0 ligne(s)' }).isDisabled());
     await dlg.getByRole('button', { name: 'Fermer' }).first().click();
   });
@@ -821,24 +841,20 @@ async function main() {
     await dlg.getByLabel(/collez les lignes/).fill(text);
     await dlg.getByRole('button', { name: 'Analyser le texte collé' }).click();
     await dlg.getByText('1 loyer(s) déjà saisi(s) dans Loyers').waitFor();
-    await dlg.getByText('dont 1 en paiements du bail').waitFor();
+    await dlg.getByText('dont 1 loyer(s) vers Loyers et paiements').waitFor();
     await dlg.getByText('1 à vérifier').waitFor();
     await dlg.getByText(/Déjà saisi dans Loyers \(paiement du /).waitFor();
     await dlg.getByText('Paiement du bail', { exact: true }).waitFor();
-    // option décochée : le loyer du mois suivant redevient une recette
-    await dlg.getByLabel(/comme paiements du bail/).uncheck();
-    await dlg.getByText('dont 1 en paiements du bail').waitFor({ state: 'detached' });
-    await dlg.getByLabel(/comme paiements du bail/).check();
     await page.screenshot({ path: join(out, '21b-import-loyers-rapproches.png'), fullPage: true });
     await dlg.getByRole('button', { name: 'Fermer' }).first().click();
-    // une recette saisie à la main en double d'un paiement du bail : affichée, non additionnée, puis nettoyée
+    // « Loyer » n'est plus proposé à la saisie d'une dépense
     await page.getByRole('button', { name: 'Ajouter une dépense' }).first().click();
     dlg = page.locator('dialog[open]');
-    await dlg.getByLabel('Bien').selectOption({ label: 'Parking détenu' });
-    await dlg.getByLabel('Catégorie').selectOption('loyer');
-    await dlg.getByLabel('Montant reçu').fill('645,50');
-    await dlg.getByRole('button', { name: 'Enregistrer' }).click();
-    await page.getByText('Dépense enregistrée.').waitFor();
+    assert.equal(await dlg.getByLabel('Catégorie').locator('option[value="loyer"]').count(), 0);
+    await dlg.getByRole('button', { name: 'Annuler' }).click();
+    assert.equal(await page.locator('.quick-add select[aria-label="Catégorie"] option[value="loyer"]').count(), 0);
+    // ancienne recette « Loyer » (données d'avant ce changement) en double d'un paiement du bail : affichée, non additionnée, puis nettoyée
+    await injectLegacyRent(page, 'Parking détenu', todayIso, 645.5, 'VIR LOYER (ancien import)');
     await page.getByLabel('Année').selectOption(String(y));
     const row = page.locator('table.dt-table tbody tr', { hasText: 'déjà dans les loyers' });
     await row.waitFor();
@@ -1005,11 +1021,13 @@ async function main() {
     await dlg.getByLabel('Référence').fill('VIR-TEST-42');
     await dlg.getByRole('button', { name: 'Enregistrer' }).click();
     await page.getByText(/Paiement modifié/).first().waitFor();
-    await page.locator('tbody tr', { hasText: 'VIR-TEST-42' }).first().waitFor();
+    // libellé du virement : au survol (infobulle), plus en clair dans la colonne « Réglé »
+    await page.locator('tbody tr').filter({ has: page.locator('.pay-note[title*="VIR-TEST-42"]') }).first().waitFor();
+    assert.equal(await page.locator('tbody tr', { hasText: 'VIR-TEST-42' }).count(), 0, 'libellé non affiché en clair');
     // la recherche porte aussi sur les paiements et les documents
     await page.getByPlaceholder('Rechercher…').fill('VIR-TEST-42');
     const found = await rows.count();
-    assert.ok(found >= 1 && found === await rows.filter({ hasText: 'VIR-TEST-42' }).count(), 'recherche sur la référence du paiement');
+    assert.ok(found >= 1 && found === await rows.filter({ has: page.locator('.pay-note[title*="VIR-TEST-42"]') }).count(), 'recherche sur la référence du paiement');
     await page.getByPlaceholder('Rechercher…').fill('');
     await page.screenshot({ path: join(out, '35-loyers-quittances.png'), fullPage: true });
   });
@@ -1050,7 +1068,7 @@ async function main() {
     await page.getByRole('button', { name: 'Enregistrer (1)' }).click();
     await page.getByText(/1 paiement modifié/).first().waitFor();
     await page.getByRole('button', { name: 'Fermer la grille' }).click().catch(() => undefined);
-    await page.locator('tbody tr', { hasText: 'GRILLE-01' }).first().waitFor();
+    await page.locator('tbody tr').filter({ has: page.locator('.pay-note[title*="GRILLE-01"]') }).first().waitFor();
     // une quittance supprimée se réémet depuis la ligne du mois, toujours réglé
     const qRow = page.locator('table.dt-table tbody tr').filter({ has: page.getByRole('button', { name: /^Quittance Q-/ }) }).first();
     const qn = (await qRow.getByRole('button', { name: /^Quittance Q-/ }).innerText()).replace('Quittance ', '').trim();
@@ -1231,6 +1249,8 @@ async function main() {
   });
 
   await step('déclaration fiscale : 2044 au réel et cases de la 2042', async () => {
+    // loyer de 2024 encaissé avant le bail (ancienne recette « Loyer » de Dépenses, toujours comptée)
+    await injectLegacyRent(page, 'Parking détenu', '2024-05-05', 850, 'VIR LOYER MAI');
     await page.goto(url + '#/declaration');
     await page.getByLabel('Année des revenus').selectOption('2024');
     await page.getByLabel('Régime de Parking détenu').selectOption('reel_foncier');
@@ -1332,7 +1352,7 @@ async function main() {
       await page.getByText('Ligne ajoutée.').last().waitFor();
     };
     await page.goto(url + '#/depenses');
-    await addLine('loyer', 'Loyers TDFC e2e', '6000');
+    await injectLegacyRent(page, 'Parking détenu', `${lastYear}-06-15`, 6000, 'Loyers TDFC e2e');
     await addLine('assurance', 'PNO TDFC e2e', '120');
     await setRegime('reel_bic');
     await page.getByRole('button', { name: 'Télétransmettre la liasse' }).click();

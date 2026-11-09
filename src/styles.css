@@ -589,6 +589,8 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 /* Loyers et paiements : tableau unique (paiements et documents dans la ligne de l'échéance) */
 .pay-lines, .doc-lines { display: flex; flex-direction: column; gap: .2rem; min-width: 12rem; }
 .pay-line { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; white-space: nowrap; }
+.pay-note { cursor: help; color: var(--ink-soft); font-size: .9em; line-height: 1; padding: 0 .1rem; border-radius: 3px; }
+.pay-note:hover, .pay-note:focus-visible { color: var(--ardoise); outline: 1px solid var(--ardoise-tint); }
 .pay-line .row-delete { margin-left: auto; padding: 0 .25rem; font-size: .85em; opacity: .55; }
 .pay-line .row-delete:hover, .pay-line .row-delete:focus-visible { opacity: 1; }
 .doc-lines .link { text-align: left; }
