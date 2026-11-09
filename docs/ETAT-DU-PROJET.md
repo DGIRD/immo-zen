@@ -232,6 +232,12 @@ Signalement du 04/11/2026 : enregistrement non automatique ; en saisie de plusie
 
 Tout le périmètre du cahier des charges est livré. Reste **à configurer** : compte Stripe et fonctions `platform` / `stripe-webhook` ([ABONNEMENTS](ABONNEMENTS.md)), premier administrateur, envoi réel des e-mails (Resend). Pistes ultérieures : vérification de l'abonnement dans les fonctions serveur (quittances, relances), réimport de la gestion locative depuis une sauvegarde, liasse 2031/2033 complète, travaux de rénovation énergétique et déficits antérieurs dans la déclaration.
 
+## Bail prolongé : dernier mois coupé remis en conformité (9 novembre 2026)
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Un loyer non quittancé dont la période ne correspond plus aux dates du bail (mois coupé par une ancienne date de fin, ou mois entier au-delà d'une nouvelle fin) est corrigé à la mise en conformité : fin de période, échéance si elle n'avait pas été changée à la main, montants au prorata seulement s'ils étaient le prorata du bail (`periodFix`) | Implémenté et testé | unitaires |
+
 ## Limites connues
 
 ### Lot 2
