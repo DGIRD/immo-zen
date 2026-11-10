@@ -6,6 +6,8 @@ import { date, money2, todayParis } from '../../domain/format.ts';
 import { defaultNature, EXPENSE_CATEGORY_LABELS, EXPENSE_NATURE_LABELS, expenseTotals, isIncome, MAIN_EXPENSE_CATEGORIES, OTHER_EXPENSE_CATEGORIES } from '../../domain/rental.ts';
 import { ExpenseImportDialog } from './ExpenseImport.tsx';
 import { IncomeCleanupDialog } from './IncomeCleanup.tsx';
+import { ExpensePie } from './ExpensePie.tsx';
+import { breakdown, inCategory, namedCategories, othersLabels, OTHERS, type BreakdownKey } from '../../domain/expenseBreakdown.ts';
 import { coveredIncomeIds, incomeDuplicates } from '../../domain/incomeOverlap.ts';
 import { expenseYears, isDepreciable } from '../../domain/fiscal.ts';
 import { round2 } from '../../domain/simulator.ts';
@@ -35,7 +37,7 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
   const [property, setProperty] = useState(propertyId ?? '');
   const [year, setYear] = useState(todayParis().slice(0, 4));
   const [status, setStatus] = useState<'' | 'paye' | 'a_payer' | 'doublons'>('');
-  const [category, setCategory] = useState<'' | ExpenseCategory>('');
+  const [category, setCategory] = useState<'' | BreakdownKey>('');
   const [grid, setGrid] = useState(false);
   const dups = useMemo(() => expenseDuplicates(data.expenses), [data.expenses]);
   // recettes de relevé déjà saisies en paiements sur le bail : affichées, non additionnées (ANO-013)
@@ -47,8 +49,13 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
   const years = useMemo(() => [...new Set([todayParis().slice(0, 4), ...data.expenses.map((e) => e.expense_date.slice(0, 4))])].sort().reverse(), [data.expenses]);
   const hasLegacyRent = data.expenses.some(isIncome);
   const catFilter = hasLegacyRent ? [...CATS, LEGACY_LOYER] : CATS;
-  const rows = data.expenses.filter((e) => (!property || e.property_id === property) && (!year || e.expense_date.startsWith(year)) && (!category || e.category === category)
+  // parts du camembert : catégories et couleurs fixées sur toutes les dépenses ; parts selon les autres filtres
+  const named = useMemo(() => namedCategories(data.expenses), [data.expenses]);
+  const base = data.expenses.filter((e) => (!property || e.property_id === property) && (!year || e.expense_date.startsWith(year))
     && (!status || (status === 'doublons' ? dups.ids.has(e.id) : e.payment_status === status)));
+  const slices = breakdown(base, named);
+  const othersHint = othersLabels(base, named).join(', ');
+  const rows = base.filter((e) => inCategory(e, category, named));
   const extraShown = dups.extra.filter((e) => (!property || e.property_id === property) && (!year || e.expense_date.startsWith(year)));
   const t = expenseTotals(rows, covered);
 
@@ -137,6 +144,7 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
         {(t.income > 0 || t.incomeCovered > 0) && <div className="figure"><span className="figure-label">Recettes importées</span><span className="figure-value pos">{money2(t.income)}</span>
           <span className="figure-hint">{t.incomeCovered > 0 ? `hors ${money2(t.incomeCovered)} déjà dans les loyers` : 'catégorie Loyer, hors dépenses'}</span></div>}
       </div>
+      {!grid && slices.length > 1 && <ExpensePie slices={slices} selected={category} othersHint={othersHint} onSelect={setCategory} />}
       {owned.length > 0 && <QuickAdd owned={owned} defaultProperty={property || propertyId || (owned.length === 1 ? owned[0]!.id : '')} />}
       {incomeDups.length > 0 && !grid && (
         <p className="note note-info income-dup-note">{incomeDups.length} recette{incomeDups.length > 1 ? 's' : ''} importée{incomeDups.length > 1 ? 's' : ''} d’un relevé {incomeDups.length > 1 ? 'sont' : 'est'} aussi saisie{incomeDups.length > 1 ? 's' : ''} en paiement{incomeDups.length > 1 ? 's' : ''} sur le bail : elles ne sont comptées qu’une fois, depuis Loyers et paiements.{' '}
@@ -158,7 +166,7 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
         toolbar={<>
           <label className="inline-select">Bien<select value={property} onChange={(e) => setProperty(e.target.value)}><option value="">Tous</option>{owned.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
           <label className="inline-select">Année<select value={year} onChange={(e) => setYear(e.target.value)}><option value="">Toutes</option>{years.map((y) => <option key={y} value={y}>{y}</option>)}</select></label>
-          <label className="inline-select">Catégorie<select value={category} onChange={(e) => setCategory(e.target.value as '' | ExpenseCategory)}><option value="">Toutes</option>{catFilter.map(([k, l]) => <option key={k} value={k}>{k === 'loyer' ? 'Loyer (anciennes recettes)' : l}</option>)}</select></label>
+          <label className="inline-select">Catégorie<select value={category} onChange={(e) => setCategory(e.target.value as '' | BreakdownKey)}><option value="">Toutes</option>{catFilter.map(([k, l]) => <option key={k} value={k}>{k === 'loyer' ? 'Loyer (anciennes recettes)' : l}</option>)}{slices.some((s) => s.key === OTHERS) && <option value={OTHERS}>Autres (regroupées)</option>}</select></label>
           <label className="inline-select">Afficher<select value={status} onChange={(e) => setStatus(e.target.value as '' | 'paye' | 'a_payer' | 'doublons')}><option value="">Toutes</option><option value="paye">Payées</option><option value="a_payer">À payer</option><option value="doublons">Doublons possibles ({dups.ids.size})</option></select></label>
           <Button size="sm" onClick={() => setGrid(true)} disabled={!rows.length}>Modifier en grille</Button>
         </>}

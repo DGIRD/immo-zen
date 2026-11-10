@@ -30,9 +30,14 @@
   --serif: "Source Serif 4", "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L", Georgia, serif;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   color-scheme: light;
+  /* graphiques : 8 teintes catégorielles validées (daltonisme, contraste), dans un ordre fixe */
+  --viz-1: #2a78d6; --viz-2: #eb6834; --viz-3: #1baf7a; --viz-4: #eda100;
+  --viz-5: #e87ba4; --viz-6: #008300; --viz-7: #6250d6; --viz-8: #e34948; --viz-other: #9aa6a1;
 }
 @media (prefers-color-scheme: dark) {
   :root {
+    --viz-1: #3987e5; --viz-2: #d95926; --viz-3: #199e70; --viz-4: #c98500;
+    --viz-5: #d55181; --viz-6: #008300; --viz-7: #9085e9; --viz-8: #e66767; --viz-other: #6f7d78;
     --paper: #121a19;
     --surface: #18221f;
     --ink: #e4ece8;
@@ -676,3 +681,27 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 .estimate-features .grid { margin: .6rem 0; }
 .estimate-adj { margin: .4rem 0; }
 .estimate-warning { margin: .4rem 0 0; padding: .5rem .7rem; border-left: 3px solid var(--ocre); background: var(--ocre-tint); font-size: .9rem; }
+
+/* ---------- Dépenses : répartition par catégorie (camembert) ---------- */
+.expense-pie { padding: 1rem 1.25rem; margin: 1rem 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.expense-pie-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.expense-pie-head h2 { font-size: 1.05rem; margin: 0 0 .5rem; }
+.expense-pie-body { display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; }
+.expense-pie-chart { position: relative; width: 200px; flex: none; }
+.expense-pie-chart svg { display: block; width: 200px; height: 200px; overflow: visible; }
+.pie-slice { stroke: var(--surface); stroke-width: 2; cursor: pointer; transition: opacity .15s; }
+.pie-slice:hover { opacity: .85; }
+.pie-slice.dim, .pie-legend button.dim { opacity: .35; }
+.pie-center-value, .pie-center-label { pointer-events: none; }
+.pie-center-value { fill: var(--ink); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pie-center-label { fill: var(--ink-soft); font-size: 11px; }
+.viz-tooltip { position: absolute; transform: translate(12px, -50%); background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 8px; padding: .45rem .6rem; font-size: .85rem; white-space: nowrap; pointer-events: none; box-shadow: 0 4px 14px rgb(0 0 0 / .12); z-index: 5; }
+.viz-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.pie-legend { list-style: none; margin: 0; padding: 0; flex: 1 1 260px; min-width: 0; display: grid; gap: .1rem; }
+.pie-legend button { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: auto 1fr auto 3.5rem; align-items: center; gap: .6rem; padding: .3rem .5rem; border-radius: 6px; cursor: pointer; color: var(--ink); }
+.pie-legend button:hover { background: var(--paper); }
+.pie-legend button:focus-visible { outline: 2px solid var(--sapin); outline-offset: 1px; }
+.pie-legend button[aria-pressed="true"] { background: var(--paper); font-weight: 600; }
+.pie-legend-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pie-legend-value, .pie-legend-share { text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) { .expense-pie-body { justify-content: center; } .expense-pie-chart, .expense-pie-chart svg { width: 180px; height: 180px; } }

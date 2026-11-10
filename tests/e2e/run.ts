@@ -813,6 +813,28 @@ async function main() {
     await page.locator('label.inline-select', { hasText: 'Catégorie' }).locator('select').selectOption('taxe_fonciere');
     assert.equal(await page.locator('table.dt-table tbody tr').count(), 1);
     await page.locator('label.inline-select', { hasText: 'Catégorie' }).locator('select').selectOption('');
+    // camembert : un clic sur une part (ou sa légende) filtre la liste, un second clic retire le filtre
+    const pie = page.locator('section.expense-pie');
+    await pie.waitFor();
+    const catSelect = page.locator('label.inline-select', { hasText: 'Catégorie' }).locator('select');
+    const legend = pie.getByRole('button', { name: /^Taxe foncière/ });
+    assert.match((await legend.innerText()).replace(/[\u202f\u00a0]/g, ' '), /900,00 €/);
+    await legend.click();
+    assert.equal(await catSelect.inputValue(), 'taxe_fonciere');
+    assert.equal(await page.locator('table.dt-table tbody tr').count(), 1);
+    assert.equal(await legend.getAttribute('aria-pressed'), 'true');
+    await page.screenshot({ path: join(out, '21a-depenses-camembert.png'), fullPage: true });
+    await legend.click();
+    assert.equal(await catSelect.inputValue(), '');
+    // première part : elle commence en haut de l'anneau
+    const box = (await pie.locator('svg').boundingBox())!;
+    const top = { x: box.x + box.width * 101 / 200, y: box.y + box.height * 20 / 200 };
+    await page.mouse.move(top.x, top.y);
+    await pie.locator('.viz-tooltip').waitFor();
+    await page.mouse.click(top.x, top.y);
+    assert.notEqual(await catSelect.inputValue(), '');
+    await pie.getByRole('button', { name: 'Retirer le filtre' }).click();
+    assert.equal(await catSelect.inputValue(), '');
     // réimport : rien n'est ajouté
     await page.getByRole('button', { name: 'Importer (Excel, CSV)' }).click();
     await dlg.getByLabel(/collez les lignes/).fill(text);
