@@ -246,6 +246,12 @@ Tout le périmètre du cahier des charges est livré. Reste **à configurer** : 
 | Dépenses : filtre par catégorie | Implémenté et testé | e2e + recette DEP-05 |
 | Catégorie « Loyer » retirée de la saisie des dépenses ; à l'import, un loyer va dans Loyers et paiements (paiement du bail), ou n'est pas importé sans bail ; anciennes recettes conservées et toujours nettoyables | Implémenté et testé | unitaires + e2e |
 
+## Dépenses : répartition par catégorie (10 novembre 2026)
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Camembert (anneau) des dépenses affichées par catégorie, 7 catégories nommées + « Autres », couleurs fixes (palette validée daltonisme, clair et sombre), légende avec montant et part, infobulle au survol ; clic sur une part ou la légende = filtre Catégorie, second clic = retrait (`src/domain/expenseBreakdown.ts`, `ExpensePie.tsx`) | Implémenté et testé | unitaires + e2e |
+
 ## Limites connues
 
 ### Lot 2
