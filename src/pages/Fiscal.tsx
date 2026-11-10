@@ -11,6 +11,7 @@ import { Button, EmptyState, NumberInput, PageHeader, Section, Select } from '..
 import { reviewBilan } from '../domain/bilanReview.ts';
 import { navigate } from '../ui/router.ts';
 import { BilanReviewSection } from './FiscalBilan.tsx';
+import { AssetsDetail, DeferredTracking, recapFromFoncier, recapFromReelBic, ResultRecap } from './FiscalRecap.tsx';
 import { href } from '../ui/router.ts';
 import { tdfcVisible } from '../data/tdfc.ts';
 
@@ -193,6 +194,8 @@ export function FiscalPage() {
 
           {fiscal.reelFoncier && (
             <Section title="Revenus fonciers au réel — formulaire 2044">
+              <ResultRecap title="Récapitulatif du résultat" rows={recapFromFoncier(fiscal.reelFoncier.perProperty)} properties={data.properties} />
+              <h3>Détail du formulaire 2044</h3>
               <div className="dt-scroll"><table className="dt-table compact tax-2044">
                 <thead><tr><th>Ligne</th><th>Libellé</th>{fiscal.reelFoncier.perProperty.map((f) => <th key={f.propertyId} className="num">{title(f.propertyId)}</th>)}{fiscal.reelFoncier.perProperty.length > 1 && <th className="num">Total</th>}</tr></thead>
                 <tbody>{fiscal.reelFoncier.perProperty[0]!.lines.map((l, i) => {
@@ -255,6 +258,14 @@ export function FiscalPage() {
             <Section title="Location meublée au réel (LMNP) — 2031, 2033 et 2042-C-PRO"
               actions={tdfcVisible() ? <Button variant="primary" onClick={() => navigate('/declaration/teletransmission')}>Télétransmettre la liasse</Button> : undefined}>
               <KeyRows rows={[['Case 5NA : bénéfice', fiscal.reelBic.box5NA], ['Case 5NY : déficit', fiscal.reelBic.box5NY]]} />
+              <ResultRecap title="Récapitulatif du résultat comptable" rows={recapFromReelBic(fiscal.reelBic.perProperty)} properties={data.properties}
+                footer={[[`Résultat fiscal ${year} (${fiscal.reelBic.box5NY ? 'case 5NY' : 'case 5NA'})`, fiscal.reelBic.box5NY ? -fiscal.reelBic.box5NY : fiscal.reelBic.box5NA],
+                  ['Amortissements reportables au 31 décembre', fiscal.reelBic.liasse.deferredAfter]]} />
+              {fiscal.reelBic.perProperty.some((r) => r.depreciationYear > 0 || r.deferredBefore > 0) && (
+                <DeferredTracking list={fiscal.reelBic.perProperty} properties={data.properties} year={year}
+                  opening={(pid) => inputs[String(year)]?.[pid]?.deferred_opening ?? null} setOpening={(pid, v) => setInput(String(year), pid, 'deferred_opening', v)} />
+              )}
+              <AssetsDetail liasse={fiscal.reelBic.liasse} properties={data.properties} year={year} />
               <h3>Compte de résultat simplifié (2033-B)</h3>
               <div className="dt-scroll"><table className="dt-table compact tax-2033">
                 <thead><tr><th>Ligne</th><th>Libellé</th><th className="num">Montant</th></tr></thead>

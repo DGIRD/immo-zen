@@ -1293,6 +1293,13 @@ async function main() {
     await guide.getByText('Location nue au réel : 2044').waitFor();
     await guide.getByText('Espace particulier').first().waitFor();
     await guide.getByText(/Cochez la rubrique « Revenus fonciers », puis « Déclaration 2044 »/).waitFor();
+    // récapitulatif du résultat (2044) : pas d'amortissement en location nue, donc pas de colonne
+    const recap = page.locator('.tax-recap', { has: page.getByRole('heading', { name: 'Récapitulatif du résultat' }) }).first();
+    await recap.waitFor();
+    const heads = await recap.locator('thead th').allInnerTexts();
+    assert.deepEqual(heads, ['Bien', 'Recettes', 'Charges', 'Intérêts d’emprunt', 'Résultat']);
+    await recap.locator('tfoot', { hasText: 'Total global' }).waitFor();
+    await recap.getByText('Résultat avant imputation des déficits antérieurs').waitFor();
     await page.screenshot({ path: join(out, '22-declaration-fiscale.png'), fullPage: true });
     const [dossier] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Dossier PDF' }).click()]);
     assert.equal(dossier.suggestedFilename(), 'immo-zen-dossier-declaration-2024.pdf');
@@ -1302,6 +1309,33 @@ async function main() {
     const liasse = page.locator('table.tax-2033');
     await liasse.waitFor();
     assert.match((await liasse.innerText()).replace(/[\u202f\u00a0]/g, ' '), /218[\s\S]*242[\s\S]*254[\s\S]*310/);
+    // LMNP : récapitulatif avec amortissement, suivi des excédents reportables, détail des immobilisations
+    // bien acheté cette année (date par défaut) : amortissement à partir de l'année en cours
+    const yearSel = page.getByLabel('Année des revenus');
+    await yearSel.selectOption(String(new Date().getFullYear()));
+    const baseInput = page.locator('details.tax-lmnp').getByLabel('Valeur amortissable');
+    await baseInput.fill('100000');
+    await baseInput.press('Tab');
+    const recapLmnp = page.locator('.tax-recap', { has: page.getByRole('heading', { name: 'Récapitulatif du résultat comptable' }) });
+    await recapLmnp.locator('thead th', { hasText: 'Amortissement' }).waitFor({ timeout: 5000 }).catch(async () => {
+      throw new Error(`récapitulatif sans amortissement : ${(await recapLmnp.innerText()).slice(0, 400)} | ${(await page.locator('details.tax-lmnp').innerText()).slice(0, 600)}`);
+    });
+    await recapLmnp.getByText(/Amortissements reportables au 31 décembre/).waitFor();
+    const suivi = page.locator('.tax-recap', { has: page.getByRole('heading', { name: 'Suivi des amortissements excédentaires reportables par bien' }) });
+    await suivi.locator('tfoot', { hasText: 'Total suivi' }).waitFor();
+    const immo = page.locator('.tax-recap', { has: page.getByRole('heading', { name: 'Détail des immobilisations' }) });
+    await immo.getByText(/^Terrain/).first().waitFor();
+    await immo.getByText(/^Bâti/).first().waitFor();
+    // reprise du stock d'une liasse déposée ailleurs
+    await suivi.getByText(/Reprendre le stock au 1er janvier/).click();
+    await suivi.getByLabel('Parking détenu').fill('1234');
+    await suivi.getByText('repris de la liasse').waitFor();
+    await page.screenshot({ path: join(out, '34b-declaration-recap-lmnp.png'), fullPage: true });
+    await suivi.getByLabel('Parking détenu').fill('');
+    await baseInput.fill('');
+    await baseInput.press('Tab');
+    await yearSel.selectOption('2024');
+    await liasse.waitFor();
     // relecture du bilan 2033-A : origine des lignes, équilibre, correction motivée et conservée
     const bilan = page.getByRole('region', { name: 'Relecture du bilan 2033-A' });
     await bilan.getByRole('heading', { name: 'Bilan simplifié au 31/12/2024 (2033-A)' }).waitFor();

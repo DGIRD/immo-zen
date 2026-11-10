@@ -177,6 +177,8 @@ export interface TaxPropertyInputs {
   works_years?: number;
   /** Valeur amortissable retenue (sinon coût d'acquisition). */
   depreciable_base?: number;
+  /** LMNP réel (par année) : stock d'amortissements excédentaires reportables au 1er janvier, repris d'une liasse déposée ailleurs (remplace le calcul). */
+  deferred_opening?: number | null;
   /** Micro-BIC : nature de la location meublée (cases 5NI, 5NG ou 5NH de la 2042-C-PRO). */
   meuble_kind?: MeubleKind;
   /** Déficits fonciers antérieurs non encore imputés (case 4BD), saisis depuis l'avis d'imposition. */
