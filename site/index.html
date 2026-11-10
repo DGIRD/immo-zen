@@ -283,6 +283,45 @@
       </div>
     </section>
 
+    <section class="savings" id="economies" aria-labelledby="savings-title">
+      <div class="wrap">
+        <h2 id="savings-title">Ce que vous économisez en gérant vous-même</h2>
+        <p class="intro">Une agence facture la gestion d'un logement de 6 à 10 % HT des loyers, soit environ 7,2 à 12 % TTC, et jusqu'à un mois de loyer à chaque mise en location. Avec Immo-Zen, échéances, quittances, révisions et relances sont prêtes : vous gardez la main pour une fraction de ce coût.</p>
+        <div class="savings-grid">
+          <form class="calc" id="savings-calc" aria-label="Calcul des économies de gestion">
+            <div class="calc-grid">
+              <label>Nombre de biens loués<span class="in"><input inputmode="numeric" name="biens" value="3" autocomplete="off"><i>biens</i></span></label>
+              <label>Loyer moyen charges comprises<span class="in"><input inputmode="numeric" name="loyer" value="750" autocomplete="off"><i>€ / mois</i></span></label>
+              <label class="wide">Honoraires de gestion d'une agence<span class="in"><select name="taux"><option value="7.2">7,2 % TTC (6 % HT, bas de fourchette)</option><option value="8.4" selected>8,4 % TTC (7 % HT, courant)</option><option value="12">12 % TTC (10 % HT, haut de fourchette)</option></select></span></label>
+              <label class="wide check"><input type="checkbox" name="relocation" checked> Compter un changement de locataire tous les 3 ans (un mois de loyer de frais de mise en location)</label>
+            </div>
+            <div class="calc-out" aria-live="polite">
+              <p class="calc-label">Économie estimée par an</p>
+              <p class="calc-figure" id="sv-result">—</p>
+              <dl class="tool-dl">
+                <div><dt>Frais d'agence évités</dt><dd id="sv-agence">—</dd></div>
+                <div><dt>Abonnement Immo-Zen</dt><dd id="sv-abo">—</dd></div>
+                <div><dt>Sur 5 ans</dt><dd id="sv-5ans">—</dd></div>
+              </dl>
+              <p class="calc-detail">Estimation indicative, avant impôts : au régime réel, les honoraires d'agence sont déductibles, l'économie nette est donc un peu moindre. Ce n'est pas une garantie.</p>
+            </div>
+          </form>
+          <div class="savings-side">
+            <div class="savings-card">
+              <h3>Ce qui reste à votre charge</h3>
+              <p>Une agence fait aussi les visites, le choix du locataire, l'état des lieux et les interventions urgentes, et peut souscrire une garantie loyers impayés. Avec Immo-Zen, vous les assurez vous-même ou les confiez ponctuellement à un professionnel.</p>
+            </div>
+            <div class="savings-card">
+              <h3>Et la comptabilité ?</h3>
+              <p><strong>Régimes micro</strong> (micro-foncier, micro-BIC) : déclarez seul, case par case, avec les montants préparés.</p>
+              <p><strong>LMNP au réel</strong> : préparez votre liasse vous-même, ou réduisez la facture de votre comptable en lui remettant un dossier complet. Une aide au remplissage, jamais un conseil fiscal.</p>
+            </div>
+          </div>
+        </div>
+        <p class="small">Sources : honoraires de gestion de 6 à 10 % HT des loyers et frais de mise en location plafonnés à un mois de loyer, d'après <a href="https://www.nousgerons.com/tarif-gestion-locative.html" rel="noopener">NousGérons, tarifs de la gestion locative 2026</a>. Abonnement : formule adaptée au nombre de biens (Essentiel jusqu'à 3, Patrimoine jusqu'à 10, Pro au-delà), paiement annuel.</p>
+      </div>
+    </section>
+
     <section class="price" id="tarifs" aria-labelledby="price-title">
       <div class="wrap">
         <h2 id="price-title">Une formule à la taille de votre parc</h2>

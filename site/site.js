@@ -91,6 +91,31 @@
     select(tabs.find((t) => t.getAttribute('aria-selected') === 'true') || tabs[0], false);
   }
 
+  // ---------- économies de gestion (frais d'agence évités − abonnement Immo-Zen)
+  const sv = document.getElementById('savings-calc');
+  if (sv) {
+    const eurS = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+    const n = (v) => { const x = parseFloat(String(v ?? '').replace(/\s/g, '').replace(',', '.')); return Number.isFinite(x) ? x : 0; };
+    const out = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
+    const run = () => {
+      const f = new FormData(sv);
+      const biens = Math.max(0, Math.round(n(f.get('biens')))), loyer = Math.max(0, n(f.get('loyer'))), taux = n(f.get('taux')) / 100;
+      const relocation = f.get('relocation') ? biens * loyer / 3 : 0;
+      const agence = biens * loyer * 12 * taux + relocation;
+      const abo = biens === 0 ? 0 : biens <= 3 ? 99 : biens <= 10 ? 199 : 399;
+      const eco = agence - abo;
+      out('sv-agence', `${eurS.format(Math.round(agence))} / an`);
+      out('sv-abo', `${eurS.format(abo)} / an`);
+      out('sv-result', `${eco >= 0 ? '' : '−'}${eurS.format(Math.abs(Math.round(eco)))}`);
+      out('sv-5ans', eurS.format(Math.round(eco * 5)));
+    };
+    sv.addEventListener('input', run);
+    sv.addEventListener('change', run);
+    sv.addEventListener('submit', (e) => e.preventDefault());
+    sv.querySelectorAll('input[inputmode]').forEach((el) => el.addEventListener('focus', () => requestAnimationFrame(() => el.select())));
+    run();
+  }
+
   // ---------- calculateur
   const eur = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
   const num = (v) => { const n = Number(String(v).replace(/[\s €%]/g, '').replace(',', '.')); return Number.isFinite(n) ? n : 0; };
