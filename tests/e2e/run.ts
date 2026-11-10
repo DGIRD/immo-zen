@@ -4,7 +4,7 @@
  * Usage : npm run test:e2e   — captures d'écran dans test-results/
  */
 import { createServer } from 'node:http';
-import { readFile, mkdir } from 'node:fs/promises';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import assert from 'node:assert/strict';
@@ -1331,6 +1331,12 @@ async function main() {
     await suivi.getByLabel('Parking détenu').fill('1234');
     await suivi.getByText('repris de la liasse').waitFor();
     await page.screenshot({ path: join(out, '34b-declaration-recap-lmnp.png'), fullPage: true });
+    // liasse LMNP en PDF (document de travail)
+    const [liassePdf] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Liasse PDF' }).click()]);
+    assert.equal(liassePdf.suggestedFilename(), `immo-zen-liasse-lmnp-${new Date().getFullYear()}.pdf`);
+    const liasseBytes = await readFile((await liassePdf.path())!);
+    assert.equal(liasseBytes.subarray(0, 5).toString(), '%PDF-');
+    await writeFile(join(out, 'liasse-lmnp.pdf'), liasseBytes);
     await suivi.getByLabel('Parking détenu').fill('');
     await baseInput.fill('');
     await baseInput.press('Tab');
