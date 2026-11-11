@@ -117,6 +117,8 @@ export interface AcquisitionBreakdown {
   /** Mobilier compris dans le prix de vente (amorti à part). */
   furniture?: number | null;
   building_years?: number | null;
+  /** Début de l'amortissement (mise en location) ; sinon date d'acquisition. */
+  start?: string | null;
   /** Durée des frais de notaire et d'agence (sinon celle de la construction). */
   fees_years?: number | null;
   furniture_years?: number | null;

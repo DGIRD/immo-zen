@@ -277,7 +277,7 @@ function LoanSection({ draft, set, errors, snapshot }: {
  */
 function BreakdownSection({ draft, set }: { draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void }) {
   const b: AcquisitionBreakdown = draft.acquisition_breakdown ?? {};
-  const patch = (k: keyof AcquisitionBreakdown, v: number | null) => {
+  const patch = (k: keyof AcquisitionBreakdown, v: number | string | null) => {
     const next = { ...b, [k]: v };
     const empty = Object.values(next).every((x) => x === null || x === undefined);
     set('acquisition_breakdown', empty ? null : next);
@@ -298,6 +298,7 @@ function BreakdownSection({ draft, set }: { draft: Draft; set: <K extends keyof 
         <NumberInput label="Amortissement de la construction" suffix="ans" value={b.building_years ?? null} onChange={(v) => patch('building_years', v)} hint={`${d.building_years} ans par défaut (souvent 25 à 40)`} />
         <NumberInput label="Amortissement des frais d’acquisition" suffix="ans" value={b.fees_years ?? null} onChange={(v) => patch('fees_years', v)} hint="Par défaut : celle de la construction" />
         <NumberInput label="Amortissement du mobilier" suffix="ans" value={b.furniture_years ?? null} onChange={(v) => patch('furniture_years', v)} hint={`${d.furniture_years} ans par défaut`} />
+        <TextInput label="Début de l’amortissement" type="date" value={b.start ?? null} onChange={(v) => patch('start', v || null)} hint="Mise en location ; par défaut, date d’acquisition" />
       </div>
       {comps && (
         <div className="dt-scroll">

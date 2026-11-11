@@ -234,3 +234,17 @@ test('décomposition : mobilier compris dans la vente amorti à part, durées pa
   // valeurs par défaut des liasses decla.fr : terrain 20 %, construction et frais 25 ans, mobilier 10 ans
   assert.deepEqual(c.map((x) => [x.label, x.base, x.years]), [['Terrain', 39000, null], ['Construction', 156000, 25], ['Frais de notaire', 15000, 25], ['Mobilier compris dans la vente', 5000, 10]]);
 });
+
+test('décomposition : amortissement à partir de la mise en location (F3 Vincennes, liasse 2025)', async () => {
+  const { depreciationItems } = await import('../src/domain/fiscal.ts');
+  const p = prop({ id: 'vin', tax_regime: 'reel_bic', acquired_at: '2024-06-15',
+    acquisition_breakdown: { price: 228000, land_pct: 20, notary: 20000, agency: 12000, building_years: 25, start: '2024-08-01' } });
+  const { items } = depreciationItems(p, 2025, data(p, []), {});
+  const by = (l: string) => items.find((i) => i.label === l)!;
+  // liasse 2025 : construction 7 296 € (cumul 10 346 €), notaire 800 € (1 134 €), agence 480 € (681 €)
+  assert.equal(by('Construction').start, '2024-08-01');
+  assert.equal(by('Construction').amount, 7296);
+  assert.ok(Math.abs(by('Construction').cumulated - 10346) <= 1, String(by('Construction').cumulated));
+  assert.ok(Math.abs(by('Frais de notaire').cumulated - 1134) <= 1, String(by('Frais de notaire').cumulated));
+  assert.ok(Math.abs(by('Frais d’agence').cumulated - 681) <= 1, String(by('Frais d’agence').cumulated));
+});

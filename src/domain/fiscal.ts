@@ -266,12 +266,12 @@ export interface ReelBic {
 }
 
 function yearFraction(start: string, years: number, year: number): number {
-  // part de l'année civile comprise dans [début, début + durée), au jour près (base 365)
+  // part de l'année civile comprise dans [début, début + durée), au jour près (base : nombre de jours de l'année, 366 les années bissextiles, comme les liasses)
   const s = Date.parse(start + 'T00:00:00Z');
   const e = Date.parse(addMonths(start, Math.round(years * 12)) + 'T00:00:00Z');
   const ys = Date.UTC(year, 0, 1), ye = Date.UTC(year + 1, 0, 1);
   const days = Math.max(0, Math.min(e, ye) - Math.max(s, ys)) / 86400000;
-  return Math.min(1, days / 365);
+  return Math.min(1, days / ((ye - ys) / 86400000));
 }
 
 /** Dépense amortissable : durée saisie sur la dépense, ou catégorie/nature d'immobilisation. */
@@ -336,10 +336,12 @@ export function depreciationItems(p: Property, year: number, d: FiscalData, inpu
   const warnings: string[] = [];
   const components = withBuilding ? acquisitionComponents(p, inputs) : null;
   if (components) {
-    if (!p.acquired_at) warnings.push('Date d’acquisition inconnue : amortissement du bien non calculé.');
+    // l'amortissement court à partir de la mise en location si elle est indiquée, sinon de l'acquisition
+    const from = p.acquisition_breakdown?.start || p.acquired_at;
+    if (!from) warnings.push('Date d’acquisition inconnue : amortissement du bien non calculé.');
     else for (const c of components) {
       if (c.kind === 'terrain' || !c.years) continue;
-      items.push({ label: c.label, kind: c.kind, base: c.base, years: c.years, start: p.acquired_at, ...slice(c.base, c.years, p.acquired_at, year) });
+      items.push({ label: c.label, kind: c.kind, base: c.base, years: c.years, start: from, ...slice(c.base, c.years, from, year) });
     }
   } else if (withBuilding) {
     const base = inputs.depreciable_base ?? p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null;
@@ -503,8 +505,9 @@ export function liasse2033B(list: ReelBic[], year: number, d: FiscalData, inputs
     const base = inp.depreciable_base ?? p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null;
     const landPct = inp.land_pct ?? DEFAULT_TAX_INPUTS.land_pct;
     const land = acquisitionComponents(p, inp)?.find((c) => c.kind === 'terrain');
-    if (land && p.acquired_at && p.acquired_at.slice(0, 4) <= String(year))
-      assets.push({ propertyId: p.id, label: `${p.title} – Terrain (non amortissable)`, gross: land.base, cumulated: 0, kind: 'terrain', start: p.acquired_at, dotation: 0, years: null });
+    const from = p.acquisition_breakdown?.start || p.acquired_at;
+    if (land && from && from.slice(0, 4) <= String(year))
+      assets.push({ propertyId: p.id, label: `${p.title} – Terrain (non amortissable)`, gross: land.base, cumulated: 0, kind: 'terrain', start: from, dotation: 0, years: null });
     else if (!land && base && p.acquired_at && landPct > 0 && p.acquired_at.slice(0, 4) <= String(year))
       assets.push({ propertyId: p.id, label: `${p.title} – Terrain (${landPct} %, non amortissable)`, gross: round2(base * landPct / 100), cumulated: 0, kind: 'terrain', start: p.acquired_at, dotation: 0, years: null });
     for (const i of items) assets.push({ propertyId: p.id, label: `${p.title} – ${i.label}`, gross: i.base, cumulated: i.cumulated, kind: i.kind, start: i.start, dotation: i.amount, years: i.years });
