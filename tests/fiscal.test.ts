@@ -159,3 +159,42 @@ test('amortissement : durée personnalisée sur la dépense, cumul et reste, pas
   assert.equal(r.charges.find((c) => c.label.startsWith('Entretien'))!.amount, 400, 'la cuisine amortie n’est pas aussi déduite en charge');
   assert.equal(r.depreciationYear, 8500 + 1000 + 500);
 });
+
+// ---------- LMNP : limite de l'art. 39 C appréciée sur l'activité (liasse 2025 de decla.fr reproduite) ----------
+test('LMNP réel, plusieurs biens : amortissement limité au résultat de l’activité, excédent suivi par bien', async () => {
+  const { reelBicActivity } = await import('../src/domain/fiscal.ts');
+  // résultats avant amortissement 4 267 €, 4 820 € et −3 731 € ; dotations 7 508 €, 9 853 € et 3 161 € (meubles amortis sur un an)
+  const mk = (id: string, rent: number, charges: number, dep: number) => ({
+    p: prop({ id, title: id, tax_regime: 'reel_bic', acquired_at: '2025-01-01', acquisition_cost: null }),
+    e: [exp('loyer', rent, '2025-03-01', { property_id: id, nature: 'tresorerie' }), exp('copropriete', charges, '2025-03-01', { property_id: id }),
+      exp('mobilier', dep, '2025-01-01', { property_id: id, amortization_years: 1 })],
+  });
+  const b = [mk('paris18', 10000, 5733, 7508), mk('vincennes', 10000, 5180, 9853), mk('crimee', 1000, 4731, 3161)];
+  const d: FiscalData = { properties: b.map((x) => x.p), leases: [], charges: [], payments: [], allocations: [], expenses: b.flatMap((x) => x.e) };
+  const rs = reelBicActivity(b.map((x) => x.p), 2025, d, () => ({}));
+  assert.deepEqual(rs.map((r) => r.resultBeforeDepreciation), [4267, 4820, -3731]);
+  assert.deepEqual(rs.map((r) => r.depreciationYear), [7508, 9853, 3161]);
+  // activité : 5 356 € avant amortissements ; 20 522 € de dotations → 15 166 € reportés, aucun déficit
+  assert.equal(rs.reduce((a, r) => a + r.box5NA - r.box5NY, 0), 0);
+  // excédent réparti au prorata des dotations : 5 548, 7 282 et 2 336 € dans la liasse (arrondis à l'euro)
+  [5548, 7282, 2336].forEach((v, i) => assert.ok(Math.abs(rs[i]!.deferredAdded - v) <= 1, `${rs[i]!.propertyId} : ${rs[i]!.deferredAdded}`));
+  assert.equal(Math.round(rs.reduce((a, r) => a + r.deferredAfter, 0) * 100) / 100, 15166);
+  const s = fiscalSummary(2025, d, () => ({}));
+  assert.equal(s.reelBic!.box5NY, 0, 'ancien calcul par bien : 3 731 € de déficit créé par l’amortissement');
+  assert.equal(s.reelBic!.box5NA, 0);
+  assert.equal(s.reelBic!.liasse.fiscalResult, 0);
+  assert.equal(s.reelBic!.liasse.deferredAfter, 15166);
+});
+
+test('LMNP réel : stock d’ouverture repris d’une liasse, puis utilisé quand l’activité redevient bénéficiaire', async () => {
+  const { reelBicActivity } = await import('../src/domain/fiscal.ts');
+  const p = prop({ id: 'p1', tax_regime: 'reel_bic', acquired_at: '2023-01-01', acquisition_cost: null });
+  const d = data(p, [exp('loyer', 12000, '2025-03-01', { nature: 'tresorerie' }), exp('copropriete', 2000, '2025-03-01'), exp('mobilier', 3000, '2025-01-01', { amortization_years: 1 })]);
+  const [r] = reelBicActivity([p], 2025, d, (_pid, y) => (y === 2025 ? { deferred_opening: 10459 } : {}));
+  assert.equal(r!.deferredBefore, 10459);
+  assert.equal(r!.resultBeforeDepreciation, 10000);
+  assert.equal(r!.deferredAdded, 0);
+  assert.equal(r!.deferredUsed, 7000, 'dotation de l’année d’abord (3 000), puis 7 000 du stock');
+  assert.equal(r!.deferredAfter, 3459);
+  assert.equal(r!.box5NA, 0);
+});

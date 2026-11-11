@@ -6,11 +6,14 @@ import { money2, todayParis } from '../domain/format.ts';
 import { DEFAULT_TAX_INPUTS, depreciationItems, FONCIER_DEFICIT_LIMIT, fiscalSummary, MEUBLE_KIND_LABELS, MICRO_BIC_LIMIT, MICRO_FONCIER_LIMIT, type FiscalSummary } from '../domain/fiscal.ts';
 import { declarationGuide, guideSections } from '../domain/taxGuide.ts';
 import { buildDocPdf } from '../domain/docPdf.ts';
+import { liasseDoc } from '../domain/liassePdf.ts';
+import { CERFA_FILES } from '../domain/cerfaOfficial.ts';
 import { TAX_REGIME_LABELS } from '../domain/labels.ts';
 import { Button, EmptyState, NumberInput, PageHeader, Section, Select } from '../ui/components.tsx';
 import { reviewBilan } from '../domain/bilanReview.ts';
 import { navigate } from '../ui/router.ts';
 import { BilanReviewSection } from './FiscalBilan.tsx';
+import { AssetsDetail, DeferredTracking, recapFromFoncier, recapFromReelBic, ResultRecap } from './FiscalRecap.tsx';
 import { href } from '../ui/router.ts';
 import { tdfcVisible } from '../data/tdfc.ts';
 
@@ -21,7 +24,7 @@ const FOYER = 'foyer';
 type NumKey = Exclude<keyof TaxPropertyInputs, 'meuble_kind' | 'bilan_corrections'>;
 
 export function FiscalPage() {
-  const { data, update, saveSettings, notify } = useStore();
+  const { repo, data, update, saveSettings, notify } = useStore();
   const thisYear = Number(todayParis().slice(0, 4));
   const years = useMemo(() => {
     const ys = new Set<number>([thisYear - 1, thisYear]);
@@ -74,6 +77,29 @@ export function FiscalPage() {
       footer: `Immo-Zen – déclaration ${year + 1}`,
     });
     downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), `immo-zen-dossier-declaration-${year}.pdf`);
+  }
+
+  /** Liasse LMNP en document de travail (forme des liasses des services en ligne). */
+  async function exportLiasse() {
+    if (!fiscal.reelBic) return;
+    let declarant: Parameters<typeof liasseDoc>[0]['declarant'] = null;
+    try {
+      const api = repo.platform.tdfc;
+      if (await api.ready()) {
+        const d = await api.declarant();
+        const addr = (a: { street: string; zip: string; city: string } | null | undefined) => (a ? `${a.street}, ${a.zip} ${a.city}` : null);
+        if (d) declarant = { name: d.name, siren: d.siren, address: addr(d.address), home: addr(d.home) };
+      }
+    } catch { /* identité facultative : la liasse reste éditable sans elle */ }
+    const lib = await import('pdf-lib');
+    // imprimés officiels livrés avec l'application ; à défaut, formulaires redessinés
+    let cerfa = null;
+    try {
+      const get = async (f: string) => { const r = await fetch(f); if (!r.ok) throw new Error(f); return new Uint8Array(await r.arrayBuffer()); };
+      cerfa = { f2031: await get(CERFA_FILES.f2031), f2033: await get(CERFA_FILES.f2033) };
+    } catch { cerfa = null; }
+    const bytes = await buildDocPdf(lib as never, liasseDoc({ year, reel: fiscal.reelBic, properties: data.properties, bilan: bilanReview?.bilan ?? null, declarant, editedOn: todayParis(), cerfa }));
+    downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), `immo-zen-liasse-lmnp-${year}.pdf`);
   }
 
   async function saveInputs() {
@@ -193,6 +219,8 @@ export function FiscalPage() {
 
           {fiscal.reelFoncier && (
             <Section title="Revenus fonciers au réel — formulaire 2044">
+              <ResultRecap title="Récapitulatif du résultat" rows={recapFromFoncier(fiscal.reelFoncier.perProperty)} properties={data.properties} />
+              <h3>Détail du formulaire 2044</h3>
               <div className="dt-scroll"><table className="dt-table compact tax-2044">
                 <thead><tr><th>Ligne</th><th>Libellé</th>{fiscal.reelFoncier.perProperty.map((f) => <th key={f.propertyId} className="num">{title(f.propertyId)}</th>)}{fiscal.reelFoncier.perProperty.length > 1 && <th className="num">Total</th>}</tr></thead>
                 <tbody>{fiscal.reelFoncier.perProperty[0]!.lines.map((l, i) => {
@@ -253,8 +281,19 @@ export function FiscalPage() {
 
           {fiscal.reelBic && (
             <Section title="Location meublée au réel (LMNP) — 2031, 2033 et 2042-C-PRO"
-              actions={tdfcVisible() ? <Button variant="primary" onClick={() => navigate('/declaration/teletransmission')}>Télétransmettre la liasse</Button> : undefined}>
+              actions={<>
+                <Button onClick={() => void exportLiasse()}>Liasse PDF</Button>
+                {tdfcVisible() && <Button variant="primary" onClick={() => navigate('/declaration/teletransmission')}>Télétransmettre la liasse</Button>}
+              </>}>
               <KeyRows rows={[['Case 5NA : bénéfice', fiscal.reelBic.box5NA], ['Case 5NY : déficit', fiscal.reelBic.box5NY]]} />
+              <ResultRecap title="Récapitulatif du résultat comptable" rows={recapFromReelBic(fiscal.reelBic.perProperty)} properties={data.properties}
+                footer={[[`Résultat fiscal ${year} (${fiscal.reelBic.box5NY ? 'case 5NY' : 'case 5NA'})`, fiscal.reelBic.box5NY ? -fiscal.reelBic.box5NY : fiscal.reelBic.box5NA],
+                  ['Amortissements reportables au 31 décembre', fiscal.reelBic.liasse.deferredAfter]]} />
+              {fiscal.reelBic.perProperty.some((r) => r.depreciationYear > 0 || r.deferredBefore > 0) && (
+                <DeferredTracking list={fiscal.reelBic.perProperty} properties={data.properties} year={year}
+                  opening={(pid) => inputs[String(year)]?.[pid]?.deferred_opening ?? null} setOpening={(pid, v) => setInput(String(year), pid, 'deferred_opening', v)} />
+              )}
+              <AssetsDetail liasse={fiscal.reelBic.liasse} properties={data.properties} year={year} />
               <h3>Compte de résultat simplifié (2033-B)</h3>
               <div className="dt-scroll"><table className="dt-table compact tax-2033">
                 <thead><tr><th>Ligne</th><th>Libellé</th><th className="num">Montant</th></tr></thead>

@@ -255,7 +255,10 @@ export interface ReelBic {
   deferredBefore: number;
   depreciationDeducted: number;
   deferredAfter: number;
-  /** 2042-C-PRO : 5NA (bénéfice) ou 5NY (déficit). */
+  /** Suivi des amortissements excédentaires du bien : stock utilisé dans l'année, excédent de l'année ajouté au stock. */
+  deferredUsed: number;
+  deferredAdded: number;
+  /** Part du bien dans le résultat fiscal de l'activité (5NA si positif, 5NY si négatif ; seule la somme se déclare). */
   box5NA: number;
   box5NY: number;
   warnings: string[];
@@ -315,44 +318,79 @@ export function depreciationItems(p: Property, year: number, d: FiscalData, inpu
   return { items, warnings };
 }
 
-/** Résultat LMNP au réel de l'année ; l'amortissement ne peut créer ni augmenter un déficit (art. 39 C du CGI) : l'excédent est reporté. */
+/** Résultat LMNP au réel d'un seul bien (activité réduite à ce bien). */
 export function reelBic(p: Property, year: number, d: FiscalData, inputsByYear: (y: number) => TaxPropertyInputs): ReelBic {
-  const first = Math.min(year, Number((p.acquired_at ?? `${year}`).slice(0, 4)));
-  let deferred = 0;
-  let out: ReelBic | null = null;
+  return reelBicActivity([p], year, d, (_pid, y) => inputsByYear(y))[0]!;
+}
+
+/** Répartit `total` au prorata de `weights` (arrondi au centime, le reste sur la dernière part non nulle). */
+function prorata(total: number, weights: number[]): number[] {
+  const w = sum(weights);
+  if (!total || !w) return weights.map(() => 0);
+  const out = weights.map((x) => round2(total * x / w));
+  const last = weights.map((x, i) => (x ? i : -1)).filter((i) => i >= 0).pop()!;
+  out[last] = round2(out[last]! + total - sum(out));
+  return out;
+}
+
+/**
+ * Résultat de l'activité de location meublée au réel (tous les meublés au réel du foyer), année par année.
+ * L'amortissement ne peut ni créer ni augmenter un déficit (art. 39 C du CGI) : la limite s'apprécie sur
+ * l'activité (résultat avant amortissements de tous les biens), comme dans la liasse 2031/2033.
+ * Les dotations de l'année s'imputent d'abord, puis le stock reporté des années précédentes.
+ * Suivi par bien : l'excédent de l'année est réparti au prorata des dotations, le stock utilisé au prorata
+ * des stocks de début d'année. Un stock d'ouverture saisi (reprise d'une liasse déposée ailleurs) remplace le calcul.
+ */
+export function reelBicActivity(props: Property[], year: number, d: FiscalData, inputs: (propertyId: string, y: number) => TaxPropertyInputs): ReelBic[] {
+  if (!props.length) return [];
+  const first = Math.min(year, ...props.map((p) => Number((p.acquired_at ?? `${year}`).slice(0, 4))));
+  const stock = new Map(props.map((p) => [p.id, 0]));
+  let out: ReelBic[] = [];
   for (let y = first; y <= year; y++) {
-    const inputs = inputsByYear(y);
-    const a = yearAmounts(p, y, d, inputs);
-    const receipts = round2(a.rentsHC + a.chargesCollected + a.otherIncome);
-    const charges = [
-      { label: 'Charges de copropriété', amount: catCur(a, 'copropriete') },
-      { label: 'Taxe foncière', amount: catCur(a, 'taxe_fonciere') },
-      { label: 'Assurances', amount: catCur(a, 'assurance') },
-      { label: 'Entretien et petits travaux', amount: catCur(a, 'entretien') },
-      { label: 'Gestion locative', amount: catCur(a, 'gestion') },
-      { label: 'Frais bancaires et financiers', amount: catCur(a, 'frais_bancaires') },
-      { label: 'Frais de crédit', amount: catCur(a, 'frais_credit') },
-      { label: 'Assurance emprunteur', amount: a.loanInsurance },
-      { label: 'Autres charges', amount: catCur(a, 'autre') },
-    ].filter((c) => c.amount > 0);
-    const chargesTotal = sum(charges.map((c) => c.amount));
-    const r0 = round2(receipts - chargesTotal - a.interest);
-    const dep = depreciationItems(p, y, d, inputs);
-    const depYear = sum(dep.items.map((i) => i.amount));
-    const available = round2(depYear + deferred);
-    const deducted = r0 > 0 ? round2(Math.min(available, r0)) : 0;
-    const deferredBefore = deferred;
-    deferred = round2(available - deducted);
-    if (y === year) {
-      out = {
-        propertyId: p.id, receipts, charges, chargesTotal, interest: a.interest, resultBeforeDepreciation: r0,
-        depreciation: dep.items, depreciationYear: depYear, deferredBefore, depreciationDeducted: deducted, deferredAfter: deferred,
-        box5NA: r0 > 0 ? round2(r0 - deducted) : 0, box5NY: r0 < 0 ? round2(-r0) : 0,
-        warnings: [...a.warnings, ...dep.warnings],
+    const rows = props.map((p) => {
+      const inp = inputs(p.id, y);
+      if (inp.deferred_opening !== undefined && inp.deferred_opening !== null) stock.set(p.id, round2(inp.deferred_opening));
+      const a = yearAmounts(p, y, d, inp);
+      const receipts = round2(a.rentsHC + a.chargesCollected + a.otherIncome);
+      const charges = [
+        { label: 'Charges de copropriété', amount: catCur(a, 'copropriete') },
+        { label: 'Taxe foncière', amount: catCur(a, 'taxe_fonciere') },
+        { label: 'Assurances', amount: catCur(a, 'assurance') },
+        { label: 'Entretien et petits travaux', amount: catCur(a, 'entretien') },
+        { label: 'Gestion locative', amount: catCur(a, 'gestion') },
+        { label: 'Frais bancaires et financiers', amount: catCur(a, 'frais_bancaires') },
+        { label: 'Frais de crédit', amount: catCur(a, 'frais_credit') },
+        { label: 'Assurance emprunteur', amount: a.loanInsurance },
+        { label: 'Autres charges', amount: catCur(a, 'autre') },
+      ].filter((c) => c.amount > 0);
+      const chargesTotal = sum(charges.map((c) => c.amount));
+      const r0 = round2(receipts - chargesTotal - a.interest);
+      const dep = depreciationItems(p, y, d, inp);
+      return { p, a, receipts, charges, chargesTotal, r0, dep, depYear: sum(dep.items.map((i) => i.amount)), before: stock.get(p.id)! };
+    });
+    const R0 = sum(rows.map((r) => r.r0));
+    const depTotal = sum(rows.map((r) => r.depYear));
+    const stockBefore = sum(rows.map((r) => r.before));
+    const room = Math.max(0, R0);
+    const fromYear = round2(Math.min(depTotal, room));
+    const used = round2(Math.min(stockBefore, room - fromYear));
+    const excess = prorata(round2(depTotal - fromYear), rows.map((r) => r.depYear));
+    const usedBy = prorata(used, rows.map((r) => r.before));
+    out = rows.map((r, i) => {
+      const deducted = round2(r.depYear - excess[i]! + usedBy[i]!);
+      const after = round2(r.before - usedBy[i]! + excess[i]!);
+      stock.set(r.p.id, after);
+      const fiscal = round2(r.r0 - deducted);
+      return {
+        propertyId: r.p.id, receipts: r.receipts, charges: r.charges, chargesTotal: r.chargesTotal, interest: r.a.interest, resultBeforeDepreciation: r.r0,
+        depreciation: r.dep.items, depreciationYear: r.depYear, deferredBefore: r.before, depreciationDeducted: deducted, deferredAfter: after,
+        deferredUsed: usedBy[i]!, deferredAdded: excess[i]!,
+        box5NA: fiscal > 0 ? fiscal : 0, box5NY: fiscal < 0 ? -fiscal : 0,
+        warnings: [...r.a.warnings, ...r.dep.warnings],
       };
-    }
+    });
   }
-  return out!;
+  return out;
 }
 
 // ---------------------------------------------------------------- emprunts au bilan
@@ -391,7 +429,7 @@ export interface Liasse2033B {
   deferredUsed: number;
   fiscalResult: number;
   /** Immobilisations (2033-C) : valeurs brutes et amortissements cumulés en fin d'exercice. */
-  assets: { label: string; gross: number; cumulated: number; kind: DepreciationItem['kind'] | 'terrain'; start: string; dotation: number }[];
+  assets: { propertyId?: string; label: string; gross: number; cumulated: number; kind: DepreciationItem['kind'] | 'terrain'; start: string; dotation: number; years?: number | null }[];
   /** Emprunts (bilan 2033-A) : capital restant dû en fin d'exercice et part à plus d'un an. */
   loans: { remaining: number; beyondOneYear: number };
   /** Amortissements différés restant à imputer en fin d'exercice. */
@@ -423,8 +461,8 @@ export function liasse2033B(list: ReelBic[], year: number, d: FiscalData, inputs
     const base = inp.depreciable_base ?? p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null;
     const landPct = inp.land_pct ?? DEFAULT_TAX_INPUTS.land_pct;
     if (base && p.acquired_at && landPct > 0 && p.acquired_at.slice(0, 4) <= String(year))
-      assets.push({ label: `${p.title} – Terrain (${landPct} %, non amortissable)`, gross: round2(base * landPct / 100), cumulated: 0, kind: 'terrain', start: p.acquired_at, dotation: 0 });
-    for (const i of items) assets.push({ label: `${p.title} – ${i.label}`, gross: i.base, cumulated: i.cumulated, kind: i.kind, start: i.start, dotation: i.amount });
+      assets.push({ propertyId: p.id, label: `${p.title} – Terrain (${landPct} %, non amortissable)`, gross: round2(base * landPct / 100), cumulated: 0, kind: 'terrain', start: p.acquired_at, dotation: 0, years: null });
+    for (const i of items) assets.push({ propertyId: p.id, label: `${p.title} – ${i.label}`, gross: i.base, cumulated: i.cumulated, kind: i.kind, start: i.start, dotation: i.amount, years: i.years });
     const { remaining: end, beyondOneYear: next } = loanBalance(p, year, inp);
     loans.remaining = round2(loans.remaining + end);
     loans.beyondOneYear = round2(loans.beyondOneYear + next);
@@ -515,7 +553,7 @@ export function fiscalSummary(year: number, d: FiscalData, inputs: (propertyId: 
 
   let reel: FiscalSummary['reelBic'] = null;
   if (byRegime.reel_bic.length) {
-    const perProperty = byRegime.reel_bic.map((p) => reelBic(p, year, d, (y) => inputs(p.id, y)));
+    const perProperty = reelBicActivity(byRegime.reel_bic, year, d, inputs);
     // les résultats des différents meublés se compensent dans la même activité LMNP
     const total = sum(perProperty.map((r) => r.box5NA - r.box5NY));
     reel = { perProperty, box5NA: total > 0 ? total : 0, box5NY: total < 0 ? round2(-total) : 0, liasse: liasse2033B(perProperty, year, d, inputs) };

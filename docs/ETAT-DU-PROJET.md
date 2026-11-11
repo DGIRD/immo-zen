@@ -252,6 +252,16 @@ Tout le périmètre du cahier des charges est livré. Reste **à configurer** : 
 |---|---|---|
 | Camembert (anneau) des dépenses affichées par catégorie, 7 catégories nommées + « Autres », couleurs fixes (palette validée daltonisme, clair et sombre), légende avec montant et part, infobulle au survol ; clic sur une part ou la légende = filtre Catégorie, second clic = retrait (`src/domain/expenseBreakdown.ts`, `ExpensePie.tsx`) | Implémenté et testé | unitaires + e2e |
 
+## Déclaration : récapitulatifs au format des liasses (10 novembre 2026)
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Récapitulatif du résultat par bien (recettes, charges, intérêts et assurance d'emprunt, amortissement, résultat ; total global ; résultat avant imputation des déficits antérieurs) en LMNP réel et en foncier réel ; colonne Amortissement masquée sans dotation | Implémenté et testé | e2e |
+| LMNP réel : limite de l'art. 39 C appréciée sur l'activité (et non plus bien par bien) ; dotations de l'année imputées avant le stock ; excédent réparti par bien au prorata des dotations, stock utilisé au prorata des stocks (`reelBicActivity`) — reproduit la liasse 2025 déposée (15 166 € reportés, aucun déficit) | Implémenté et testé | unitaires |
+| Suivi des amortissements excédentaires reportables par bien (stock au 1/1, utilisé, report stocké, stock au 31/12), avec reprise du stock d'ouverture d'une liasse déposée ailleurs (`deferred_opening`) | Implémenté et testé | unitaires + e2e |
+| Détail des immobilisations par bien (valeur brute, dotation, amortissement annuel, reste au 1/1 et au 31/12, cumul) | Implémenté et testé | e2e |
+| **Liasse PDF** (LMNP réel) : document de travail sur le modèle des liasses des services en ligne — synthèse, reports 2042-C-PRO, résultat de l'activité, récapitulatifs par bien, suivi 39 C, détail des immobilisations, **imprimés officiels** 2031-SD (page 1) et 2033-SD A à G (millésime 2026, PDF de impots.gouv.fr livrés dans `public/cerfa/`) remplis case par case comme les services en ligne : positions des cases calculées par `scripts/cerfa_layout.py` → `src/domain/cerfaLayout.ts`, remplissage `cerfaOfficial.ts` ; formulaires redessinés (`cerfaPdf.ts`) en secours si les imprimés ne se chargent pas. **À refaire à chaque millésime** (nouveaux PDF, relancer le script) | Implémenté et testé | unitaires + e2e |
+
 ## Limites connues
 
 ### Lot 2

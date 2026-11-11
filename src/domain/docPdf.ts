@@ -3,12 +3,22 @@
  * Polices standard (encodage WinAnsi) : les caractères non représentables sont remplacés.
  */
 import { pdfSafe } from '../../supabase/functions/_shared/receiptPdf.ts';
-import type { DocSection } from './leaseContract.ts';
+import type { Block } from './leaseContract.ts';
+
+/** Tableau : en-têtes, lignes, largeurs relatives et alignement par colonne ; `total` met la dernière ligne en gras. */
+export interface TableBlock { t: 'table'; head: string[]; rows: string[][]; widths?: number[]; align?: ('l' | 'r')[]; total?: boolean; caption?: string }
+export type PdfBlock = Block | TableBlock;
+export interface PdfSection { title: string; blocks: PdfBlock[]; newPage?: boolean }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type PdfLib = { PDFDocument: { create(): Promise<any> }; StandardFonts: { Helvetica: string; HelveticaBold: string }; rgb(r: number, g: number, b: number): unknown };
+type PdfLib = { PDFDocument: { create(): Promise<any> }; StandardFonts: { Helvetica: string; HelveticaBold: string; Courier?: string }; rgb(r: number, g: number, b: number): unknown; degrees?: (d: number) => unknown };
 
-export interface PdfDoc { title: string; subtitle?: string; sections: DocSection[]; footer?: string }
+export interface PdfDoc {
+  title: string; subtitle?: string; sections: PdfSection[]; footer?: string;
+  /** Pages dessinées à la main après les sections (formulaires), numérotées avec le reste. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  extraPages?: (ctx: { pdf: any; lib: any; font: any; bold: any }) => Promise<void>;
+}
 
 const W = 595.28, H = 841.89, M = 50;
 
@@ -52,6 +62,7 @@ export async function buildDocPdf(lib: PdfLib, doc: PdfDoc): Promise<Uint8Array>
   y -= 8;
 
   for (const s of doc.sections) {
+    if (s.newPage && y < H - M - 1) { page = pdf.addPage([W, H]); y = H - M; }
     need(40);
     y -= 6;
     text(pdfSafe(s.title), M, 11, bold);
@@ -62,6 +73,39 @@ export async function buildDocPdf(lib: PdfLib, doc: PdfDoc): Promise<Uint8Array>
       if (b.t === 'p') {
         for (const l of wrap(b.text, font, 9.5, W - 2 * M)) { need(13); text(l, M, 9.5); y -= 12.5; }
         y -= 4;
+      } else if (b.t === 'table') {
+        const fs = 7.6, lh = 9.4, pad = 3;
+        const total = W - 2 * M;
+        const rel = b.widths ?? b.head.map((_, i) => (i === 0 ? 3 : 1.4));
+        const sumRel = rel.reduce((a, x) => a + x, 0);
+        const cw = rel.map((x) => (x / sumRel) * total);
+        const align = b.align ?? b.head.map((_, i) => (i === 0 ? 'l' : 'r'));
+        const xs = cw.map((_, i) => M + cw.slice(0, i).reduce((a, x) => a + x, 0));
+        const cellLines = (row: string[], f: typeof font) => row.map((c, i) => wrap(c || '', f, fs, cw[i]! - 2 * pad));
+        const drawRow = (row: string[], f: typeof font, color: unknown, shade: boolean) => {
+          const lines = cellLines(row, f);
+          const h = Math.max(1, ...lines.map((l) => l.length)) * lh + 2 * pad;
+          need(h);
+          if (shade) page.drawRectangle({ x: M, y: y - h, width: total, height: h, color: lib.rgb(0.93, 0.95, 0.94) });
+          lines.forEach((ls, i) => ls.forEach((l, k) => {
+            const w = f.widthOfTextAtSize(l, fs);
+            const x = align[i] === 'r' ? xs[i]! + cw[i]! - pad - w : xs[i]! + pad;
+            page.drawText(l, { x, y: y - pad - (k + 1) * lh + 2, size: fs, font: f, color });
+          }));
+          y -= h;
+          page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.4, color: rule });
+        };
+        if (b.caption) { for (const l of wrap(b.caption, bold, 9, total)) { need(30); text(l, M, 9, bold); y -= 12; } y -= 2; }
+        need(lh * 3);
+        drawRow(b.head, bold, ink, true);
+        b.rows.forEach((r, i) => {
+          const f = b.total && i === b.rows.length - 1 ? bold : font;
+          const h = Math.max(1, ...cellLines(r, f).map((l) => l.length)) * lh + 2 * pad;
+          // saut de page : l'en-tête du tableau est répété
+          if (y - h < M + 20) { page = pdf.addPage([W, H]); y = H - M; drawRow(b.head, bold, ink, true); }
+          drawRow(r, f, ink, false);
+        });
+        y -= 16;
       } else if (b.t === 'list') {
         for (const it of b.items) {
           const lines = wrap(it, font, 9.5, W - 2 * M - 14);
@@ -95,10 +139,14 @@ export async function buildDocPdf(lib: PdfLib, doc: PdfDoc): Promise<Uint8Array>
       }
     }
   }
+  const body = pdf.getPageCount();
+  if (doc.extraPages) await doc.extraPages({ pdf, lib, font, bold });
   const pages = pdf.getPages();
   pages.forEach((p: { drawText: (s: string, o: object) => void }, i: number) => {
     const label = `${doc.footer ? pdfSafe(doc.footer) + ' - ' : ''}Page ${i + 1} / ${pages.length}`;
-    p.drawText(label, { x: M, y: 28, size: 7.5, font, color: grey });
+    // pages de formulaires : numérotation dans la marge haute, le bas de page appartient à l'imprimé
+    if (i >= body) p.drawText(label, { x: 24, y: H - 14, size: 6.5, font, color: grey });
+    else p.drawText(label, { x: M, y: 28, size: 7.5, font, color: grey });
   });
   return pdf.save();
 }

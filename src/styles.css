@@ -705,3 +705,19 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 .pie-legend-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pie-legend-value, .pie-legend-share { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 560px) { .expense-pie-body { justify-content: center; } .expense-pie-chart, .expense-pie-chart svg { width: 180px; height: 180px; } }
+
+/* ---------- Déclaration : récapitulatifs (forme des liasses) ---------- */
+.tax-recap { margin: 1.25rem 0; }
+.tax-recap h3 { margin: 0 0 .5rem; }
+.recap-address { display: block; font-weight: 400; }
+.tax-recap-table td.num, .tax-recap-table th.num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tax-recap-table tfoot tr.total td { font-weight: 700; color: var(--sapin); border-top: 2px solid var(--line-strong); }
+.tax-recap-table tfoot tr.total td.neg { color: var(--brique); }
+.tax-recap-result { margin: .75rem 0 0; padding: .75rem 1rem; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper); display: grid; gap: .4rem; }
+.tax-recap-result > div { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+.tax-recap-result dt { color: var(--ink-soft); }
+.tax-recap-result dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tax-recap-result > div:first-child dd { font-size: 1.15rem; }
+.tax-recap-opening { margin-top: .5rem; }
+.tax-assets { margin-bottom: 1rem; }
+.tax-assets .label { margin: .75rem 0 .35rem; font-weight: 600; }
