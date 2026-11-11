@@ -79,6 +79,8 @@ export interface Property extends Versioned {
   acquired_at: string | null;
   acquisition_cost: number | null;
   acquisition_snapshot: AcquisitionSnapshot | null;
+  /** Décomposition du coût d'acquisition pour l'amortissement au réel (facultatif). */
+  acquisition_breakdown?: AcquisitionBreakdown | null;
   primary_scenario_id: string | null;
   legacy_simulation_id: string | null;
   legacy_ref: string | null;
@@ -99,6 +101,25 @@ export interface EstimateDetails {
   adjustments?: import('../domain/valuationFeatures.ts').FeatureAdjustment[];
   confidence?: { score: number; label: string; reasons: string[] };
   method?: { trendPerYear: number; sizeElasticity: number; effective: number };
+}
+
+/**
+ * Décomposition du coût d'acquisition (Mes biens), comme dans les liasses LMNP : terrain non amortissable,
+ * construction, frais de notaire, frais d'agence et mobilier compris dans la vente, chacun avec sa durée.
+ */
+export interface AcquisitionBreakdown {
+  /** Prix d'achat net vendeur (terrain + construction + mobilier éventuel). */
+  price?: number | null;
+  /** Part du terrain dans le prix hors mobilier (%). */
+  land_pct?: number | null;
+  notary?: number | null;
+  agency?: number | null;
+  /** Mobilier compris dans le prix de vente (amorti à part). */
+  furniture?: number | null;
+  building_years?: number | null;
+  /** Durée des frais de notaire et d'agence (sinon celle de la construction). */
+  fees_years?: number | null;
+  furniture_years?: number | null;
 }
 
 export interface AcquisitionSnapshot {
