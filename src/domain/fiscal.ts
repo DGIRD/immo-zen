@@ -41,7 +41,8 @@ export interface MicroBicLine extends MicroBicRule { amount: number; taxable: nu
 export const FONCIER_DEFICIT_LIMIT = 10700;
 export const FORFAIT_222 = 20;
 export const DEFAULT_TAX_INPUTS: Required<Pick<TaxPropertyInputs, 'land_pct' | 'building_years' | 'furniture_years' | 'works_years'>> = {
-  land_pct: 15, building_years: 30, furniture_years: 7, works_years: 10,
+  // valeurs usuelles des liasses LMNP (decla.fr) : terrain 20 %, construction et frais 25 ans, meubles et travaux 10 ans
+  land_pct: 20, building_years: 25, furniture_years: 10, works_years: 10,
 };
 
 export interface FiscalData {

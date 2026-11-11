@@ -163,5 +163,5 @@ Le bouton **Télétransmettre la liasse** de la section LMNP mène à `#/declara
 ## Points à faire valider
 
 - La correspondance des lignes papier avec les codes EDI a été établie d'après les libellés du dictionnaire. Sont notamment à relire : CF et EL au 2033-B, CW et CX au 2031, et le bilan construit autour du compte de l'exploitant.
-- Le terrain est estimé par le pourcentage saisi (15 % par défaut) du coût d'acquisition.
+- Le terrain vient de la décomposition du coût d'acquisition (Mes biens) ; à défaut, il est estimé par le pourcentage saisi (20 % par défaut) du coût d'acquisition.
 - L'attestation de conformité EDIFICAS est indispensable avant tout envoi.

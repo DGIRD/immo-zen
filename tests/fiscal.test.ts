@@ -2,6 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Expense, Property } from '../src/data/types.ts';
 import { fiscalSummary, foncierBoxes, loanYear, reelBic, type FiscalData, type Foncier2044 } from '../src/domain/fiscal.ts';
+/** Paramètres d'amortissement d'avant le 11/11/2026 (terrain 15 %, bâti 30 ans, meubles 7 ans), sur lesquels ces cas sont chiffrés. */
+const LEGACY = { land_pct: 15, building_years: 30, furniture_years: 7, works_years: 10 };
+
 
 const prop = (o: Partial<Property>): Property => ({
   id: 'p1', user_id: 'u', version: 1, created_at: '', updated_at: '', title: 'T2', status: 'acquis', status_before_archive: null, occupation_status: 'loue',
@@ -89,7 +92,7 @@ test('LMNP réel : compte de résultat 2033-B et parcours impots.gouv', async ()
   const { declarationGuide, liasseDeadline } = await import('../src/domain/taxGuide.ts');
   const p = prop({ tax_regime: 'reel_bic', acquired_at: '2024-01-01', acquisition_cost: 300000 });
   const d = data(p, [exp('loyer', 10000, '2024-06-01'), exp('copropriete', 2000, '2024-06-01'), exp('loyer', 12000), exp('copropriete', 2000), exp('taxe_fonciere', 800), exp('mobilier', 7000, '2025-01-01')]);
-  const s = fiscalSummary(2025, d, () => ({}));
+  const s = fiscalSummary(2025, d, () => LEGACY);
   const l = Object.fromEntries(s.reelBic!.liasse.lines.map((x) => [x.code, x.amount]));
   assert.equal(l['218'], 12000);
   assert.equal(l['242'], 2000);
@@ -126,13 +129,13 @@ test('parcours : micro-foncier, réel 2044 avec déficits antérieurs (4BD), SCI
 test('LMNP réel : amortissement limité au résultat, excédent reporté', () => {
   const p = prop({ tax_regime: 'reel_bic', acquired_at: '2024-01-01', acquisition_cost: 300000 });
   const d = data(p, [exp('loyer', 10000, '2024-06-01'), exp('copropriete', 2000, '2024-06-01'), exp('loyer', 12000), exp('copropriete', 2000), exp('mobilier', 7000, '2025-01-01')]);
-  const r24 = reelBic(p, 2024, d, () => ({}));
+  const r24 = reelBic(p, 2024, d, () => LEGACY);
   assert.equal(r24.resultBeforeDepreciation, 8000);
   assert.equal(r24.depreciationYear, 8500, '300 000 × 85 % / 30');
   assert.equal(r24.depreciationDeducted, 8000);
   assert.equal(r24.box5NA, 0);
   assert.equal(r24.deferredAfter, 500);
-  const r25 = reelBic(p, 2025, d, () => ({}));
+  const r25 = reelBic(p, 2025, d, () => LEGACY);
   assert.equal(r25.deferredBefore, 500);
   assert.equal(r25.depreciationYear, 8500 + 1000);
   assert.equal(r25.box5NA, 0);
@@ -152,10 +155,10 @@ test('amortissement : durée personnalisée sur la dépense, cumul et reste, pas
   assert.equal(cuisine.years, 5);
   assert.equal(cuisine.amount, 1000);
   const canape = items.find((i) => i.label.includes('Canapé'))!;
-  assert.equal(canape.years, 7, 'durée par défaut des meubles');
-  assert.equal(canape.cumulated, 1000, 'deux années de 500 €');
-  assert.equal(canape.remaining, 2500);
-  const r = reelBic(p, 2025, d, () => ({}));
+  assert.equal(canape.years, 10, 'durée par défaut des meubles (10 ans, comme les liasses decla.fr)');
+  assert.equal(canape.cumulated, 700, 'deux années de 350 € (3 500 € sur 10 ans)');
+  assert.equal(canape.remaining, 2800);
+  const r = reelBic(p, 2025, d, () => LEGACY);
   assert.equal(r.charges.find((c) => c.label.startsWith('Entretien'))!.amount, 400, 'la cuisine amortie n’est pas aussi déduite en charge');
   assert.equal(r.depreciationYear, 8500 + 1000 + 500);
 });
@@ -228,5 +231,6 @@ test('décomposition : terrain, construction, notaire et agence amortis séparé
 test('décomposition : mobilier compris dans la vente amorti à part, durées par défaut', async () => {
   const { acquisitionComponents } = await import('../src/domain/fiscal.ts');
   const c = acquisitionComponents({ acquisition_breakdown: { price: 200000, furniture: 5000, notary: 15000 } })!;
-  assert.deepEqual(c.map((x) => [x.label, x.base, x.years]), [['Terrain', 29250, null], ['Construction', 165750, 30], ['Frais de notaire', 15000, 30], ['Mobilier compris dans la vente', 5000, 7]]);
+  // valeurs par défaut des liasses decla.fr : terrain 20 %, construction et frais 25 ans, mobilier 10 ans
+  assert.deepEqual(c.map((x) => [x.label, x.base, x.years]), [['Terrain', 39000, null], ['Construction', 156000, 25], ['Frais de notaire', 15000, 25], ['Mobilier compris dans la vente', 5000, 10]]);
 });

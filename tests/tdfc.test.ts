@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import type { Expense, Property } from '../src/data/types.ts';
 import { fiscalSummary, type FiscalData, type Liasse2033B } from '../src/domain/fiscal.ts';
 import { amount, encodeLatin9, escape, invalidLatin9, segment } from '../src/domain/edi/edifact.ts';
+/** Paramètres d'amortissement d'avant le 11/11/2026 (terrain 15 %, bâti 30 ans, meubles 7 ans), sur lesquels ces cas sont chiffrés. */
+const LEGACY = { land_pct: 15, building_years: 30, furniture_years: 7, works_years: 10 };
+
 import {
   bilan2033A, buildInterchange, campaignFor, checkRequest, dataCode, encodeInterchange, interchangeRef, liasseItems, validSiren, type TdfcRequest,
 } from '../src/domain/edi/tdfc.ts';
@@ -77,7 +80,7 @@ const data: FiscalData = {
 };
 
 function liasse(): Liasse2033B {
-  const s = fiscalSummary(2025, data, () => ({}));
+  const s = fiscalSummary(2025, data, () => LEGACY);
   assert.ok(s.reelBic, 'liasse LMNP au réel calculée');
   return s.reelBic.liasse;
 }
@@ -159,7 +162,7 @@ test('population fictive DGFiP (BIC IR RS) : SIREN et ROF acceptés', () => {
 
 test('2033-A : bilan équilibré par le compte de l’exploitant, terrain et emprunt repris', () => {
   const loanProp = { ...prop, loan_amount: 150000, loan_rate: 3, loan_years: 20, loan_start_date: '2024-02-05' } as Property;
-  const s = fiscalSummary(2025, { ...data, properties: [loanProp] }, () => ({}));
+  const s = fiscalSummary(2025, { ...data, properties: [loanProp] }, () => LEGACY);
   const l = s.reelBic!.liasse;
   const terrain = l.assets.find((a) => a.kind === 'terrain');
   assert.equal(terrain?.gross, 30000, 'terrain = 15 % de 200 000 €');
