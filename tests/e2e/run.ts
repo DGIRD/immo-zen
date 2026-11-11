@@ -1337,6 +1337,10 @@ async function main() {
     const liasseBytes = await readFile((await liassePdf.path())!);
     assert.equal(liasseBytes.subarray(0, 5).toString(), '%PDF-');
     await writeFile(join(out, 'liasse-lmnp.pdf'), liasseBytes);
+    // imprimés officiels joints (2031-SD page 1, 2033-SD A à G) : la liasse compte au moins 8 pages de formulaires
+    const { PDFDocument } = await import('pdf-lib');
+    const liasseDoc = await PDFDocument.load(liasseBytes);
+    assert.ok(liasseDoc.getPageCount() >= 11, `${liasseDoc.getPageCount()} pages`);
     await suivi.getByLabel('Parking détenu').fill('');
     await baseInput.fill('');
     await baseInput.press('Tab');

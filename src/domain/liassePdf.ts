@@ -12,6 +12,7 @@ import type { PdfDoc, PdfSection, TableBlock } from './docPdf.ts';
 import type { Bilan2033A } from './edi/tdfc.ts';
 import type { FiscalSummary, Liasse2033B, ReelBic } from './fiscal.ts';
 import { drawCerfaForms, type Boxes, type CerfaData } from './cerfaPdf.ts';
+import { drawOfficialCerfa, type CerfaSources } from './cerfaOfficial.ts';
 
 export interface LiasseInput {
   year: number;
@@ -22,6 +23,8 @@ export interface LiasseInput {
   declarant?: { name?: string | null; siren?: string | null; address?: string | null; home?: string | null } | null;
   /** Date d'édition (AAAA-MM-JJ). */
   editedOn: string;
+  /** Imprimés officiels (PDF de impots.gouv.fr) ; à défaut, formulaires redessinés. */
+  cerfa?: CerfaSources | null;
 }
 
 const r0 = (v: number) => Math.round(v);
@@ -153,7 +156,7 @@ export function liasseDoc(i: LiasseInput): PdfDoc {
     sections,
     footer: `Immo-Zen - liasse LMNP ${year} - document de travail`,
     // formulaires 2031 et 2033-A à D, case par case
-    extraPages: (ctx) => drawCerfaForms(ctx, cerfaData(i)),
+    extraPages: (ctx) => (i.cerfa ? drawOfficialCerfa(ctx, i.cerfa, cerfaData(i)) : drawCerfaForms(ctx, cerfaData(i))),
   };
 }
 
@@ -188,7 +191,7 @@ export function cerfaData(i: LiasseInput): CerfaData {
   const bl = i.bilan;
   const a: Boxes | null = bl ? {
     '028': bl.immoGross, '030': bl.immoDep, '044': bl.immoGross, '048': bl.immoDep, '072': bl.receivables, '084': bl.cash, '096': bl.currentTotal,
-    '110': bl.assetsGross, '112': bl.assetsDep, '120': bl.capital, '136': bl.result, '142': bl.equity, '156': bl.loans, '172': bl.otherDebts,
+    '110': bl.assetsGross, '112': bl.assetsDep, '120': bl.capital, '136': bl.result, '142': bl.equity, '156': bl.loans, '175': bl.otherDebts,
     '176': bl.debts, '180': bl.liabilities, '195': bl.loansBeyondOneYear, '182': bl.acquisitions,
   } : null;
   const d: Boxes = fiscal < 0 ? { '860': -fiscal, '870': -fiscal } : {};

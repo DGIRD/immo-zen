@@ -209,7 +209,7 @@ export async function drawCerfaForms(ctx: CerfaCtx, d: CerfaData): Promise<void>
       ['Résultat de l’exercice', '136', a['136']], ['Provisions réglementées', '140', undefined], ['Total I', '142', a['142'], true],
       ['Provisions pour risques et charges - Total II', '154', undefined, true],
       ['Emprunts et dettes assimilées', '156', a['156']], ['Avances et acomptes reçus sur commandes en cours', '164', undefined],
-      ['Fournisseurs et comptes rattachés *', '166', undefined], ['Autres dettes', '172', a['172']], ['Produits constatés d’avance', '174', undefined],
+      ['Fournisseurs et comptes rattachés *', '166', undefined], ['Dettes fiscales et sociales', '172', undefined], ['Autres dettes (dont dépôts de garantie reçus)', '175', a['175']], ['Produits constatés d’avance', '174', undefined],
       ['Total III', '176', a['176'], true], ['Total général (I + II + III)', '180', a['180'], true],
     ];
     for (const [lbl, code, v, strong] of passif) {
@@ -218,9 +218,9 @@ export async function drawCerfaForms(ctx: CerfaCtx, d: CerfaData): Promise<void>
       box(L + pl, y - h, cw, vw, h, code, v, code === '136');
       y -= h;
     }
-    vertical('CAPITAUX PROPRES', L, y + 8 * h, 14, 9 * h);
-    rect(L, y + 7 * h, 14, h);
-    vertical('DETTES (4)', L, y, 14, 7 * h);
+    vertical('CAPITAUX PROPRES', L, y + 9 * h, 14, 9 * h);
+    rect(L, y + 8 * h, 14, h);
+    vertical('DETTES (4)', L, y, 14, 8 * h);
     y -= 6;
     // renvois
     const rv: [string, string, number | undefined][] = [['(1) Dont immobilisations financières à moins d’un an', '193', undefined], ['(4) Dont dettes à plus d’un an', '195', a['195']],

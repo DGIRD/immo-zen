@@ -7,6 +7,7 @@ import { DEFAULT_TAX_INPUTS, depreciationItems, FONCIER_DEFICIT_LIMIT, fiscalSum
 import { declarationGuide, guideSections } from '../domain/taxGuide.ts';
 import { buildDocPdf } from '../domain/docPdf.ts';
 import { liasseDoc } from '../domain/liassePdf.ts';
+import { CERFA_FILES } from '../domain/cerfaOfficial.ts';
 import { TAX_REGIME_LABELS } from '../domain/labels.ts';
 import { Button, EmptyState, NumberInput, PageHeader, Section, Select } from '../ui/components.tsx';
 import { reviewBilan } from '../domain/bilanReview.ts';
@@ -91,7 +92,13 @@ export function FiscalPage() {
       }
     } catch { /* identité facultative : la liasse reste éditable sans elle */ }
     const lib = await import('pdf-lib');
-    const bytes = await buildDocPdf(lib as never, liasseDoc({ year, reel: fiscal.reelBic, properties: data.properties, bilan: bilanReview?.bilan ?? null, declarant, editedOn: todayParis() }));
+    // imprimés officiels livrés avec l'application ; à défaut, formulaires redessinés
+    let cerfa = null;
+    try {
+      const get = async (f: string) => { const r = await fetch(f); if (!r.ok) throw new Error(f); return new Uint8Array(await r.arrayBuffer()); };
+      cerfa = { f2031: await get(CERFA_FILES.f2031), f2033: await get(CERFA_FILES.f2033) };
+    } catch { cerfa = null; }
+    const bytes = await buildDocPdf(lib as never, liasseDoc({ year, reel: fiscal.reelBic, properties: data.properties, bilan: bilanReview?.bilan ?? null, declarant, editedOn: todayParis(), cerfa }));
     downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), `immo-zen-liasse-lmnp-${year}.pdf`);
   }
 

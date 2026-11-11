@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import * as lib from 'pdf-lib';
 import type { Expense, Property } from '../src/data/types.ts';
 import { fiscalSummary, type FiscalData } from '../src/domain/fiscal.ts';
@@ -69,4 +69,18 @@ test('liasse : sans amortissement, la colonne disparaît du récapitulatif', () 
   const recap = doc.sections.find((x) => x.title === 'Récapitulatif du résultat comptable')!.blocks[0] as TableBlock;
   assert.ok(!recap.head.includes('Amortissement'));
   assert.equal(doc.sections.find((x) => x.title.startsWith('Suivi des amortissements excédentaires')), undefined);
+});
+
+test('liasse : imprimés officiels 2031-SD et 2033-SD remplis case par case', async () => {
+  const s = fiscalSummary(2025, d, () => ({}));
+  const cerfa = { f2031: new Uint8Array(await readFile('public/cerfa/2031-sd_5396.pdf')), f2033: new Uint8Array(await readFile('public/cerfa/2033-sd_5394.pdf')) };
+  const bilan = { immoGross: 217361, immoDep: 19333, immoNet: 198028, receivables: 0, cash: 4200, currentTotal: 4200, assetsGross: 221561, assetsDep: 19333, assetsNet: 202228,
+    capital: 215000, result: -13977, equity: 201023, loans: 0, otherDebts: 1205, debts: 1205, liabilities: 202228, loansBeyondOneYear: 0, acquisitions: 217361, tracked: null, gap: 0,
+    gapExplained: { receivables: 0, payables: 0, loanBank: 0, manual: 0, other: 0 } };
+  const doc = liasseDoc({ year: 2025, reel: s.reelBic!, properties: props, bilan, declarant: { name: 'LOCATION GIRARDEAU', siren: '951680511', address: '8 passage Ruelle 75018 Paris', home: '10 rue Coli 94120 Fontenay-sous-Bois' }, editedOn: '2026-11-10', cerfa });
+  const bytes = await buildDocPdf(lib as never, doc);
+  const pdf = await lib.PDFDocument.load(bytes);
+  const body = (await lib.PDFDocument.load(await buildDocPdf(lib as never, { ...doc, extraPages: undefined }))).getPageCount();
+  assert.equal(pdf.getPageCount(), body + 1 + 7, '2031 page 1 + 2033-A à G');
+  if (process.env.LIASSE_CERFA_OUT) await writeFile(process.env.LIASSE_CERFA_OUT, bytes);
 });

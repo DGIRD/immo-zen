@@ -139,11 +139,14 @@ export async function buildDocPdf(lib: PdfLib, doc: PdfDoc): Promise<Uint8Array>
       }
     }
   }
+  const body = pdf.getPageCount();
   if (doc.extraPages) await doc.extraPages({ pdf, lib, font, bold });
   const pages = pdf.getPages();
   pages.forEach((p: { drawText: (s: string, o: object) => void }, i: number) => {
     const label = `${doc.footer ? pdfSafe(doc.footer) + ' - ' : ''}Page ${i + 1} / ${pages.length}`;
-    p.drawText(label, { x: M, y: 28, size: 7.5, font, color: grey });
+    // pages de formulaires : numérotation dans la marge haute, le bas de page appartient à l'imprimé
+    if (i >= body) p.drawText(label, { x: 24, y: H - 14, size: 6.5, font, color: grey });
+    else p.drawText(label, { x: M, y: 28, size: 7.5, font, color: grey });
   });
   return pdf.save();
 }
