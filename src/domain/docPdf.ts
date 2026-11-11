@@ -11,9 +11,14 @@ export type PdfBlock = Block | TableBlock;
 export interface PdfSection { title: string; blocks: PdfBlock[]; newPage?: boolean }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type PdfLib = { PDFDocument: { create(): Promise<any> }; StandardFonts: { Helvetica: string; HelveticaBold: string }; rgb(r: number, g: number, b: number): unknown };
+type PdfLib = { PDFDocument: { create(): Promise<any> }; StandardFonts: { Helvetica: string; HelveticaBold: string; Courier?: string }; rgb(r: number, g: number, b: number): unknown; degrees?: (d: number) => unknown };
 
-export interface PdfDoc { title: string; subtitle?: string; sections: PdfSection[]; footer?: string }
+export interface PdfDoc {
+  title: string; subtitle?: string; sections: PdfSection[]; footer?: string;
+  /** Pages dessinées à la main après les sections (formulaires), numérotées avec le reste. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  extraPages?: (ctx: { pdf: any; lib: any; font: any; bold: any }) => Promise<void>;
+}
 
 const W = 595.28, H = 841.89, M = 50;
 
@@ -134,6 +139,7 @@ export async function buildDocPdf(lib: PdfLib, doc: PdfDoc): Promise<Uint8Array>
       }
     }
   }
+  if (doc.extraPages) await doc.extraPages({ pdf, lib, font, bold });
   const pages = pdf.getPages();
   pages.forEach((p: { drawText: (s: string, o: object) => void }, i: number) => {
     const label = `${doc.footer ? pdfSafe(doc.footer) + ' - ' : ''}Page ${i + 1} / ${pages.length}`;

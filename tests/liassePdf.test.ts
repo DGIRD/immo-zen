@@ -5,7 +5,8 @@ import * as lib from 'pdf-lib';
 import type { Expense, Property } from '../src/data/types.ts';
 import { fiscalSummary, type FiscalData } from '../src/domain/fiscal.ts';
 import { buildDocPdf, type TableBlock } from '../src/domain/docPdf.ts';
-import { eur, liasseDoc } from '../src/domain/liassePdf.ts';
+import { cerfaData, eur, liasseDoc } from '../src/domain/liassePdf.ts';
+import { amount } from '../src/domain/cerfaPdf.ts';
 
 const prop = (id: string, title: string, o: Partial<Property> = {}): Property => ({
   id, user_id: 'u', version: 1, created_at: '', updated_at: '', title, status: 'acquis', status_before_archive: null, occupation_status: 'loue',
@@ -33,9 +34,7 @@ test('liasse LMNP : sections, reports 2042-C-PRO, récapitulatif, suivi 39 C et 
   const doc = liasseDoc({ year: 2025, reel: s.reelBic!, properties: props, bilan: null, declarant: { name: 'LOCATION GIRARDEAU', siren: '951680511' }, editedOn: '2026-11-10' });
   const titles = doc.sections.map((x) => x.title);
   for (const t of ['Synthèse de l\'exercice 2025', 'Reports sur votre déclaration de revenus 2026 (2042-C-PRO)', 'Résultat de l\'activité LMNP', 'Récapitulatif du résultat comptable',
-    'Suivi des amortissements excédentaires reportables par bien', 'Détail des immobilisations', '2031-SD - Déclaration de résultats (BIC, impôt sur le revenu)', '2033-B-SD - Compte de résultat simplifié',
-    '2033-C-SD - Immobilisations et amortissements', '2033-D-SD - Déficits reportables']) assert.ok(titles.includes(t), `section manquante : ${t}`);
-  assert.ok(!titles.some((t) => t.startsWith('2033-A')), 'sans bilan relu, pas de 2033-A');
+    'Suivi des amortissements excédentaires reportables par bien', 'Détail des immobilisations']) assert.ok(titles.includes(t), `section manquante : ${t}`);
   const table = (title: string) => doc.sections.find((x) => x.title === title)!.blocks.find((b) => b.t === 'table') as TableBlock;
   const reports = table('Reports sur votre déclaration de revenus 2026 (2042-C-PRO)');
   assert.deepEqual(reports.rows.map((r) => [r[0], r[2]]), [['5NA', eur(0)], ['5NY', eur(0)]]);
@@ -44,13 +43,22 @@ test('liasse LMNP : sections, reports 2042-C-PRO, récapitulatif, suivi 39 C et 
   assert.equal(recap.rows.at(-1)![0], 'Total global');
   const suivi = table('Suivi des amortissements excédentaires reportables par bien');
   assert.equal(suivi.rows.at(-1)![4], eur(s.reelBic!.liasse.deferredAfter));
-  const b = table('2033-B-SD - Compte de résultat simplifié');
-  assert.ok(b.rows.some((r) => r[0] === '318' && r[2] !== ''), 'réintégration ligne 318');
-  assert.ok(b.rows.some((r) => r[0] === '370'));
+  // formulaires, case par case
+  const f = cerfaData({ year: 2025, reel: s.reelBic!, properties: props, bilan: null, declarant: { name: 'LOCATION GIRARDEAU', siren: '951680511' }, editedOn: '2026-11-10' });
+  assert.equal(f.a, null, 'sans bilan relu, pas de 2033-A');
+  assert.equal(f.b['218'], 21000);
+  assert.equal(f.b['314'], -s.reelBic!.liasse.lines.find((x) => x.code === '310')!.amount, 'perte comptable reportée col. 2');
+  assert.equal(f.b['318'], s.reelBic!.liasse.deferredAfter);
+  assert.equal(f.b['352'], 0); assert.equal(f.b['370'], 0);
+  assert.equal(f.c['426'], 30000, 'terrain du F3 Paris 19');
+  assert.equal(f.c['432'], 170000, 'construction acquise dans l’exercice');
+  assert.equal(f.c['572'], f.c['522']! + f.c['562']!);
+  assert.equal(f.result, 0);
+  assert.equal(amount(773762), '773 762'); assert.equal(amount(-15166), '-15 166'); assert.equal(amount(0), ''); assert.equal(amount(0, true), '0');
   const bytes = await buildDocPdf(lib as never, doc);
   assert.equal(Buffer.from(bytes.subarray(0, 5)).toString(), '%PDF-');
   const pdf = await lib.PDFDocument.load(bytes);
-  assert.ok(pdf.getPageCount() >= 5, `${pdf.getPageCount()} pages`);
+  assert.ok(pdf.getPageCount() >= 7, `${pdf.getPageCount()} pages`);
   if (process.env.LIASSE_OUT) await writeFile(process.env.LIASSE_OUT, bytes);
 });
 

@@ -11,6 +11,7 @@ import type { Property } from '../data/types.ts';
 import type { PdfDoc, PdfSection, TableBlock } from './docPdf.ts';
 import type { Bilan2033A } from './edi/tdfc.ts';
 import type { FiscalSummary, Liasse2033B, ReelBic } from './fiscal.ts';
+import { drawCerfaForms, type Boxes, type CerfaData } from './cerfaPdf.ts';
 
 export interface LiasseInput {
   year: number;
@@ -137,112 +138,6 @@ export function liasseDoc(i: LiasseInput): PdfDoc {
   }
   if (immo.blocks.length) sections.push(immo);
 
-  // ---------------------------------------------------------------- formulaires
-  const forms = (code: string, label: string, amount: number | string): string[] => [code, label, typeof amount === 'number' ? box(amount) : amount];
-  /** Résultat : le zéro s'écrit (case de résultat toujours servie). */
-  const result = (code: string, label: string, amount: number): string[] => [code, label, box(amount) || '0'];
-  const formTable = (rows: string[][]): TableBlock => ({ t: 'table', head: ['Case', 'Libellé', 'Montant'], widths: [0.8, 5.2, 1.4], align: ['l', 'l', 'r'], rows });
-
-  sections.push({ title: '2031-SD - Déclaration de résultats (BIC, impôt sur le revenu)', newPage: true, blocks: [
-    { t: 'kv', rows: [
-      ['Exercice', `ouvert le 01/01/${year}, clos le 31/12/${year}`],
-      ['Régime', 'réel simplifié d\'imposition'],
-      ['Dénomination', i.declarant?.name || 'à compléter'],
-      ['SIREN', i.declarant?.siren || 'à compléter'],
-      ['Adresse de l\'entreprise', i.declarant?.address || addressOf(prop(list[0]?.propertyId ?? '')) || 'à compléter'],
-      ...(i.declarant?.home ? [['Adresse du domicile', i.declarant.home] as [string, string]] : []),
-      ['Activité', 'Location meublée non professionnelle'],
-    ] },
-    formTable([
-      result('1', 'Résultat fiscal - bénéfice (col. 1), report de la ligne 370 du 2033-B', fiscal > 0 ? fiscal : 0),
-      forms('1', 'Résultat fiscal - déficit (col. 2), report de la ligne 372 du 2033-B', fiscal < 0 ? -fiscal : 0),
-      result('7a', 'Dont BIC non professionnels - bénéfice (2031 bis)', fiscal > 0 ? fiscal : 0),
-      forms('7b', 'Dont BIC non professionnels - déficit (2031 bis)', fiscal < 0 ? -fiscal : 0),
-    ]),
-  ] });
-
-  if (i.bilan) {
-    const b = i.bilan;
-    sections.push({ title: `2033-A-SD - Bilan simplifié au 31/12/${year}`, blocks: [
-      { t: 'table', caption: 'Actif', head: ['Case', 'Libellé', 'Brut', 'Amortissements', 'Net'], widths: [1.2, 4, 1.3, 1.4, 1.3], align: ['l', 'l', 'r', 'r', 'r'], rows: [
-        ['028 / 030', 'Immobilisations corporelles', box(b.immoGross), box(b.immoDep), box(b.immoNet)],
-        ['044 / 048', 'Total I', box(b.immoGross), box(b.immoDep), box(b.immoNet)],
-        ['072', 'Créances (loyers et charges échus non réglés)', box(b.receivables), '', box(b.receivables)],
-        ['084', 'Disponibilités', box(b.cash), '', box(b.cash)],
-        ['096', 'Total II', box(b.currentTotal), '', box(b.currentTotal)],
-        ['110 / 112', 'Total général (I + II)', box(b.assetsGross), box(b.assetsDep), box(b.assetsNet)],
-      ], total: true },
-      { t: 'table', caption: 'Passif', head: ['Case', 'Libellé', 'Montant'], widths: [1.2, 6.7, 1.3], align: ['l', 'l', 'r'], rows: [
-        ['120', 'Capital individuel (compte de l\'exploitant)', box(b.capital)],
-        ['136', 'Résultat de l\'exercice', box(b.result)],
-        ['142', 'Total I (capitaux propres)', box(b.equity)],
-        ['156', 'Emprunts et dettes assimilées', box(b.loans)],
-        ['172', 'Autres dettes (dépôts de garantie reçus, charges à payer)', box(b.otherDebts)],
-        ['176', 'Total III (dettes)', box(b.debts)],
-        ['195', 'Dont dettes à plus d\'un an', box(b.loansBeyondOneYear)],
-        ['180', 'Total général (I + II + III)', box(b.liabilities)],
-      ] },
-    ] });
-  }
-
-  const deferredUsed = l.deferredUsed;
-  sections.push({ title: '2033-B-SD - Compte de résultat simplifié', blocks: [formTable([
-    forms('218', 'Production vendue - services (loyers et charges encaissés)', lineOf(l, '218')),
-    forms('232', 'Total des produits d\'exploitation (I)', lineOf(l, '232')),
-    forms('242', 'Autres charges externes', lineOf(l, '242')),
-    forms('244', 'Impôts, taxes et versements assimilés', lineOf(l, '244')),
-    forms('254', 'Dotations aux amortissements', lineOf(l, '254')),
-    forms('264', 'Total des charges d\'exploitation (II)', lineOf(l, '264')),
-    forms('270', 'Résultat d\'exploitation (I - II)', lineOf(l, '270')),
-    forms('294', 'Charges financières (V)', lineOf(l, '294')),
-    result('310', 'Bénéfice ou perte', lineOf(l, '310')),
-    forms(lineOf(l, '310') >= 0 ? '312' : '314', `Report du résultat comptable (${lineOf(l, '310') >= 0 ? 'bénéfice, col. 1' : 'déficit, col. 2'})`, Math.abs(lineOf(l, '310'))),
-    forms('318', 'Amortissements excédentaires (art. 39-4) et autres amortissements non déductibles (art. 39 C)', lineOf(l, '318')),
-    ...(deferredUsed > 0 ? [forms('-', 'Déduction : amortissements différés des exercices antérieurs (art. 39 C)', deferredUsed)] : []),
-    result(fiscal >= 0 ? '352' : '354', `Résultat fiscal avant imputation des déficits antérieurs (${fiscal >= 0 ? 'bénéfice' : 'déficit'})`, Math.abs(fiscal)),
-    result(fiscal >= 0 ? '370' : '372', `Résultat fiscal après imputation des déficits (${fiscal >= 0 ? 'bénéfice' : 'déficit'})`, Math.abs(fiscal)),
-  ])] });
-
-  // 2033-C : par nature, comme la télétransmission
-  const natures = [
-    { kind: 'terrain', label: 'Terrains', g: ['420', '422', '424', '426'], d: null },
-    { kind: 'bati', label: 'Constructions', g: ['430', '432', '434', '436'], d: ['520', '522', '524', '526'] },
-    { kind: 'travaux', label: 'Installations générales, agencements, aménagements', g: ['450', '452', '454', '456'], d: ['540', '542', '544', '546'] },
-    { kind: 'meuble', label: 'Autres immobilisations corporelles', g: ['470', '472', '474', '476'], d: ['560', '562', '564', '566'] },
-  ] as const;
-  const start = `${year}-01-01`, end = `${year}-12-31`;
-  const gRows: string[][] = [], dRows: string[][] = [];
-  const tot = { gb: 0, ga: 0, ge: 0, db: 0, dd: 0, de: 0 };
-  for (const n of natures) {
-    const as = l.assets.filter((a) => a.kind === n.kind);
-    if (!as.length) continue;
-    const added = sum(as.filter((a) => a.start >= start && a.start <= end).map((a) => a.gross));
-    const ge = sum(as.map((a) => a.gross));
-    gRows.push([`${n.g[0]} à ${n.g[3]}`, n.label, box(ge - added), box(added), '', box(ge)]);
-    tot.gb += ge - added; tot.ga += added; tot.ge += ge;
-    if (n.d) {
-      const de = sum(as.map((a) => a.cumulated)), dd = sum(as.map((a) => a.dotation));
-      dRows.push([`${n.d[0]} à ${n.d[3]}`, n.label, box(de - dd), box(dd), '', box(de)]);
-      tot.db += de - dd; tot.dd += dd; tot.de += de;
-    }
-  }
-  if (gRows.length) {
-    gRows.push(['490 à 496', 'Total', box(tot.gb), box(tot.ga), '', box(tot.ge)]);
-    dRows.push(['570 à 576', 'Total', box(tot.db), box(tot.dd), '', box(tot.de)]);
-    const head = (a: string, b: string) => ['Cases', 'Nature', a, b, 'Diminutions', 'Fin d\'exercice'];
-    const w = [1.2, 3.6, 1.3, 1.3, 1.1, 1.3];
-    const al: ('l' | 'r')[] = ['l', 'l', 'r', 'r', 'r', 'r'];
-    sections.push({ title: '2033-C-SD - Immobilisations et amortissements', blocks: [
-      { t: 'table', caption: 'I - Immobilisations (valeurs brutes)', head: head('Début d\'exercice', 'Augmentations'), widths: w, align: al, rows: gRows, total: true },
-      { t: 'table', caption: 'II - Amortissements', head: head('Début d\'exercice', 'Dotations'), widths: w, align: al, rows: dRows, total: true },
-    ] });
-  }
-
-  sections.push({ title: '2033-D-SD - Déficits reportables', blocks: [formTable([
-    forms('860', 'Déficits de l\'exercice', fiscal < 0 ? -fiscal : 0),
-    forms('870', 'Total des déficits restant à reporter (déficits antérieurs non suivis par Immo-Zen : à ajouter)', fiscal < 0 ? -fiscal : 0),
-  ])] });
-
   sections.push({ title: 'Suivi des amortissements régulièrement comptabilisés dont la déduction est écartée (art. 39 C du CGI)', blocks: [
     { t: 'kv', rows: [
       ['Amortissements non déduits reportables au titre des exercices antérieurs (1)', eur(stockStart)],
@@ -257,5 +152,49 @@ export function liasseDoc(i: LiasseInput): PdfDoc {
     subtitle: `${i.declarant?.name ? `${i.declarant.name} - ` : ''}document de travail édité par Immo-Zen le ${fr(i.editedOn)} à partir des loyers encaissés, des dépenses payées et des amortissements. Ce n'est pas l'imprimé officiel : la liasse 2031 et 2033 se dépose en ligne (espace professionnel sur impots.gouv.fr ou télétransmission). Montants des formulaires à l'euro. À vérifier avec les notices 2031-NOT et 2033-NOT ; ne vaut pas conseil fiscal.`,
     sections,
     footer: `Immo-Zen - liasse LMNP ${year} - document de travail`,
+    // formulaires 2031 et 2033-A à D, case par case
+    extraPages: (ctx) => drawCerfaForms(ctx, cerfaData(i)),
+  };
+}
+
+/** Montants des formulaires, par numéro de case des imprimés (2031-SD, 2033-A/B/C/D-SD). */
+export function cerfaData(i: LiasseInput): CerfaData {
+  const l = i.reel.liasse;
+  const fiscal = l.fiscalResult;
+  const line = (code: string) => lineOf(l, code);
+  const b: Boxes = {};
+  for (const code of ['218', '232', '242', '244', '254', '264', '270', '294', '310', '318']) b[code] = line(code);
+  b[line('310') >= 0 ? '312' : '314'] = Math.abs(line('310'));
+  if (l.deferredUsed) b['350'] = l.deferredUsed;
+  b[fiscal >= 0 ? '352' : '354'] = Math.abs(fiscal);
+  b[fiscal >= 0 ? '370' : '372'] = Math.abs(fiscal);
+
+  const c: Boxes = {};
+  const start = `${i.year}-01-01`, end = `${i.year}-12-31`;
+  const map = { terrain: ['420', null], bati: ['430', '520'], travaux: ['450', '540'], meuble: ['470', '560'] } as const;
+  const add = (code: string, v: number) => { c[code] = Math.round(((c[code] ?? 0) + v) * 100) / 100; };
+  for (const a of l.assets) {
+    const [g, dep] = map[a.kind as keyof typeof map] ?? map.meuble;
+    const gi = Number(g), added = a.start >= start && a.start <= end ? a.gross : 0;
+    add(String(gi), a.gross - added); add(String(gi + 2), added); add(String(gi + 6), a.gross);
+    add('490', a.gross - added); add('492', added); add('496', a.gross);
+    if (dep) {
+      const di = Number(dep);
+      add(String(di), a.cumulated - a.dotation); add(String(di + 2), a.dotation); add(String(di + 6), a.cumulated);
+      add('570', a.cumulated - a.dotation); add('572', a.dotation); add('576', a.cumulated);
+    }
+  }
+
+  const bl = i.bilan;
+  const a: Boxes | null = bl ? {
+    '028': bl.immoGross, '030': bl.immoDep, '044': bl.immoGross, '048': bl.immoDep, '072': bl.receivables, '084': bl.cash, '096': bl.currentTotal,
+    '110': bl.assetsGross, '112': bl.assetsDep, '120': bl.capital, '136': bl.result, '142': bl.equity, '156': bl.loans, '172': bl.otherDebts,
+    '176': bl.debts, '180': bl.liabilities, '195': bl.loansBeyondOneYear, '182': bl.acquisitions,
+  } : null;
+  const d: Boxes = fiscal < 0 ? { '860': -fiscal, '870': -fiscal } : {};
+  const first = i.properties.find((p) => p.id === i.reel.perProperty[0]?.propertyId);
+  return {
+    year: i.year, name: i.declarant?.name || 'à compléter', siren: i.declarant?.siren || '', home: i.declarant?.home ?? null,
+    address: i.declarant?.address || addressOf(first) || '', activity: 'Loueur en meublé non professionnel', a, b, c, d, result: fiscal,
   };
 }
