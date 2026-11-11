@@ -50,8 +50,8 @@ test('liasse LMNP : sections, reports 2042-C-PRO, récapitulatif, suivi 39 C et 
   assert.equal(f.b['314'], -s.reelBic!.liasse.lines.find((x) => x.code === '310')!.amount, 'perte comptable reportée col. 2');
   assert.equal(f.b['318'], s.reelBic!.liasse.deferredAfter);
   assert.equal(f.b['352'], 0); assert.equal(f.b['370'], 0);
-  assert.equal(f.c['426'], 30000, 'terrain du F3 Paris 19');
-  assert.equal(f.c['432'], 170000, 'construction acquise dans l’exercice');
+  assert.equal(f.c['426'], 40000, 'terrain du F3 Paris 19 (20 %)');
+  assert.equal(f.c['432'], 160000, 'construction acquise dans l’exercice');
   assert.equal(f.c['572'], f.c['522']! + f.c['562']!);
   assert.equal(f.result, 0);
   assert.equal(amount(773762), '773 762'); assert.equal(amount(-15166), '-15 166'); assert.equal(amount(0), ''); assert.equal(amount(0, true), '0');

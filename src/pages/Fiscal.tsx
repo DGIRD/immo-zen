@@ -307,6 +307,7 @@ export function FiscalPage() {
               )}
               {fiscal.reelBic.perProperty.map((r) => {
                 const prm = { ...DEFAULT_TAX_INPUTS, ...get(r.propertyId, year) };
+                const p = data.properties.find((x) => x.id === r.propertyId);
                 return (
                   <details key={r.propertyId} className="tax-lmnp" open={fiscal.reelBic!.perProperty.length === 1}>
                     <summary><strong>{title(r.propertyId)}</strong> — résultat {money2(r.box5NA - r.box5NY)}</summary>
@@ -324,10 +325,19 @@ export function FiscalPage() {
                       <table className="dt-table compact"><thead><tr><th>Élément amorti</th><th className="num">Base</th><th className="num">Durée</th><th>Depuis</th><th className="num">{year}</th></tr></thead>
                         <tbody>{r.depreciation.map((d) => <tr key={d.label + d.start}><td>{d.label}</td><td className="num">{money2(d.base)}</td><td className="num">{d.years} ans</td><td>{d.start.split('-').reverse().join('/')}</td><td className="num">{money2(d.amount)}</td></tr>)}</tbody></table>
                     )}
+                    {p?.acquisition_breakdown?.price ? (
+                      <p className="muted small">Construction, frais de notaire et d’agence et mobilier d’après la décomposition du coût d’acquisition saisie dans Mes biens.{' '}
+                        <button type="button" className="link" onClick={() => navigate(`/bien/${r.propertyId}/modifier`)}>Modifier la décomposition</button></p>
+                    ) : (
+                      <p className="muted small">Bâti amorti sur le coût d’acquisition global.{' '}
+                        <button type="button" className="link" onClick={() => navigate(`/bien/${r.propertyId}/modifier`)}>Décomposer le coût d’acquisition (terrain, construction, notaire, agence) dans Mes biens</button></p>
+                    )}
                     <div className="grid tax-inputs">
-                      <NumberInput label="Valeur amortissable" suffix="€" value={get(r.propertyId, year).depreciable_base ?? null} onChange={(v) => setInput(PARAMS, r.propertyId, 'depreciable_base', v)} hint="Par défaut : coût d’acquisition du bien" />
-                      <NumberInput label="Part du terrain" suffix="%" value={prm.land_pct} onChange={(v) => setInput(PARAMS, r.propertyId, 'land_pct', v)} hint="Non amortissable" />
-                      <NumberInput label="Durée du bâti" suffix="ans" value={prm.building_years} onChange={(v) => setInput(PARAMS, r.propertyId, 'building_years', v)} />
+                      {!p?.acquisition_breakdown?.price && <>
+                        <NumberInput label="Valeur amortissable" suffix="€" value={get(r.propertyId, year).depreciable_base ?? null} onChange={(v) => setInput(PARAMS, r.propertyId, 'depreciable_base', v)} hint="Par défaut : coût d’acquisition du bien" />
+                        <NumberInput label="Part du terrain" suffix="%" value={prm.land_pct} onChange={(v) => setInput(PARAMS, r.propertyId, 'land_pct', v)} hint="Non amortissable" />
+                        <NumberInput label="Durée du bâti" suffix="ans" value={prm.building_years} onChange={(v) => setInput(PARAMS, r.propertyId, 'building_years', v)} />
+                      </>}
                       <NumberInput label="Durée des meubles" suffix="ans" value={prm.furniture_years} onChange={(v) => setInput(PARAMS, r.propertyId, 'furniture_years', v)} />
                       <NumberInput label="Durée des travaux amortissables" suffix="ans" value={prm.works_years} onChange={(v) => setInput(PARAMS, r.propertyId, 'works_years', v)} />
                       <NumberInput label={`Recettes diverses ${year}`} suffix="€" value={get(r.propertyId, year).other_income ?? null} onChange={(v) => setInput(String(year), r.propertyId, 'other_income', v)} />
@@ -336,7 +346,7 @@ export function FiscalPage() {
                   </details>
                 );
               })}
-              <p className="muted small">Amortissement linéaire au prorata du temps ; il ne peut ni créer ni augmenter un déficit (article 39 C du CGI) : l’excédent est reporté sans limite de durée. Les frais d’acquisition sont supposés inclus dans la valeur amortissable. La liasse 2031 et 2033 doit être déposée en ligne (professionnel ou service agréé) ; ces montants servent à la préparer.</p>
+              <p className="muted small">Amortissement linéaire au prorata du temps ; il ne peut ni créer ni augmenter un déficit (article 39 C du CGI) : l’excédent est reporté sans limite de durée. Sans décomposition du coût d’acquisition dans Mes biens, les frais d’acquisition sont inclus dans la valeur amortissable du bâti. La liasse 2031 et 2033 doit être déposée en ligne (professionnel ou service agréé) ; ces montants servent à la préparer.</p>
             </Section>
           )}
 

@@ -90,7 +90,7 @@ export function liasseDoc(i: LiasseInput): PdfDoc {
   // ---------------------------------------------------------------- résultat de l'activité
   const byLabel = new Map<string, number>();
   for (const r of list) for (const c of r.charges) if (c.label !== 'Assurance emprunteur') byLabel.set(c.label, (byLabel.get(c.label) ?? 0) + c.amount);
-  const kinds: [string, string][] = [['bati', 'Bâti (construction et frais d\'acquisition)'], ['travaux', 'Travaux et agencements'], ['meuble', 'Meubles et équipements']];
+  const kinds: [string, string][] = [['bati', 'Construction'], ['frais', 'Frais d\'acquisition (notaire, agence)'], ['travaux', 'Travaux et agencements'], ['meuble', 'Meubles et équipements']];
   const depBy = (k: string) => sum(list.flatMap((r) => r.depreciation.filter((d) => d.kind === k).map((d) => d.amount)));
   sections.push({ title: "Résultat de l'activité LMNP", newPage: true, blocks: [
     { t: 'table', head: ['Recettes', 'Montant'], widths: [5, 1.6], total: true, rows: [['Loyers et charges encaissés', eur(receipts)], ['Total recettes', eur(receipts)]] },
@@ -174,7 +174,7 @@ export function cerfaData(i: LiasseInput): CerfaData {
 
   const c: Boxes = {};
   const start = `${i.year}-01-01`, end = `${i.year}-12-31`;
-  const map = { terrain: ['420', null], bati: ['430', '520'], travaux: ['450', '540'], meuble: ['470', '560'] } as const;
+  const map = { terrain: ['420', null], bati: ['430', '520'], frais: ['410', '500'], travaux: ['450', '540'], meuble: ['470', '560'] } as const;
   const add = (code: string, v: number) => { c[code] = Math.round(((c[code] ?? 0) + v) * 100) / 100; };
   for (const a of l.assets) {
     const [g, dep] = map[a.kind as keyof typeof map] ?? map.meuble;
@@ -189,8 +189,12 @@ export function cerfaData(i: LiasseInput): CerfaData {
   }
 
   const bl = i.bilan;
+  // frais d'acquisition en immobilisations incorporelles (014 / 016), le reste en corporelles (028 / 030)
+  const fees = l.assets.filter((x) => x.kind === 'frais');
+  const feesGross = Math.round(fees.reduce((t, x) => t + x.gross, 0) * 100) / 100, feesDep = Math.round(fees.reduce((t, x) => t + x.cumulated, 0) * 100) / 100;
   const a: Boxes | null = bl ? {
-    '028': bl.immoGross, '030': bl.immoDep, '044': bl.immoGross, '048': bl.immoDep, '072': bl.receivables, '084': bl.cash, '096': bl.currentTotal,
+    ...(feesGross ? { '014': feesGross, '016': feesDep } : {}),
+    '028': bl.immoGross - feesGross, '030': bl.immoDep - feesDep, '044': bl.immoGross, '048': bl.immoDep, '072': bl.receivables, '084': bl.cash, '096': bl.currentTotal,
     '110': bl.assetsGross, '112': bl.assetsDep, '120': bl.capital, '136': bl.result, '142': bl.equity, '156': bl.loans, '175': bl.otherDebts,
     '176': bl.debts, '180': bl.liabilities, '195': bl.loansBeyondOneYear, '182': bl.acquisitions,
   } : null;

@@ -308,7 +308,8 @@ function items2033C(l: Liasse2033B, period: TdfcPeriod): TdfcItem[] {
   const out: TdfcItem[] = [];
   const total = { begin: 0, added: 0, end: 0, depBegin: 0, dot: 0, depEnd: 0 };
   for (const [kind, r] of Object.entries(rows) as [keyof typeof rows, (typeof rows)[keyof typeof rows]][]) {
-    const list = l.assets.filter((a) => a.kind === kind);
+    // frais d'acquisition : rattachés aux constructions (immobilisations incorporelles non télétransmises)
+    const list = l.assets.filter((a) => a.kind === kind || (kind === 'bati' && a.kind === 'frais'));
     if (list.length === 0) continue;
     const added = list.filter((a) => a.start >= period.start && a.start <= period.end).reduce((s, a) => s + a.gross, 0);
     const end = list.reduce((s, a) => s + a.gross, 0);

@@ -1668,6 +1668,37 @@ async function main() {
     await page.screenshot({ path: join(out, '27-amortissements.png'), fullPage: true });
   });
 
+  await step('Mes biens : décomposition du coût d’acquisition, reprise dans la déclaration au réel', async () => {
+    const parkingId = await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!).properties.find((p: { title: string }) => p.title === 'Parking détenu').id);
+    await page.goto(url + `#/bien/${parkingId}/modifier`);
+    const sec = page.locator('section', { has: page.getByRole('heading', { name: 'Décomposition du coût d’acquisition (déclaration au réel)' }) });
+    await sec.getByLabel('Prix d’achat (net vendeur)').fill('100000');
+    await sec.getByLabel('Part du terrain').fill('20');
+    await sec.getByLabel('Frais de notaire').fill('8000');
+    await sec.getByLabel('Frais d’agence').fill('5000');
+    await sec.getByLabel('Amortissement de la construction').fill('25');
+    await sec.getByLabel('Amortissement de la construction').press('Tab');
+    const rows = (await sec.locator('table.breakdown-table tbody tr').allInnerTexts()).map((t) => t.replace(/[  ]/g, ' ').replace(/\s+/g, ' '));
+    assert.deepEqual(rows.map((r) => r.split(' ')[0]), ['Terrain', 'Construction', 'Frais', 'Frais']);
+    assert.match(rows[1]!, /80 000,00 € 25 ans 3 200,00 €/);
+    assert.match((await sec.locator('tfoot').innerText()).replace(/[  ]/g, ' '), /113 000,00 €/);
+    await sec.getByRole('button', { name: /Reprendre 113/ }).click();
+    await page.screenshot({ path: join(out, '05b-decomposition-acquisition.png'), fullPage: true });
+    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    await page.waitForURL(new RegExp(`#/bien/${parkingId}$`));
+    const year = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()).slice(0, 4));
+    await page.goto(url + '#/declaration');
+    await page.getByLabel('Année des revenus').selectOption(year);
+    await page.getByLabel('Régime de Parking détenu').selectOption('reel_bic');
+    const immo = page.locator('.tax-recap', { has: page.getByRole('heading', { name: 'Détail des immobilisations' }) });
+    await immo.getByText(/^Frais de notaire/).waitFor();
+    await immo.getByText(/^Frais d’agence/).waitFor();
+    await immo.getByText(/^Construction/).waitFor();
+    await page.locator('details.tax-lmnp').first().getByText('d’après la décomposition du coût d’acquisition saisie dans Mes biens', { exact: false }).waitFor();
+    assert.equal(await page.locator('details.tax-lmnp').first().getByLabel('Valeur amortissable').count(), 0);
+    await page.getByLabel('Régime de Parking détenu').selectOption('reel_foncier');
+  });
+
   await step('assistant : questions proposées selon la rubrique, réponses de l’aide intégrée', async () => {
     await page.goto(url + '#/depenses');
     await page.getByRole('button', { name: 'Assistant' }).click();

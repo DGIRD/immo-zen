@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useStore } from '../data/store.tsx';
-import type { Contact, Insert, OccupationStatus, OwnershipMode, Property, PropertyStatus, PropertyType, TaxRegime } from '../data/types.ts';
+import type { AcquisitionBreakdown, Contact, Insert, OccupationStatus, OwnershipMode, Property, PropertyStatus, PropertyType, TaxRegime } from '../data/types.ts';
+import { acquisitionComponents, breakdownTotal, DEFAULT_TAX_INPUTS } from '../domain/fiscal.ts';
 import { DPE_VALUES, OCCUPATION_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, STATUS_ORDER, TAX_REGIME_LABELS, TYPE_LABELS } from '../domain/labels.ts';
 import { money2, todayParis } from '../domain/format.ts';
 import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, LOAN_FIELDS, loanInfo, rentWithCharges } from '../domain/property.ts';
@@ -74,7 +75,7 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
       const payload: Insert<Property> = { ...rest, title: draft.title.trim(), agency_id: agencyId, agent_id: agentId };
       if (!owned) { payload.occupation_status = null; }
       // N'envoyer la provision que si elle est renseignée (compatibilité avec une base pas encore migrée)
-      for (const k of ['charges_provision', ...ANNUAL_CHARGE_FIELDS.map(([f]) => f), ...LOAN_FIELDS, 'estimate_low', 'estimate_high', 'estimate_median', 'estimate_on', 'estimate_source', 'estimate_details'] as const) if (payload[k] === null || payload[k] === undefined) delete payload[k];
+      for (const k of ['charges_provision', ...ANNUAL_CHARGE_FIELDS.map(([f]) => f), ...LOAN_FIELDS, 'estimate_low', 'estimate_high', 'estimate_median', 'estimate_on', 'estimate_source', 'estimate_details', 'acquisition_breakdown'] as const) if (payload[k] === null || payload[k] === undefined) delete payload[k];
       if (existing) {
         const row = await update('properties', existing, payload, `Le bien « ${existing.title} »`);
         if (row) navigate(`/bien/${row.id}`);
@@ -174,6 +175,8 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
         </Section>
       )}
 
+      {owned && <BreakdownSection draft={draft} set={set} />}
+
       <Section title="Agence et agent">
         <div className="grid">
           <Select label="Agence" value={agencyChoice} onChange={(v) => { setAgencyChoice(v ?? ''); }} allowEmpty="Aucune" error={errors.agency}
@@ -264,6 +267,54 @@ function LoanSection({ draft, set, errors, snapshot }: {
           <small className="muted">{info?.remaining != null ? `Capital restant dû : ${money2(info.remaining)}${info.endDate ? `, fin le ${info.endDate.split('-').reverse().join('/')}` : ''}.` : 'Utilisée pour le cash-flow du bien.'}</small>
         </div>
       </div>
+    </Section>
+  );
+}
+
+/**
+ * Décomposition du coût d'acquisition (déclaration au réel, liasse LMNP) : prix, part du terrain, frais de notaire
+ * et d'agence, mobilier compris dans la vente, avec leurs durées ; aperçu des composants et des dotations annuelles.
+ */
+function BreakdownSection({ draft, set }: { draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void }) {
+  const b: AcquisitionBreakdown = draft.acquisition_breakdown ?? {};
+  const patch = (k: keyof AcquisitionBreakdown, v: number | string | null) => {
+    const next = { ...b, [k]: v };
+    const empty = Object.values(next).every((x) => x === null || x === undefined);
+    set('acquisition_breakdown', empty ? null : next);
+  };
+  const comps = acquisitionComponents({ acquisition_breakdown: b });
+  const total = breakdownTotal({ acquisition_breakdown: b });
+  const cost = draft.acquisition_cost ?? null;
+  const d = DEFAULT_TAX_INPUTS;
+  return (
+    <Section title="Décomposition du coût d’acquisition (déclaration au réel)">
+      <p className="muted small">Pour l’amortissement en LMNP au réel et la liasse fiscale : le terrain n’est pas amortissable ; la construction, les frais de notaire et d’agence et le mobilier compris dans la vente s’amortissent chacun sur leur durée, à partir de la date d’acquisition. Facultatif : sans décomposition, la déclaration amortit le coût d’acquisition global.</p>
+      <div className="grid">
+        <NumberInput label="Prix d’achat (net vendeur)" suffix="€" value={b.price ?? null} onChange={(v) => patch('price', v)} hint="Prix de l’acte, hors frais" />
+        <NumberInput label="Part du terrain" suffix="%" value={b.land_pct ?? null} onChange={(v) => patch('land_pct', v)} hint={`Non amortissable ; ${d.land_pct} % par défaut (souvent 15 à 25 %)`} />
+        <NumberInput label="Frais de notaire" suffix="€" value={b.notary ?? null} onChange={(v) => patch('notary', v)} hint="Droits de mutation, émoluments, débours" />
+        <NumberInput label="Frais d’agence" suffix="€" value={b.agency ?? null} onChange={(v) => patch('agency', v)} hint="S’ils sont à la charge de l’acquéreur" />
+        <NumberInput label="Mobilier compris dans la vente" suffix="€" value={b.furniture ?? null} onChange={(v) => patch('furniture', v)} hint="Inclus dans le prix, amorti à part" />
+        <NumberInput label="Amortissement de la construction" suffix="ans" value={b.building_years ?? null} onChange={(v) => patch('building_years', v)} hint={`${d.building_years} ans par défaut (souvent 25 à 40)`} />
+        <NumberInput label="Amortissement des frais d’acquisition" suffix="ans" value={b.fees_years ?? null} onChange={(v) => patch('fees_years', v)} hint="Par défaut : celle de la construction" />
+        <NumberInput label="Amortissement du mobilier" suffix="ans" value={b.furniture_years ?? null} onChange={(v) => patch('furniture_years', v)} hint={`${d.furniture_years} ans par défaut`} />
+        <TextInput label="Début de l’amortissement" type="date" value={b.start ?? null} onChange={(v) => patch('start', v || null)} hint="Mise en location ; par défaut, date d’acquisition" />
+      </div>
+      {comps && (
+        <div className="dt-scroll">
+          <table className="dt-table compact breakdown-table">
+            <thead><tr><th>Composant</th><th className="num">Valeur</th><th className="num">Durée</th><th className="num">Dotation annuelle</th></tr></thead>
+            <tbody>{comps.map((c) => (
+              <tr key={c.label}><td>{c.label}</td><td className="num">{money2(c.base)}</td><td className="num">{c.years ? `${c.years} ans` : 'non amortissable'}</td><td className="num">{c.years ? money2(c.base / c.years) : '—'}</td></tr>
+            ))}</tbody>
+            <tfoot><tr className="total"><td>Total</td><td className="num">{money2(total ?? 0)}</td><td /><td className="num">{money2(comps.reduce((a, c) => a + (c.years ? c.base / c.years : 0), 0))}</td></tr></tfoot>
+          </table>
+        </div>
+      )}
+      {total !== null && (cost === null || Math.abs(total - cost) >= 1) && (
+        <p className="note note-info">{cost === null ? `Coût d’acquisition réel non renseigné ; total de la décomposition : ${money2(total)}.` : `Le total de la décomposition (${money2(total)}) diffère du coût d’acquisition réel (${money2(cost)}).`}{' '}
+          <button type="button" className="link" onClick={() => set('acquisition_cost', total)}>Reprendre {money2(total)} comme coût d’acquisition</button></p>
+      )}
     </Section>
   );
 }

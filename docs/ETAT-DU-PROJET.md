@@ -262,6 +262,14 @@ Tout le périmètre du cahier des charges est livré. Reste **à configurer** : 
 | Détail des immobilisations par bien (valeur brute, dotation, amortissement annuel, reste au 1/1 et au 31/12, cumul) | Implémenté et testé | e2e |
 | **Liasse PDF** (LMNP réel) : document de travail sur le modèle des liasses des services en ligne — synthèse, reports 2042-C-PRO, résultat de l'activité, récapitulatifs par bien, suivi 39 C, détail des immobilisations, **imprimés officiels** 2031-SD (page 1) et 2033-SD A à G (millésime 2026, PDF de impots.gouv.fr livrés dans `public/cerfa/`) remplis case par case comme les services en ligne : positions des cases calculées par `scripts/cerfa_layout.py` → `src/domain/cerfaLayout.ts`, remplissage `cerfaOfficial.ts` ; formulaires redessinés (`cerfaPdf.ts`) en secours si les imprimés ne se chargent pas. **À refaire à chaque millésime** (nouveaux PDF, relancer le script) | Implémenté et testé | unitaires + e2e |
 
+## Mes biens : décomposition du coût d'acquisition (11 novembre 2026)
+
+| Fonction | État | Preuve |
+|---|---|---|
+| Mes biens (bien détenu) : prix net vendeur, part du terrain, frais de notaire, frais d'agence, mobilier compris dans la vente et leurs durées ; aperçu des composants et dotations annuelles ; reprise du total comme coût d'acquisition (colonne `properties.acquisition_breakdown`, migration `20261111000100`) | Implémenté et testé | unitaires + e2e + tests SQL |
+| Déclaration LMNP : construction, frais de notaire, frais d'agence et mobilier amortis séparément (frais amortis en totalité, durée propre ou celle de la construction), terrain de la décomposition ; frais en immobilisations incorporelles dans la liasse PDF (2033-A 014/016, 2033-C 410/500) ; reproduit les dotations de la liasse decla.fr 2025 (F3 Paris 18) | Implémenté et testé | unitaires |
+| Télétransmission EDI : frais d'acquisition rattachés aux constructions (codes des immobilisations incorporelles non repris) | Limite connue | — |
+
 ## Limites connues
 
 ### Lot 2

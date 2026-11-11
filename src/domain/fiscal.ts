@@ -41,7 +41,8 @@ export interface MicroBicLine extends MicroBicRule { amount: number; taxable: nu
 export const FONCIER_DEFICIT_LIMIT = 10700;
 export const FORFAIT_222 = 20;
 export const DEFAULT_TAX_INPUTS: Required<Pick<TaxPropertyInputs, 'land_pct' | 'building_years' | 'furniture_years' | 'works_years'>> = {
-  land_pct: 15, building_years: 30, furniture_years: 7, works_years: 10,
+  // valeurs usuelles des liasses LMNP (decla.fr) : terrain 20 %, construction et frais 25 ans, meubles et travaux 10 ans
+  land_pct: 20, building_years: 25, furniture_years: 10, works_years: 10,
 };
 
 export interface FiscalData {
@@ -242,7 +243,7 @@ export function foncierBoxes(list: Foncier2044[]) {
 
 // ---------------------------------------------------------------- meublé au réel (LMNP)
 
-export interface DepreciationItem { label: string; kind: 'bati' | 'meuble' | 'travaux'; expenseId?: string; base: number; years: number; start: string; amount: number; cumulated: number; remaining: number }
+export interface DepreciationItem { label: string; kind: 'bati' | 'frais' | 'meuble' | 'travaux'; expenseId?: string; base: number; years: number; start: string; amount: number; cumulated: number; remaining: number }
 export interface ReelBic {
   propertyId: string;
   receipts: number;
@@ -265,12 +266,12 @@ export interface ReelBic {
 }
 
 function yearFraction(start: string, years: number, year: number): number {
-  // part de l'année civile comprise dans [début, début + durée), au jour près (base 365)
+  // part de l'année civile comprise dans [début, début + durée), au jour près (base : nombre de jours de l'année, 366 les années bissextiles, comme les liasses)
   const s = Date.parse(start + 'T00:00:00Z');
   const e = Date.parse(addMonths(start, Math.round(years * 12)) + 'T00:00:00Z');
   const ys = Date.UTC(year, 0, 1), ye = Date.UTC(year + 1, 0, 1);
   const days = Math.max(0, Math.min(e, ye) - Math.max(s, ys)) / 86400000;
-  return Math.min(1, days / 365);
+  return Math.min(1, days / ((ye - ys) / 86400000));
 }
 
 /** Dépense amortissable : durée saisie sur la dépense, ou catégorie/nature d'immobilisation. */
@@ -291,6 +292,40 @@ function slice(base: number, years: number, start: string, year: number) {
   return { amount: round2(cumulated - before), cumulated, remaining: round2(base - cumulated) };
 }
 
+/** Élément de la décomposition du coût d'acquisition (Mes biens). */
+export interface AcquisitionComponent { label: string; kind: 'terrain' | 'bati' | 'frais' | 'meuble'; base: number; years: number | null }
+
+/**
+ * Composants amortissables du coût d'acquisition, d'après la décomposition saisie dans Mes biens :
+ * terrain (non amortissable), construction, frais de notaire et d'agence (durée propre, sinon celle de la
+ * construction, amortis en totalité), mobilier compris dans la vente. Null sans décomposition (prix absent).
+ */
+export function acquisitionComponents(p: Pick<Property, 'acquisition_breakdown'>, inputs: TaxPropertyInputs = {}): AcquisitionComponent[] | null {
+  const b = p.acquisition_breakdown;
+  if (!b?.price || b.price <= 0) return null;
+  const prm = { ...DEFAULT_TAX_INPUTS, ...inputs };
+  const furniture = round2(Math.min(b.furniture ?? 0, b.price));
+  const realty = round2(b.price - furniture);
+  const landPct = b.land_pct ?? prm.land_pct;
+  const land = round2(realty * landPct / 100);
+  const buildingYears = b.building_years || prm.building_years;
+  const feesYears = b.fees_years || buildingYears;
+  const out: AcquisitionComponent[] = [
+    { label: 'Terrain', kind: 'terrain', base: land, years: null },
+    { label: 'Construction', kind: 'bati', base: round2(realty - land), years: buildingYears },
+  ];
+  if (b.notary) out.push({ label: 'Frais de notaire', kind: 'frais', base: round2(b.notary), years: feesYears });
+  if (b.agency) out.push({ label: 'Frais d’agence', kind: 'frais', base: round2(b.agency), years: feesYears });
+  if (furniture) out.push({ label: 'Mobilier compris dans la vente', kind: 'meuble', base: furniture, years: b.furniture_years || prm.furniture_years });
+  return out.filter((c) => c.base > 0);
+}
+
+/** Total de la décomposition (prix + frais), à comparer au coût d'acquisition. */
+export const breakdownTotal = (p: Pick<Property, 'acquisition_breakdown'>) => {
+  const b = p.acquisition_breakdown;
+  return b?.price ? round2(b.price + (b.notary ?? 0) + (b.agency ?? 0)) : null;
+};
+
 /**
  * Amortissements d'un bien pour l'année : bâti (si demandé), meubles et travaux amortissables.
  * Durée de chaque dépense : celle saisie sur la dépense, sinon la durée par défaut de sa catégorie.
@@ -299,7 +334,16 @@ export function depreciationItems(p: Property, year: number, d: FiscalData, inpu
   const prm = { ...DEFAULT_TAX_INPUTS, ...inputs };
   const items: DepreciationItem[] = [];
   const warnings: string[] = [];
-  if (withBuilding) {
+  const components = withBuilding ? acquisitionComponents(p, inputs) : null;
+  if (components) {
+    // l'amortissement court à partir de la mise en location si elle est indiquée, sinon de l'acquisition
+    const from = p.acquisition_breakdown?.start || p.acquired_at;
+    if (!from) warnings.push('Date d’acquisition inconnue : amortissement du bien non calculé.');
+    else for (const c of components) {
+      if (c.kind === 'terrain' || !c.years) continue;
+      items.push({ label: c.label, kind: c.kind, base: c.base, years: c.years, start: from, ...slice(c.base, c.years, from, year) });
+    }
+  } else if (withBuilding) {
     const base = inputs.depreciable_base ?? p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null;
     if (!base) warnings.push('Coût d’acquisition inconnu : amortissement du bâti non calculé (renseignez-le dans Mes biens ou ci-dessous).');
     else if (!p.acquired_at) warnings.push('Date d’acquisition inconnue : amortissement du bâti non calculé.');
@@ -460,7 +504,11 @@ export function liasse2033B(list: ReelBic[], year: number, d: FiscalData, inputs
     const { items } = depreciationItems(p, year, d, inp);
     const base = inp.depreciable_base ?? p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null;
     const landPct = inp.land_pct ?? DEFAULT_TAX_INPUTS.land_pct;
-    if (base && p.acquired_at && landPct > 0 && p.acquired_at.slice(0, 4) <= String(year))
+    const land = acquisitionComponents(p, inp)?.find((c) => c.kind === 'terrain');
+    const from = p.acquisition_breakdown?.start || p.acquired_at;
+    if (land && from && from.slice(0, 4) <= String(year))
+      assets.push({ propertyId: p.id, label: `${p.title} – Terrain (non amortissable)`, gross: land.base, cumulated: 0, kind: 'terrain', start: from, dotation: 0, years: null });
+    else if (!land && base && p.acquired_at && landPct > 0 && p.acquired_at.slice(0, 4) <= String(year))
       assets.push({ propertyId: p.id, label: `${p.title} – Terrain (${landPct} %, non amortissable)`, gross: round2(base * landPct / 100), cumulated: 0, kind: 'terrain', start: p.acquired_at, dotation: 0, years: null });
     for (const i of items) assets.push({ propertyId: p.id, label: `${p.title} – ${i.label}`, gross: i.base, cumulated: i.cumulated, kind: i.kind, start: i.start, dotation: i.amount, years: i.years });
     const { remaining: end, beyondOneYear: next } = loanBalance(p, year, inp);

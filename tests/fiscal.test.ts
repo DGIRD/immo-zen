@@ -2,6 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Expense, Property } from '../src/data/types.ts';
 import { fiscalSummary, foncierBoxes, loanYear, reelBic, type FiscalData, type Foncier2044 } from '../src/domain/fiscal.ts';
+/** Paramètres d'amortissement d'avant le 11/11/2026 (terrain 15 %, bâti 30 ans, meubles 7 ans), sur lesquels ces cas sont chiffrés. */
+const LEGACY = { land_pct: 15, building_years: 30, furniture_years: 7, works_years: 10 };
+
 
 const prop = (o: Partial<Property>): Property => ({
   id: 'p1', user_id: 'u', version: 1, created_at: '', updated_at: '', title: 'T2', status: 'acquis', status_before_archive: null, occupation_status: 'loue',
@@ -89,7 +92,7 @@ test('LMNP réel : compte de résultat 2033-B et parcours impots.gouv', async ()
   const { declarationGuide, liasseDeadline } = await import('../src/domain/taxGuide.ts');
   const p = prop({ tax_regime: 'reel_bic', acquired_at: '2024-01-01', acquisition_cost: 300000 });
   const d = data(p, [exp('loyer', 10000, '2024-06-01'), exp('copropriete', 2000, '2024-06-01'), exp('loyer', 12000), exp('copropriete', 2000), exp('taxe_fonciere', 800), exp('mobilier', 7000, '2025-01-01')]);
-  const s = fiscalSummary(2025, d, () => ({}));
+  const s = fiscalSummary(2025, d, () => LEGACY);
   const l = Object.fromEntries(s.reelBic!.liasse.lines.map((x) => [x.code, x.amount]));
   assert.equal(l['218'], 12000);
   assert.equal(l['242'], 2000);
@@ -126,13 +129,13 @@ test('parcours : micro-foncier, réel 2044 avec déficits antérieurs (4BD), SCI
 test('LMNP réel : amortissement limité au résultat, excédent reporté', () => {
   const p = prop({ tax_regime: 'reel_bic', acquired_at: '2024-01-01', acquisition_cost: 300000 });
   const d = data(p, [exp('loyer', 10000, '2024-06-01'), exp('copropriete', 2000, '2024-06-01'), exp('loyer', 12000), exp('copropriete', 2000), exp('mobilier', 7000, '2025-01-01')]);
-  const r24 = reelBic(p, 2024, d, () => ({}));
+  const r24 = reelBic(p, 2024, d, () => LEGACY);
   assert.equal(r24.resultBeforeDepreciation, 8000);
   assert.equal(r24.depreciationYear, 8500, '300 000 × 85 % / 30');
   assert.equal(r24.depreciationDeducted, 8000);
   assert.equal(r24.box5NA, 0);
   assert.equal(r24.deferredAfter, 500);
-  const r25 = reelBic(p, 2025, d, () => ({}));
+  const r25 = reelBic(p, 2025, d, () => LEGACY);
   assert.equal(r25.deferredBefore, 500);
   assert.equal(r25.depreciationYear, 8500 + 1000);
   assert.equal(r25.box5NA, 0);
@@ -152,10 +155,10 @@ test('amortissement : durée personnalisée sur la dépense, cumul et reste, pas
   assert.equal(cuisine.years, 5);
   assert.equal(cuisine.amount, 1000);
   const canape = items.find((i) => i.label.includes('Canapé'))!;
-  assert.equal(canape.years, 7, 'durée par défaut des meubles');
-  assert.equal(canape.cumulated, 1000, 'deux années de 500 €');
-  assert.equal(canape.remaining, 2500);
-  const r = reelBic(p, 2025, d, () => ({}));
+  assert.equal(canape.years, 10, 'durée par défaut des meubles (10 ans, comme les liasses decla.fr)');
+  assert.equal(canape.cumulated, 700, 'deux années de 350 € (3 500 € sur 10 ans)');
+  assert.equal(canape.remaining, 2800);
+  const r = reelBic(p, 2025, d, () => LEGACY);
   assert.equal(r.charges.find((c) => c.label.startsWith('Entretien'))!.amount, 400, 'la cuisine amortie n’est pas aussi déduite en charge');
   assert.equal(r.depreciationYear, 8500 + 1000 + 500);
 });
@@ -197,4 +200,51 @@ test('LMNP réel : stock d’ouverture repris d’une liasse, puis utilisé quan
   assert.equal(r!.deferredUsed, 7000, 'dotation de l’année d’abord (3 000), puis 7 000 du stock');
   assert.equal(r!.deferredAfter, 3459);
   assert.equal(r!.box5NA, 0);
+});
+
+// ---------- décomposition du coût d'acquisition (Mes biens), comme la liasse decla.fr 2025 ----------
+test('décomposition : terrain, construction, notaire et agence amortis séparément (F3 Paris 18)', async () => {
+  const { acquisitionComponents, breakdownTotal, depreciationItems, liasse2033B, reelBicActivity } = await import('../src/domain/fiscal.ts');
+  const p = prop({ id: 'p18', title: 'F3 Paris 18', tax_regime: 'reel_bic', acquired_at: '2023-03-31', acquisition_cost: 216025,
+    acquisition_breakdown: { price: 190000, land_pct: 20, notary: 16025, agency: 10000, building_years: 25 } });
+  const comps = acquisitionComponents(p)!;
+  assert.deepEqual(comps.map((c) => [c.label, c.base, c.years]), [['Terrain', 38000, null], ['Construction', 152000, 25], ['Frais de notaire', 16025, 25], ['Frais d’agence', 10000, 25]]);
+  assert.equal(breakdownTotal(p), 216025);
+  const d = data(p, []);
+  const { items } = depreciationItems(p, 2025, d, {});
+  const by = (l: string) => items.find((i) => i.label === l)!;
+  // liasse 2025 : construction 6 080 € (cumul 16 757 €), notaire 641 € (1 767 €), agence 400 € (1 102 €)
+  assert.equal(by('Construction').amount, 6080);
+  assert.ok(Math.abs(by('Construction').cumulated - 16757) <= 1, String(by('Construction').cumulated));
+  assert.equal(by('Frais de notaire').amount, 641);
+  assert.ok(Math.abs(by('Frais de notaire').cumulated - 1767) <= 1);
+  assert.equal(by('Frais d’agence').amount, 400);
+  assert.equal(by('Frais d’agence').kind, 'frais');
+  // liasse : terrain de la décomposition, frais à part
+  const l = liasse2033B(reelBicActivity([p], 2025, d, () => ({})), 2025, d, () => ({}));
+  assert.equal(l.assets.find((a) => a.kind === 'terrain')!.gross, 38000);
+  assert.equal(l.assets.filter((a) => a.kind === 'frais').reduce((s, a) => s + a.gross, 0), 26025);
+  // sans prix : pas de décomposition, ancien calcul
+  assert.equal(acquisitionComponents({ acquisition_breakdown: { notary: 1000 } }), null);
+});
+
+test('décomposition : mobilier compris dans la vente amorti à part, durées par défaut', async () => {
+  const { acquisitionComponents } = await import('../src/domain/fiscal.ts');
+  const c = acquisitionComponents({ acquisition_breakdown: { price: 200000, furniture: 5000, notary: 15000 } })!;
+  // valeurs par défaut des liasses decla.fr : terrain 20 %, construction et frais 25 ans, mobilier 10 ans
+  assert.deepEqual(c.map((x) => [x.label, x.base, x.years]), [['Terrain', 39000, null], ['Construction', 156000, 25], ['Frais de notaire', 15000, 25], ['Mobilier compris dans la vente', 5000, 10]]);
+});
+
+test('décomposition : amortissement à partir de la mise en location (F3 Vincennes, liasse 2025)', async () => {
+  const { depreciationItems } = await import('../src/domain/fiscal.ts');
+  const p = prop({ id: 'vin', tax_regime: 'reel_bic', acquired_at: '2024-06-15',
+    acquisition_breakdown: { price: 228000, land_pct: 20, notary: 20000, agency: 12000, building_years: 25, start: '2024-08-01' } });
+  const { items } = depreciationItems(p, 2025, data(p, []), {});
+  const by = (l: string) => items.find((i) => i.label === l)!;
+  // liasse 2025 : construction 7 296 € (cumul 10 346 €), notaire 800 € (1 134 €), agence 480 € (681 €)
+  assert.equal(by('Construction').start, '2024-08-01');
+  assert.equal(by('Construction').amount, 7296);
+  assert.ok(Math.abs(by('Construction').cumulated - 10346) <= 1, String(by('Construction').cumulated));
+  assert.ok(Math.abs(by('Frais de notaire').cumulated - 1134) <= 1, String(by('Frais de notaire').cumulated));
+  assert.ok(Math.abs(by('Frais d’agence').cumulated - 681) <= 1, String(by('Frais d’agence').cumulated));
 });

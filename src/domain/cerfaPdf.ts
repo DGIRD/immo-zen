@@ -170,7 +170,7 @@ export async function drawCerfaForms(ctx: CerfaCtx, d: CerfaData): Promise<void>
     const h = 13;
     const actif: [string, [string, string] | null, number, number, number, boolean?][] = [
       ['Immobilisations incorporelles - Fonds commercial *', ['010', '012'], 0, 0, 0],
-      ['Immobilisations incorporelles - Autres *', ['014', '016'], 0, 0, 0],
+      ['Immobilisations incorporelles - Autres *', ['014', '016'], a['014'] ?? 0, a['016'] ?? 0, (a['014'] ?? 0) - (a['016'] ?? 0)],
       ['Immobilisations corporelles *', ['028', '030'], a['028'] ?? 0, a['030'] ?? 0, (a['028'] ?? 0) - (a['030'] ?? 0)],
       ['Immobilisations financières * (1)', ['040', '042'], 0, 0, 0],
       ['Total I (5)', ['044', '048'], a['044'] ?? 0, a['048'] ?? 0, (a['044'] ?? 0) - (a['048'] ?? 0), true],
