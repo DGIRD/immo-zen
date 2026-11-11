@@ -7,6 +7,6 @@ alter table public.properties
     check (acquisition_breakdown is null or jsonb_typeof(acquisition_breakdown) = 'object');
 
 comment on column public.properties.acquisition_breakdown is
-  'Décomposition du coût d''acquisition : price, land_pct, notary, agency, furniture, building_years, fees_years, furniture_years (montants en euros, durées en années).';
+  'Décomposition du coût d''acquisition : price, land_pct, notary, agency, furniture, building_years, fees_years, furniture_years, start (montants en euros, durées en années).';
 
 notify pgrst, 'reload schema';
