@@ -274,6 +274,7 @@ const SUBSCRIBER_EXPORT: ExportColumn<SiteSubscriber>[] = [
   { label: 'Alerte révision IRL (mois)', value: (s) => (s.irl_alert_month ? MONTHS[s.irl_alert_month - 1] : '') },
   { label: 'Alerte plafonds Paris', value: (s) => (s.paris_alert ? 'oui' : '') },
   { label: 'Origine', value: (s) => s.sources.map((x) => SOURCE_LABELS[x] ?? x).join(', ') },
+  { label: 'Séquence de bienvenue', value: (s) => `${s.welcome_step}/3` },
   { label: 'Inscrit le', value: (s) => s.created_at.slice(0, 10) },
   { label: 'Accord donné le', value: (s) => s.consent_at?.slice(0, 10) ?? '' },
   { label: 'Confirmé le', value: (s) => s.confirmed_at?.slice(0, 10) ?? '' },
@@ -291,10 +292,10 @@ function Subscribers({ run, api }: { run: Run; api: Api }) {
       <Button size="sm" onClick={() => exportCsv(sendable, `inscrits-a-contacter-${todayParis()}.csv`)} disabled={!sendable.length}>Exporter les adresses à contacter ({sendable.length})</Button>
       <Button size="sm" variant="ghost" onClick={() => exportCsv(list, `inscrits-tous-${todayParis()}.csv`)}>Tout exporter</Button>
     </> : undefined}>
-      <p className="muted small">Adresses laissées sur le site (calculs, guide, checklist, lettre, alertes) ou à la création d’un compte, avec la case d’accord. N’envoyez conseils et offres qu’aux adresses « Confirmé » ayant donné leur accord : c’est l’export « à contacter ». Une adresse qui n’a demandé qu’un calcul ou un document n’est pas conservée ici. Supprimez une fiche sur simple demande de la personne.</p>
+      <p className="muted small">Adresses laissées sur le site (calculs, guide, checklist, lettre, alertes) ou à la création d’un compte, avec la case d’accord. N’envoyez conseils et offres qu’aux adresses « Confirmé » ayant donné leur accord : c’est l’export « à contacter ». Une adresse qui n’a demandé qu’un calcul ou un document n’est pas conservée ici. Après confirmation, la séquence de bienvenue part toute seule : un e-mail à la confirmation, un à J+4 (coût d’une agence), un à J+10 (essai gratuit, sauf si l’adresse a déjà un compte). Supprimez une fiche sur simple demande de la personne.</p>
       {!list ? <p className="muted">Chargement…</p> : list.length === 0 ? <EmptyState title="Aucun inscrit pour l’instant" /> : (
         <div className="dt-scroll"><table className="dt-table compact">
-          <thead><tr><th>E-mail</th><th>État</th><th>Accord</th><th>Alertes</th><th>Origine</th><th>Inscrit le</th><th /></tr></thead>
+          <thead><tr><th>E-mail</th><th>État</th><th>Accord</th><th>Bienvenue</th><th>Alertes</th><th>Origine</th><th>Inscrit le</th><th /></tr></thead>
           <tbody>{list.map((s) => {
             const state = subscriberState(s);
             return (
@@ -302,6 +303,7 @@ function Subscribers({ run, api }: { run: Run; api: Api }) {
                 <td>{s.email}</td>
                 <td><Pill tone={state === 'Confirmé' ? 'ok' : state === 'Désinscrit' ? 'bad' : 'warn'}>{state}</Pill></td>
                 <td>{s.marketing_consent && !s.unsubscribed_at ? 'Oui' : 'Non'}</td>
+                <td>{s.welcome_step ? `${s.welcome_step}/3` : '—'}</td>
                 <td>{[s.irl_alert_month ? `IRL en ${MONTHS[s.irl_alert_month - 1]}` : null, s.paris_alert ? 'Plafonds Paris' : null].filter(Boolean).join(', ') || '—'}</td>
                 <td>{s.sources.map((x) => SOURCE_LABELS[x] ?? x).join(', ')}</td>
                 <td>{date(s.created_at.slice(0, 10))}</td>

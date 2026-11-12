@@ -49,8 +49,10 @@ export interface Lead {
 export interface SiteSubscriber {
   id: string; email: string; first_source: string; sources: string[]; marketing_consent: boolean; consent_text: string | null; consent_page: string | null;
   consent_at: string | null; confirmed_at: string | null; unsubscribed_at: string | null; irl_alert_month: number | null; paris_alert: boolean; created_at: string;
+  /** Séquence de bienvenue : 0 = pas commencée, 1 à 3 = dernier e-mail envoyé. */
+  welcome_step: number;
 }
-export const SUBSCRIBER_COLUMNS = 'id,email,first_source,sources,marketing_consent,consent_text,consent_page,consent_at,confirmed_at,unsubscribed_at,irl_alert_month,paris_alert,created_at';
+export const SUBSCRIBER_COLUMNS = 'id,email,first_source,sources,marketing_consent,consent_text,consent_page,consent_at,confirmed_at,unsubscribed_at,irl_alert_month,paris_alert,created_at,welcome_step';
 export type LeadInput = Pick<Lead, 'name' | 'email' | 'phone' | 'source' | 'status' | 'notes' | 'next_follow_up'>;
 
 /** Assistant conversationnel non configuré (pas de clé d'API) ou indisponible en mode démonstration. */
