@@ -1282,8 +1282,12 @@ async function main() {
     // loyer de 2024 encaissé avant le bail (ancienne recette « Loyer » de Dépenses, toujours comptée)
     await injectLegacyRent(page, 'Parking détenu', '2024-05-05', 850, 'VIR LOYER MAI');
     await page.goto(url + '#/declaration');
+    const tab = (n: string) => page.getByRole('tab', { name: new RegExp(n) }).click();
     await page.getByLabel('Année des revenus').selectOption('2024');
+    await tab('Vérifier');
+    await page.getByRole('heading', { name: 'Points à vérifier' }).waitFor();
     await page.getByLabel('Régime de Parking détenu').selectOption('reel_foncier');
+    await tab('Justificatifs');
     const table = page.locator('table.tax-2044');
     await table.waitFor();
     const row = async (code: string) => (await table.locator('tbody tr').filter({ has: page.getByRole('cell', { name: code, exact: true }) }).innerText()).replace(/[\u202f\u00a0]/g, ' ');
@@ -1291,18 +1295,24 @@ async function main() {
     assert.match(await row('227'), /900,00 €/);
     assert.match(await row('224'), /40,00 €/);
     assert.match(await row('211'), /803,15 €/, 'loyer importé, hors provision (850 × 780 / 825,50)');
-    await page.getByText('Case 4BA').first().waitFor();
+    // carte « Ce que vous devez faire » : case de la 2042 à recopier
+    const todo = page.getByRole('region', { name: /Ce que vous devez faire en 2025/ });
+    await todo.getByText(/Case 4B[ABC]/).first().waitFor();
+    await tab('Mes saisies');
     await page.getByLabel('Ligne 230 : régularisation N−1').fill('100');
-    await page.getByRole('button', { name: 'Enregistrer les saisies' }).click();
+    await page.getByRole('button', { name: 'Enregistrer les saisies' }).first().click();
     await page.getByText('Saisies enregistrées.').waitFor();
+    await tab('Justificatifs');
     assert.match(await row('230'), /100,00 €/);
     // où déclarer : espace particulier, 2044 puis 2042
-    const guide = page.locator('section', { has: page.getByRole('heading', { name: 'Où déclarer sur impots.gouv.fr (2025)' }) });
+    await tab('Déclarer');
+    const guide = page.locator('section', { has: page.getByRole('heading', { name: 'Où et comment déclarer sur impots.gouv.fr (2025)' }) });
     await guide.getByText('Location nue au réel : 2044').waitFor();
     await guide.getByText('Espace particulier').first().waitFor();
     await guide.getByText(/Cochez la rubrique « Revenus fonciers », puis « Déclaration 2044 »/).waitFor();
     // récapitulatif du résultat (2044) : pas d'amortissement en location nue, donc pas de colonne
-    const recap = page.locator('.tax-recap', { has: page.getByRole('heading', { name: 'Récapitulatif du résultat' }) }).first();
+    await tab('Mes chiffres');
+    const recap = page.locator('.tax-recap', { has: page.getByRole('heading', { name: 'Résultat par bien' }) }).first();
     await recap.waitFor();
     const heads = await recap.locator('thead th').allInnerTexts();
     assert.deepEqual(heads, ['Bien', 'Recettes', 'Charges', 'Intérêts d’emprunt', 'Résultat']);
@@ -1312,8 +1322,11 @@ async function main() {
     const [dossier] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Dossier PDF' }).click()]);
     assert.equal(dossier.suggestedFilename(), 'immo-zen-dossier-declaration-2024.pdf');
     assert.equal((await readFile((await dossier.path())!)).subarray(0, 5).toString(), '%PDF-');
+    await page.getByRole('heading', { name: 'Évolution par rapport à 2023' }).waitFor();
     // location meublée au réel : liasse 2031 / 2033 dans l'espace professionnel
+    await tab('Vérifier');
     await page.getByLabel('Régime de Parking détenu').selectOption('reel_bic');
+    await tab('Justificatifs');
     const liasse = page.locator('table.tax-2033');
     await liasse.waitFor();
     assert.match((await liasse.innerText()).replace(/[\u202f\u00a0]/g, ' '), /218[\s\S]*242[\s\S]*254[\s\S]*310/);
@@ -1321,25 +1334,36 @@ async function main() {
     // bien acheté cette année (date par défaut) : amortissement à partir de l'année en cours
     const yearSel = page.getByLabel('Année des revenus');
     await yearSel.selectOption(String(new Date().getFullYear()));
-    const baseInput = page.locator('details.tax-lmnp').getByLabel('Valeur amortissable');
+    await tab('Mes saisies');
+    const baseInput = page.getByLabel('Valeur amortissable');
     await baseInput.fill('100000');
     await baseInput.press('Tab');
-    const recapLmnp = page.locator('.tax-recap', { has: page.getByRole('heading', { name: 'Récapitulatif du résultat comptable' }) });
+    await tab('Mes chiffres');
+    const recapLmnp = page.locator('section', { has: page.getByRole('heading', { name: 'Location meublée au réel (LMNP)' }) }).locator('.tax-recap', { has: page.getByRole('heading', { name: 'Résultat par bien' }) });
     await recapLmnp.locator('thead th', { hasText: 'Amortissement' }).waitFor({ timeout: 5000 }).catch(async () => {
       throw new Error(`récapitulatif sans amortissement : ${(await recapLmnp.innerText()).slice(0, 400)} | ${(await page.locator('details.tax-lmnp').innerText()).slice(0, 600)}`);
     });
-    await recapLmnp.getByText(/Amortissements reportables au 31 décembre/).waitFor();
+    await recapLmnp.getByText(/Stock d’amortissements reportables au 31 décembre/).waitFor();
     const suivi = page.locator('.tax-recap', { has: page.getByRole('heading', { name: 'Suivi des amortissements excédentaires reportables par bien' }) });
     await suivi.locator('tfoot', { hasText: 'Total suivi' }).waitFor();
+    // comparaison avec la déclaration déposée
+    await page.getByText('Comparer avec la déclaration déposée').click();
+    await page.getByLabel('Recettes déclaré').fill('1');
+    await page.waitForFunction(() => /€/.test(document.querySelector('.tax-filed tbody tr td:last-child')?.textContent ?? ''));
+    await page.getByLabel('Recettes déclaré').fill('');
+    await tab('Justificatifs');
     const immo = page.locator('.tax-recap', { has: page.getByRole('heading', { name: 'Détail des immobilisations' }) });
     await immo.getByText(/^Terrain/).first().waitFor();
     await immo.getByText(/^Bâti/).first().waitFor();
     // reprise du stock d'une liasse déposée ailleurs
-    await suivi.getByText(/Reprendre le stock au 1er janvier/).click();
-    await suivi.getByLabel('Parking détenu').fill('1234');
+    await tab('Mes saisies');
+    const stockInput = page.getByLabel(/Stock d’amortissements reportables au 1er janvier/);
+    await stockInput.fill('1234');
+    await tab('Mes chiffres');
     await suivi.getByText('repris de la liasse').waitFor();
     await page.screenshot({ path: join(out, '34b-declaration-recap-lmnp.png'), fullPage: true });
     // liasse LMNP en PDF (document de travail)
+    await tab('Justificatifs');
     const [liassePdf] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Liasse PDF' }).click()]);
     assert.equal(liassePdf.suggestedFilename(), `immo-zen-liasse-lmnp-${new Date().getFullYear()}.pdf`);
     const liasseBytes = await readFile((await liassePdf.path())!);
@@ -1349,10 +1373,12 @@ async function main() {
     const { PDFDocument } = await import('pdf-lib');
     const liasseDoc = await PDFDocument.load(liasseBytes);
     assert.ok(liasseDoc.getPageCount() >= 11, `${liasseDoc.getPageCount()} pages`);
-    await suivi.getByLabel('Parking détenu').fill('');
+    await tab('Mes saisies');
+    await stockInput.fill('');
     await baseInput.fill('');
     await baseInput.press('Tab');
     await yearSel.selectOption('2024');
+    await tab('Justificatifs');
     await liasse.waitFor();
     // relecture du bilan 2033-A : origine des lignes, équilibre, correction motivée et conservée
     const bilan = page.getByRole('region', { name: 'Relecture du bilan 2033-A' });
@@ -1384,6 +1410,7 @@ async function main() {
     } finally {
       await page.setViewportSize({ width: 1360, height: 900 });
     }
+    await tab('Déclarer');
     await guide.getByText('Location meublée au réel (LMNP) : liasse 2031 et 2033').waitFor();
     await guide.getByText('Espace professionnel').first().waitFor();
     await guide.getByText(/tuile « Résultat »/).first().waitFor();
@@ -1393,13 +1420,17 @@ async function main() {
     // aperçu activé pour l'étape « télétransmission » (pris en compte au prochain affichage de la page)
     await page.evaluate(() => localStorage.setItem('iz-tdfc-preview', '1'));
     // micro-BIC : case selon la nature du meublé
+    await tab('Vérifier');
     await page.getByLabel('Régime de Parking détenu').selectOption('micro_bic');
     await page.getByText(/Case 5ND/).first().waitFor();
-    await page.getByLabel('Nature de la location : Parking détenu').selectOption('tourisme_classe');
+    await tab('Mes saisies');
+    const kind = page.locator('section', { has: page.getByRole('heading', { name: /^Parking détenu/ }) }).getByLabel('Nature de la location');
+    await kind.selectOption('tourisme_classe');
     await page.getByText(/Case 5NG/).first().waitFor();
-    await page.getByLabel('Nature de la location : Parking détenu').selectOption('longue_duree');
+    await kind.selectOption('longue_duree');
+    await tab('Vérifier');
     await page.getByLabel('Régime de Parking détenu').selectOption('reel_foncier');
-    await page.getByRole('button', { name: 'Enregistrer les saisies' }).click();
+    await page.getByRole('button', { name: 'Enregistrer les saisies' }).first().click();
     await page.getByText('Saisies enregistrées.').last().waitFor();
   });
 
@@ -1409,6 +1440,7 @@ async function main() {
     const setRegime = async (regime: string) => {
       await page.goto(url + '#/declaration');
       await page.getByLabel('Année des revenus').selectOption(lastYear);
+      await page.getByRole('tab', { name: /Vérifier/ }).click();
       // le régime est enregistré sur le bien dès qu'il est choisi
       await page.getByLabel('Régime de Parking détenu').selectOption(regime);
       await page.waitForFunction((r) => (document.querySelector('select[aria-label="Régime de Parking détenu"]') as HTMLSelectElement | null)?.value === r, regime);
@@ -1429,6 +1461,7 @@ async function main() {
     await injectLegacyRent(page, 'Parking détenu', `${lastYear}-06-15`, 6000, 'Loyers TDFC e2e');
     await addLine('assurance', 'PNO TDFC e2e', '120');
     await setRegime('reel_bic');
+    await page.getByRole('tab', { name: /Déclarer/ }).click();
     await page.getByRole('button', { name: 'Télétransmettre la liasse' }).click();
     await page.getByRole('heading', { name: 'Télétransmission de la liasse' }).waitFor();
     for (const t of ['Identité fiscale', 'Mandat de télétransmission', 'Vérification de la déclaration', 'Préparation et signature']) await page.getByRole('heading', { name: new RegExp(t) }).waitFor();
@@ -1670,6 +1703,7 @@ async function main() {
     const year = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()).slice(0, 4));
     await page.goto(url + '#/declaration');
     await page.getByLabel('Année des revenus').selectOption(year);
+    await page.getByRole('tab', { name: /Justificatifs/ }).click();
     const sec = page.locator('section', { has: page.getByRole('heading', { name: `Amortissements ${year}` }) });
     await sec.getByText('Meuble : Lit et literie').waitFor();
     assert.match(await sec.innerText(), /5 ans/);
@@ -1697,13 +1731,18 @@ async function main() {
     const year = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()).slice(0, 4));
     await page.goto(url + '#/declaration');
     await page.getByLabel('Année des revenus').selectOption(year);
+    await page.getByRole('tab', { name: /Vérifier/ }).click();
     await page.getByLabel('Régime de Parking détenu').selectOption('reel_bic');
+    await page.getByRole('tab', { name: /Justificatifs/ }).click();
     const immo = page.locator('.tax-recap', { has: page.getByRole('heading', { name: 'Détail des immobilisations' }) });
     await immo.getByText(/^Frais de notaire/).waitFor();
     await immo.getByText(/^Frais d’agence/).waitFor();
     await immo.getByText(/^Construction/).waitFor();
-    await page.locator('details.tax-lmnp').first().getByText('d’après la décomposition du coût d’acquisition saisie dans Mes biens', { exact: false }).waitFor();
-    assert.equal(await page.locator('details.tax-lmnp').first().getByLabel('Valeur amortissable').count(), 0);
+    await page.getByRole('tab', { name: /Mes saisies/ }).click();
+    const parkingSaisies = page.locator('section', { has: page.getByRole('heading', { name: /^Parking détenu/ }) });
+    await parkingSaisies.getByText('d’après la décomposition du coût d’acquisition saisie dans Mes biens', { exact: false }).waitFor();
+    assert.equal(await parkingSaisies.getByLabel('Valeur amortissable').count(), 0);
+    await page.getByRole('tab', { name: /Vérifier/ }).click();
     await page.getByLabel('Régime de Parking détenu').selectOption('reel_foncier');
   });
 
@@ -1741,6 +1780,7 @@ async function main() {
     await page.waitForURL(new RegExp(`#/bien/${parkingId}$`));
     await page.goto(url + '#/declaration');
     await page.getByLabel('Année des revenus').selectOption(String(year));
+    await page.getByRole('tab', { name: /Mes saisies/ }).click();
     const field = page.getByLabel(`Intérêts d’emprunt ${year}`).first();
     assert.equal(await field.inputValue(), String(Math.round(interestYear * 100) / 100).replace('.', ','));
     await page.getByText('Pré-calculé : tableau d’amortissement importé', { exact: false }).first().waitFor();

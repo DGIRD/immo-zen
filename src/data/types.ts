@@ -208,6 +208,13 @@ export interface TaxPropertyInputs {
   /** Intérêts d'emprunt et assurance emprunteur de l'année retenus (attestation de la banque) : remplacent le montant pré-calculé. */
   loan_interest?: number | null;
   loan_insurance?: number | null;
+  /** Montants de la déclaration réellement déposée (foyer, par année), pour comparaison avec le calcul. */
+  filed_receipts?: number | null;
+  filed_charges?: number | null;
+  filed_interest?: number | null;
+  filed_depreciation?: number | null;
+  filed_result?: number | null;
+  filed_deferred_end?: number | null;
   /** Micro-BIC : nature de la location meublée (cases 5NI, 5NG ou 5NH de la 2042-C-PRO). */
   meuble_kind?: MeubleKind;
   /** Déficits fonciers antérieurs non encore imputés (case 4BD), saisis depuis l'avis d'imposition. */
