@@ -59,8 +59,8 @@ export function ResultRecap({ rows, properties, title, footer }: { rows: RecapRo
 }
 
 /** Suivi des amortissements excédentaires reportables par bien (art. 39 C du CGI). */
-export function DeferredTracking({ list, properties, year, opening, setOpening }: {
-  list: ReelBic[]; properties: Property[]; year: number;
+export function DeferredTracking({ list, properties, year, opening, setOpening, editable = true }: {
+  list: ReelBic[]; properties: Property[]; year: number; editable?: boolean;
   opening: (propertyId: string) => TaxPropertyInputs['deferred_opening']; setOpening: (propertyId: string, v: number | null) => void;
 }) {
   const t = { before: sumOf(list, (r) => r.deferredBefore), used: sumOf(list, (r) => r.deferredUsed), added: sumOf(list, (r) => r.deferredAdded), after: sumOf(list, (r) => r.deferredAfter) };
@@ -80,7 +80,7 @@ export function DeferredTracking({ list, properties, year, opening, setOpening }
         <tfoot><tr className="total"><td>Total suivi</td><td className="num">{eur(t.before)}</td>{cell(t.used)}{cell(t.added)}<td className="num">{eur(t.after)}</td></tr></tfoot>
       </table></div>
       <p className="muted small">L’amortissement ne peut ni créer ni augmenter le déficit de l’activité : la part non déduite s’ajoute au stock, réparti entre les biens au prorata de leurs dotations, et s’impute sans limite de durée sur les bénéfices des années suivantes.</p>
-      <details className="tax-recap-opening">
+      {editable && <details className="tax-recap-opening">
         <summary>Reprendre le stock au 1er janvier {year} d’une liasse déposée ailleurs</summary>
         <p className="muted small">Indiquez le « stock de fin d’année » de votre liasse {year - 1} pour chaque bien ; il remplace le calcul de l’application. Laissez vide pour le calcul automatique.</p>
         <div className="grid tax-inputs">
@@ -89,7 +89,7 @@ export function DeferredTracking({ list, properties, year, opening, setOpening }
             return <NumberInput key={r.propertyId} label={p?.title ?? r.propertyId} suffix="€" value={opening(r.propertyId) ?? null} onChange={(v) => setOpening(r.propertyId, v)} />;
           })}
         </div>
-      </details>
+      </details>}
     </div>
   );
 }

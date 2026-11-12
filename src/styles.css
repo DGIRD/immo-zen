@@ -725,3 +725,26 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 .tax-recap-opening { margin-top: .5rem; }
 .tax-assets { margin-bottom: 1rem; }
 .tax-assets .label { margin: .75rem 0 .35rem; font-weight: 600; }
+
+/* Déclaration : carte « Ce que vous devez faire », points à vérifier, copie des montants, lexique */
+.tax-todo { border: 1px solid var(--line); border-left: 4px solid var(--sapin); border-radius: var(--radius); background: var(--surface); padding: .9rem 1.1rem; margin: .75rem 0 1rem; }
+.tax-todo h2 { font-size: 1.1rem; margin: 0 0 .4rem; }
+.tax-todo-steps { margin: .3rem 0 .5rem; padding-left: 1.3rem; display: grid; gap: .45rem; }
+.tax-todo-boxes { margin: .25rem 0 0; padding-left: 1.1rem; }
+.copy-amount { display: inline-flex; align-items: baseline; gap: .45rem; white-space: nowrap; }
+.copy-amount .link { font-size: .85em; }
+.tax-checks { list-style: none; padding: 0; margin: 0; display: grid; gap: .5rem; }
+.tax-check { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; padding: .5rem .7rem; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); }
+.tax-check-corriger { border-left: 4px solid var(--ocre); }
+.tax-check-conseil { border-left: 4px solid var(--ardoise); }
+.tax-check > span:nth-child(2) { flex: 1 1 18rem; }
+.pill-info { background: var(--ardoise-tint); color: var(--ardoise); }
+.tax-guide-num { display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%; background: var(--sapin); color: var(--surface); font-weight: 700; font-size: .85rem; }
+.tax-filed > summary, .tax-lexique > summary { cursor: pointer; margin: .4rem 0; }
+.tax-filed td .field { margin: 0; }
+.tax-filed td .field > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.tax-filed td .input-suffix input { width: 8.5rem; text-align: right; }
+.tax-lexique { margin: 1rem 0; }
+.tax-lexique dl { display: grid; gap: .5rem; margin: .5rem 0 0; }
+.tax-lexique dt { font-weight: 600; }
+.tax-lexique dd { margin: 0; color: var(--ink-soft); }
