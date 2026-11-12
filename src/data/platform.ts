@@ -45,6 +45,12 @@ export interface Lead {
   id: string; name: string; email: string | null; phone: string | null; source: string | null; status: 'nouveau' | 'contacte' | 'demo' | 'converti' | 'perdu';
   notes: string | null; next_follow_up: string | null; version: number; created_at: string; updated_at: string;
 }
+/** Inscrit du site (table site_subscribers) : accord confirmé par e-mail avant tout envoi de conseils ou d'offres. */
+export interface SiteSubscriber {
+  id: string; email: string; first_source: string; sources: string[]; marketing_consent: boolean; consent_text: string | null; consent_page: string | null;
+  consent_at: string | null; confirmed_at: string | null; unsubscribed_at: string | null; irl_alert_month: number | null; paris_alert: boolean; created_at: string;
+}
+export const SUBSCRIBER_COLUMNS = 'id,email,first_source,sources,marketing_consent,consent_text,consent_page,consent_at,confirmed_at,unsubscribed_at,irl_alert_month,paris_alert,created_at';
 export type LeadInput = Pick<Lead, 'name' | 'email' | 'phone' | 'source' | 'status' | 'notes' | 'next_follow_up'>;
 
 /** Assistant conversationnel non configuré (pas de clé d'API) ou indisponible en mode démonstration. */
@@ -93,6 +99,9 @@ export interface PlatformApi {
     leads(): Promise<Lead[]>;
     saveLead(id: string | null, input: LeadInput): Promise<void>;
     deleteLead(id: string): Promise<void>;
+    subscribers(): Promise<SiteSubscriber[]>;
+    /** Effacement à la demande de la personne (droit à l'effacement). */
+    deleteSubscriber(id: string): Promise<void>;
   };
 }
 
@@ -211,6 +220,8 @@ export function createSupabasePlatform(sb: SupabaseClient): PlatformApi {
         else check(await sb.from('platform_leads').insert(input));
       },
       async deleteLead(id) { check(await sb.from('platform_leads').delete().eq('id', id)); },
+      async subscribers() { return check(await sb.from('site_subscribers').select(SUBSCRIBER_COLUMNS).order('created_at', { ascending: false })) as SiteSubscriber[]; },
+      async deleteSubscriber(id) { check(await sb.from('site_subscribers').delete().eq('id', id)); },
     },
   };
 }
@@ -301,6 +312,8 @@ export function createDemoPlatform(storage: Storage, userId: () => string | null
         write(d);
       },
       async deleteLead(id) { const d = read(); d.leads = d.leads.filter((l) => l.id !== id); write(d); },
+      async subscribers() { return []; },
+      async deleteSubscriber() { throw new RepoError('Mode démonstration : aucun inscrit.'); },
     },
   };
 }

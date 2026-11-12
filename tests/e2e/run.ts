@@ -119,9 +119,17 @@ async function main() {
     await page.getByRole('button', { name: 'Envoyer ma demande' }).click();
     await page.getByText('Indiquez votre nom.').waitFor();
     await page.getByLabel('Votre nom').fill('Marie Test');
-    await page.getByLabel('E-mail').fill('marie@example.test');
+    await page.locator('#contact').getByLabel('E-mail').fill('marie@example.test');
     await page.getByRole('button', { name: 'Envoyer ma demande' }).click();
     await page.getByText(/Formulaire indisponible pour le moment/).waitFor();
+    // ressources gratuites : case d'accord non cochée, lien direct vers le document si l'envoi est indisponible
+    const guideForm = page.locator('#ressources form.optin[data-source="guide"]');
+    assert.equal(await guideForm.locator('[name="marketing"]').isChecked(), false, 'case d’accord non cochée');
+    await guideForm.getByRole('button', { name: 'Recevoir le guide' }).click();
+    await guideForm.getByText('Indiquez une adresse e-mail valide.').waitFor();
+    await guideForm.getByLabel('Adresse e-mail').fill('marie@example.test');
+    await guideForm.getByRole('button', { name: 'Recevoir le guide' }).click();
+    await guideForm.getByRole('link', { name: 'Ouvrir le document maintenant' }).waitFor();
     await page.getByRole('link', { name: 'Mentions légales' }).click();
     await page.getByRole('heading', { name: 'Confidentialité et données personnelles' }).waitFor();
     await page.getByRole('link', { name: 'Espace client' }).first().click();

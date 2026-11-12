@@ -200,4 +200,99 @@
       button.disabled = false;
     }
   });
+
+  // ---------- inscriptions (calcul par e-mail, guide, checklist, lettre, alertes) → iz_subscribe
+  const supa = { url: document.body.dataset.supabaseUrl, key: document.body.dataset.supabaseKey };
+  const supaReady = () => supa.url && !supa.url.startsWith('%') && supa.key && !supa.key.startsWith('%');
+  const rpc = (fn, body) => fetch(`${supa.url}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: { apikey: supa.key, ...(supa.key.startsWith('eyJ') ? { Authorization: `Bearer ${supa.key}` } : {}), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  // paramètres du calcul d'économies (accueil) : lus depuis l'adresse au chargement
+  const savingsForm = document.getElementById('savings-calc');
+  if (savingsForm && location.search) {
+    const q = new URLSearchParams(location.search);
+    for (const name of ['biens', 'loyer', 'taux']) if (q.has(name) && savingsForm.elements[name]) savingsForm.elements[name].value = q.get(name);
+    if (q.has('relocation') && savingsForm.elements.relocation) savingsForm.elements.relocation.checked = q.get('relocation') === '1';
+    savingsForm.dispatchEvent(new Event('input'));
+  }
+  const calcParams = (source) => {
+    if (source === 'calcul-economies' && savingsForm) {
+      const f = new FormData(savingsForm);
+      return new URLSearchParams({ biens: f.get('biens') || '', loyer: f.get('loyer') || '', taux: f.get('taux') || '', relocation: f.get('relocation') ? '1' : '0' }).toString();
+    }
+    return source.startsWith('calcul-') ? location.search.replace(/^\?/, '') : null;
+  };
+  // rappel IRL : mois prérempli d'après la date de révision saisie dans l'outil
+  const irlDate = document.querySelector('#calc-irl [name="date"]');
+  const irlMonth = document.querySelector('.optin [name="irl_month"]');
+  const syncMonth = () => { const m = /^\d{4}-(\d{2})/.exec(irlDate?.value || ''); if (m && irlMonth) irlMonth.value = String(Number(m[1])); };
+  irlDate?.addEventListener('change', syncMonth);
+  syncMonth();
+
+  document.querySelectorAll('form.optin').forEach((form) => {
+    const msg = form.querySelector('.form-msg');
+    const say = (html, ok) => { msg.innerHTML = html; msg.className = `form-msg ${ok ? 'ok' : 'err'}`; };
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = new FormData(form);
+      const source = form.dataset.source;
+      const email = String(f.get('email') || '').trim();
+      const marketing = !!f.get('marketing');
+      const irl = !!f.get('irl');
+      const paris = !!f.get('paris');
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return say('Indiquez une adresse e-mail valide.', false);
+      if (form.querySelector('[name="marketing"][data-required]') && !marketing) return say('Cochez la case pour recevoir la lettre.', false);
+      const download = form.dataset.download ? ` <a href="${form.dataset.download}" target="_blank" rel="noopener">Ouvrir le document maintenant</a>.` : '';
+      if (!supaReady()) return say(`Envoi indisponible pour le moment.${download}`, false);
+      const button = form.querySelector('button');
+      button.disabled = true;
+      try {
+        const res = await rpc('iz_subscribe', {
+          p_email: email, p_source: source, p_marketing: marketing,
+          p_consent_text: marketing ? form.querySelector('.optin-consent span')?.textContent?.trim() : null,
+          p_page: location.pathname, p_params: calcParams(source),
+          p_irl_month: irl ? Number(f.get('irl_month')) : null, p_paris_alert: paris, p_website: f.get('website') || null,
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          console.error('Inscription :', res.status, j);
+          return say(j.message && !/function|schema|jwt|permission|key/i.test(j.message) ? j.message : `Envoi impossible pour le moment (erreur ${res.status}).${download}`, false);
+        }
+        const confirm = marketing || irl || paris;
+        form.reset();
+        syncMonth();
+        say(`C’est envoyé à ${email.replace(/[<>&"]/g, '')} : regardez votre boîte de réception (et les indésirables).${confirm ? ' Cliquez sur le lien de confirmation du message pour activer votre inscription.' : ''}${download}`, true);
+      } catch {
+        say(`Connexion impossible. Vérifiez votre réseau et réessayez.${download}`, false);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+
+  // ---------- page de confirmation / désinscription
+  const box = document.getElementById('inscription');
+  if (box) {
+    const q = new URLSearchParams(location.search);
+    const token = q.get('confirmer') || q.get('desinscrire');
+    const confirming = q.has('confirmer');
+    const title = document.getElementById('inscription-titre');
+    const text = document.getElementById('inscription-texte');
+    const show = (t, p, state) => { title.textContent = t; text.textContent = p; box.dataset.state = state; };
+    if (!token || !/^[0-9a-f-]{36}$/i.test(token)) show('Lien incomplet', 'Ce lien ne semble pas complet. Copiez-le en entier depuis l’e-mail reçu, ou écrivez-nous.', 'erreur');
+    else if (!supaReady()) show('Service indisponible', 'La confirmation est indisponible pour le moment : réessayez plus tard.', 'erreur');
+    else rpc(confirming ? 'iz_confirm_subscription' : 'iz_unsubscribe', { p_token: token })
+      .then(async (res) => {
+        const r = res.ok ? await res.json() : 'erreur';
+        if (confirming) {
+          if (r === 'confirme') show('Inscription confirmée', 'Merci ! Votre inscription est active. Vous pouvez vous désinscrire à tout moment par le lien présent dans chaque e-mail.', 'ok');
+          else if (r === 'deja') show('Déjà confirmée', 'Votre inscription était déjà confirmée. Rien d’autre à faire.', 'ok');
+          else show('Lien expiré ou inconnu', 'Ce lien n’est plus valable (inscription annulée entre-temps ?). Vous pouvez vous réinscrire depuis le site.', 'erreur');
+        } else if (r === 'desinscrit') show('Désinscription faite', 'Vous ne recevrez plus de conseils, d’offres ni d’alertes d’Immo-Zen à cette adresse.', 'ok');
+        else show('Lien inconnu', 'Ce lien de désinscription n’est pas reconnu. Écrivez-nous à contact@immo-zen.fr : nous supprimerons votre adresse.', 'erreur');
+      })
+      .catch(() => show('Connexion impossible', 'Vérifiez votre réseau et rechargez la page.', 'erreur'));
+  }
 })();

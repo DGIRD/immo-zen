@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="../site.css">
   <script type="application/ld+json">[{"@context":"https://schema.org","@type":"Article","headline":"Rentabilité, patrimoine, projet de vie : bien choisir son investissement locatif","description":"Pourquoi la rentabilité ne suffit pas à juger un investissement locatif : valeur patrimoniale, revente, risques, et place du bien dans votre projet de vie, avec une comparaison chiffrée sur 20 ans et une grille de décision.","inLanguage":"fr-FR","datePublished":"2026-10-20","dateModified":"2026-10-20","mainEntityOfPage":"https://immo-zen.fr/guides/rentabilite-patrimoine-projet-de-vie.html","articleSection":"Investir","author":{"@type":"Organization","name":"Immo-Zen","url":"https://immo-zen.fr"},"publisher":{"@type":"Organization","name":"Immo-Zen","url":"https://immo-zen.fr","logo":{"@type":"ImageObject","url":"https://immo-zen.fr/icon-512.png"}}},{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Pour un premier achat, faut-il privilégier la rentabilité ou la valeur patrimoniale ?","acceptedAnswer":{"@type":"Answer","text":"Pour un premier bien, la sécurité compte souvent plus que la performance : un emplacement solide et un bien facile à louer et à revendre limitent le risque de mauvaise surprise, même avec une rentabilité un peu plus faible. Vérifiez seulement que le cash-flow reste supportable. Les biens suivants pourront viser davantage de rendement."}},{"@type":"Question","name":"Comment estimer la valeur future d'un bien ?","acceptedAnswer":{"@type":"Answer","text":"Personne ne peut la prévoir avec certitude, mais certains indicateurs aident : évolution de la population et de l'emploi, projets de transport, tension locative, historique des prix. Les prix de vente réels sont consultables gratuitement dans la base publique « Demandes de valeurs foncières » (DVF) de l'administration fiscale."}},{"@type":"Question","name":"Peut-on louer son bien à un membre de sa famille ?","acceptedAnswer":{"@type":"Answer","text":"Oui, avec un vrai bail et un loyer proche du marché, les règles habituelles s'appliquent, y compris la déduction des charges. En revanche, un logement prêté gratuitement ou loué à un loyer très inférieur au marché ne permet pas de déduire les charges, et l'administration peut remettre en cause l'avantage fiscal."}},{"@type":"Question","name":"Peut-on récupérer son logement loué pour y habiter ?","acceptedAnswer":{"@type":"Answer","text":"Oui, en location vide ou meublée, le bailleur peut donner congé pour reprise, pour lui-même ou un proche (conjoint, partenaire, ascendants, descendants), à l'échéance du bail : avec un préavis de six mois en location vide et de trois mois en meublé. Le congé doit être motivé et respecter les protections prévues pour certains locataires âgés ou à faibles ressources."}}]}]</script>
 </head>
-<body>
+<body data-supabase-url="%IMMOZEN_SUPABASE_URL%" data-supabase-key="%IMMOZEN_SUPABASE_ANON_KEY%">
   <a class="skip" href="#contenu">Aller au contenu</a>
   <header class="top">
     <div class="wrap top-in">
@@ -169,6 +169,20 @@
             <p>Dans Immo-Zen, comparez vos biens repérés côte à côte : rentabilité, cash-flow, coût total, DPE, état et notes personnelles, pour décider avec tous les critères sous les yeux.</p>
             <a class="btn btn-main" href="../app/">Essayer Immo-Zen gratuitement</a>
           </div>
+          <form class="optin" data-source="guide" data-download="../ressources/guide-10-verifications-avant-achat.pdf" novalidate>
+          <h3 class="optin-title">Guide gratuit : les 10 vérifications avant d’acheter un bien locatif</h3>
+          <p class="optin-text">Deux pages à cocher avant de faire une offre : budget, prix réel, loyer, DPE, copropriété, cash-flow. PDF envoyé par e-mail.</p>
+          <div class="optin-row">
+            <label class="sr-only" for="optin-guide-11">Adresse e-mail</label>
+            <input id="optin-guide-11" type="email" name="email" autocomplete="email" placeholder="votre@adresse.fr" required>
+            <button type="submit" class="btn btn-main">Recevoir le guide</button>
+          </div>
+          
+          <label class="optin-check optin-consent"><input type="checkbox" name="marketing"> <span>J’accepte de recevoir les conseils et offres d’Immo-Zen par e-mail (environ un par mois, désinscription en un clic).</span></label>
+          <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <p class="form-msg" role="status" aria-live="polite"></p>
+          <p class="optin-legal">Votre adresse sert à vous envoyer ce que vous demandez ; la case est facultative. <a href="../mentions-legales.html#confidentialite">Confidentialité</a></p>
+        </form>
           <p class="small disclaimer">Ce guide donne des repères généraux, à jour au 20 octobre 2026. Les règles fiscales et juridiques évoluent : vérifiez-les avec les notices officielles (impots.gouv.fr, service-public.fr) ou un professionnel avant de décider. Les exemples chiffrés reposent sur des hypothèses d'illustration.</p>
           <section class="related" aria-labelledby="related-title">
             <h2 id="related-title">À lire aussi</h2>

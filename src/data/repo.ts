@@ -80,7 +80,8 @@ export interface Repo {
   getSession(): Promise<SessionInfo | null>;
   onAuthChange(cb: (s: SessionInfo | null, event: string) => void): () => void;
   signIn(email: string, password: string): Promise<void>;
-  signUp(email: string, password: string): Promise<'session' | 'confirm_email'>;
+  /** `marketing` : case d'accord cochée (conseils et offres), enregistrée avec son texte puis confirmée par e-mail. */
+  signUp(email: string, password: string, marketing?: { consentText: string } | null): Promise<'session' | 'confirm_email'>;
   signOut(): Promise<void>;
   requestPasswordReset(email: string): Promise<void>;
   updatePassword(password: string): Promise<void>;

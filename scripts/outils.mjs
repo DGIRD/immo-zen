@@ -1,5 +1,6 @@
 // Pages « Outils gratuits » du site vitrine : simulateur de cash-flow, plafond de loyer à Paris, révision IRL.
 // Générées par scripts/guides.mjs (même en-tête, même pied de page). Le calcul est dans site/outils/outils.js.
+import { optinForm } from './optin.mjs';
 
 const field = (label, name, value, unit, extra = '') =>
   `<label${extra}>${label}<span class="in"><input inputmode="decimal" name="${name}" value="${value}" autocomplete="off"><i>${unit}</i></span></label>`;
@@ -202,6 +203,8 @@ ${faq([
 
 const DISCLAIMER = (date) => `<p class="small disclaimer">Ce calcul donne une estimation à titre indicatif, à jour au ${date}. Vérifiez les règles applicables avec les textes officiels (service-public.fr, paris.fr, insee.fr) ou un professionnel avant de décider.</p>`;
 
+const OPTIN_FOR = { 'simulateur-cash-flow': 'calcul-cash-flow', 'plafond-loyer-paris': 'calcul-plafond', 'revision-loyer-irl': 'calcul-irl' };
+
 export function toolPage(t, { site, dateFr, lastIrl }) {
   const canonical = `${site}/outils/${t.slug}.html`;
   const guides = t.guides.map(([s, l]) => `<li><a href="../guides/${s}.html"><span class="cat">Guide</span>${l}</a></li>`).join('');
@@ -214,6 +217,7 @@ export function toolPage(t, { site, dateFr, lastIrl }) {
         ${t.form}
         ${t.out}
       </div>
+      ${OPTIN_FOR[t.slug] ? optinForm({ source: OPTIN_FOR[t.slug], prefix: '../', heading: 'h2' }) : ''}
       <div class="prose tool-prose">
 ${t.body.replace('{{LAST_IRL}}', lastIrl)}
         ${DISCLAIMER(dateFr)}

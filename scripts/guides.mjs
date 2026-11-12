@@ -7,6 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BRAND_SVG, siteHeader } from './site-header.mjs';
 import { TOOLS, toolPage, toolsIndex } from './outils.mjs';
+import { optinForm } from './optin.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const srcDir = join(root, 'content/guides');
@@ -72,7 +73,7 @@ function shell({ title, description, canonical, body, jsonld, prefix, current = 
   <link rel="stylesheet" href="${prefix}site.css">
   <script type="application/ld+json">${JSON.stringify(jsonld)}</script>
 </head>
-<body>
+<body data-supabase-url="%IMMOZEN_SUPABASE_URL%" data-supabase-key="%IMMOZEN_SUPABASE_ANON_KEY%">
   <a class="skip" href="#contenu">Aller au contenu</a>
   ${siteHeader({ prefix, current })}
   <main id="contenu" class="page">
@@ -126,6 +127,7 @@ ${polish(a.body)}
             <p>${esc(a.cta)}</p>
             <a class="btn btn-main" href="../app/">Essayer Immo-Zen gratuitement</a>
           </div>
+          ${optinForm({ source: a.category === 'Gérer' ? 'checklist' : 'guide', prefix: '../' })}
           ${DISCLAIMER}
           <section class="related" aria-labelledby="related-title">
             <h2 id="related-title">À lire aussi</h2>
@@ -161,6 +163,11 @@ function indexPage(all) {
       <nav class="breadcrumb" aria-label="Fil d'Ariane"><a href="../">Accueil</a> › <span>Guides</span></nav>
       <h1>Guides de l'investissement locatif</h1>
       <p class="lead">Onze guides complets pour investir, financer, déclarer et gérer un bien locatif : méthodes, exemples chiffrés sur un même bien, règles en vigueur en 2026 et modèles à réutiliser.</p>${groups}
+      <div class="optin-pair">
+        ${optinForm({ source: 'guide', prefix: '../' })}
+        ${optinForm({ source: 'checklist', prefix: '../' })}
+      </div>
+      ${optinForm({ source: 'lettre', prefix: '../' })}
       ${DISCLAIMER}
     </div>`;
   const jsonld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: "Guides de l'investissement locatif", inLanguage: 'fr-FR', url: `${SITE}/guides/`,
@@ -201,10 +208,13 @@ writeFileSync(join(root, 'site/sitemap.xml'), `<?xml version="1.0" encoding="UTF
 writeFileSync(join(root, 'site/robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${SITE}/sitemap.xml\n`);
 
 // En-tête commun réécrit dans les pages statiques.
-for (const [file, opts] of [['site/index.html', { home: true }], ['site/mentions-legales.html', {}]]) {
+for (const [file, opts] of [['site/index.html', { home: true }], ['site/mentions-legales.html', {}], ['site/inscription.html', {}]]) {
   const path = join(root, file);
   const html = readFileSync(path, 'utf8');
-  const next = html.replace(/<header class="top">[\s\S]*?<\/header>/, siteHeader(opts));
+  const next = html.replace(/<header class="top">[\s\S]*?<\/header>/, siteHeader(opts))
+    // formulaires d'inscription : <!--optin:source--> … <!--/optin--> (réécrits à chaque génération)
+    .replace(/<!--optin:([a-z-]+)(:compact)?-->[\s\S]*?<!--\/optin-->/g, (_, source, compact) =>
+      `<!--optin:${source}${compact ?? ''}-->\n        ${optinForm({ source, compact: !!compact })}\n        <!--/optin-->`);
   if (next === html && !html.includes(siteHeader(opts))) throw new Error(`${file} : en-tête introuvable`);
   writeFileSync(path, next);
 }

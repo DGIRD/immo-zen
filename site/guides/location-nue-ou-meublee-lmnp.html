@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="../site.css">
   <script type="application/ld+json">[{"@context":"https://schema.org","@type":"Article","headline":"Location nue ou meublée (LMNP) : quel régime fiscal choisir en 2026 ?","description":"Micro-foncier, régime réel, micro-BIC et LMNP au réel comparés sur un même bien, avec les seuils 2026, le déficit foncier, les amortissements et la réintégration à la revente.","inLanguage":"fr-FR","datePublished":"2026-10-20","dateModified":"2026-10-20","mainEntityOfPage":"https://immo-zen.fr/guides/location-nue-ou-meublee-lmnp.html","articleSection":"Financer et déclarer","author":{"@type":"Organization","name":"Immo-Zen","url":"https://immo-zen.fr"},"publisher":{"@type":"Organization","name":"Immo-Zen","url":"https://immo-zen.fr","logo":{"@type":"ImageObject","url":"https://immo-zen.fr/icon-512.png"}}},{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Peut-on passer de la location nue à la location meublée ?","acceptedAnswer":{"@type":"Answer","text":"Oui, au départ du locataire ou à l'échéance du bail, en meublant le logement selon la liste réglementaire et en signant un bail meublé. Fiscalement, vos revenus passent alors des revenus fonciers aux BIC ; un déficit foncier non encore imputé ne peut plus s'imputer sur ces revenus, mais reste reportable sur d'éventuels autres revenus fonciers."}},{"@type":"Question","name":"Faut-il s'immatriculer en LMNP ?","acceptedAnswer":{"@type":"Answer","text":"Oui. Dans les quinze jours qui suivent le début de la location, déclarez votre activité sur le guichet unique des formalités d'entreprises (procédure en ligne de l'INPI) : vous obtenez un numéro SIRET, à reporter sur vos déclarations. La démarche est gratuite."}},{"@type":"Question","name":"Un expert-comptable est-il obligatoire au réel ?","acceptedAnswer":{"@type":"Answer","text":"Non, mais il est fortement conseillé : le régime réel impose une comptabilité, un calcul des amortissements par composants et une liasse fiscale transmise par voie électronique. Les honoraires d'un expert-comptable spécialisé sont déductibles et souvent largement compensés par l'économie d'impôt."}},{"@type":"Question","name":"La location meublée est-elle soumise à la CFE ?","acceptedAnswer":{"@type":"Answer","text":"Oui, la cotisation foncière des entreprises s'applique en principe aux loueurs en meublé, avec une exonération l'année du début d'activité et lorsque les recettes annuelles ne dépassent pas 5 000 €. Certaines communes exonèrent aussi des locations. Son montant dépend de la commune."}}]}]</script>
 </head>
-<body>
+<body data-supabase-url="%IMMOZEN_SUPABASE_URL%" data-supabase-key="%IMMOZEN_SUPABASE_ANON_KEY%">
   <a class="skip" href="#contenu">Aller au contenu</a>
   <header class="top">
     <div class="wrap top-in">
@@ -158,6 +158,20 @@
             <p>Dans Immo-Zen, chaque bien détenu a son régime fiscal ; la rubrique Déclaration fiscale prépare les montants du micro-foncier, de la 2044, du micro-BIC et du LMNP au réel avec ses amortissements.</p>
             <a class="btn btn-main" href="../app/">Essayer Immo-Zen gratuitement</a>
           </div>
+          <form class="optin" data-source="guide" data-download="../ressources/guide-10-verifications-avant-achat.pdf" novalidate>
+          <h3 class="optin-title">Guide gratuit : les 10 vérifications avant d’acheter un bien locatif</h3>
+          <p class="optin-text">Deux pages à cocher avant de faire une offre : budget, prix réel, loyer, DPE, copropriété, cash-flow. PDF envoyé par e-mail.</p>
+          <div class="optin-row">
+            <label class="sr-only" for="optin-guide-5">Adresse e-mail</label>
+            <input id="optin-guide-5" type="email" name="email" autocomplete="email" placeholder="votre@adresse.fr" required>
+            <button type="submit" class="btn btn-main">Recevoir le guide</button>
+          </div>
+          
+          <label class="optin-check optin-consent"><input type="checkbox" name="marketing"> <span>J’accepte de recevoir les conseils et offres d’Immo-Zen par e-mail (environ un par mois, désinscription en un clic).</span></label>
+          <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <p class="form-msg" role="status" aria-live="polite"></p>
+          <p class="optin-legal">Votre adresse sert à vous envoyer ce que vous demandez ; la case est facultative. <a href="../mentions-legales.html#confidentialite">Confidentialité</a></p>
+        </form>
           <p class="small disclaimer">Ce guide donne des repères généraux, à jour au 20 octobre 2026. Les règles fiscales et juridiques évoluent : vérifiez-les avec les notices officielles (impots.gouv.fr, service-public.fr) ou un professionnel avant de décider. Les exemples chiffrés reposent sur des hypothèses d'illustration.</p>
           <section class="related" aria-labelledby="related-title">
             <h2 id="related-title">À lire aussi</h2>

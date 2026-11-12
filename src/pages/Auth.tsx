@@ -1,11 +1,14 @@
 import { useState, type FormEvent } from 'react';
 import { describeError } from '../data/repo.ts';
 import { useStore } from '../data/store.tsx';
-import { Button, TextInput } from '../ui/components.tsx';
+import { Button, Checkbox, TextInput } from '../ui/components.tsx';
 import { navigate } from '../ui/router.ts';
 import { readInviteCode } from '../domain/tenantPortal.ts';
 
 type Mode = 'login' | 'signup' | 'reset';
+
+/** Texte exact de la case d'accord, conservé comme preuve du consentement. */
+export const MARKETING_CONSENT = 'J’accepte de recevoir les conseils et offres d’Immo-Zen par e-mail (environ un par mois, désinscription en un clic).';
 
 export function AuthPage() {
   const { repo } = useStore();
@@ -15,6 +18,7 @@ export function AuthPage() {
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [marketing, setMarketing] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -23,7 +27,7 @@ export function AuthPage() {
     try {
       if (mode === 'login') await repo.signIn(email.trim(), password);
       else if (mode === 'signup') {
-        const r = await repo.signUp(email.trim(), password);
+        const r = await repo.signUp(email.trim(), password, marketing && !invited ? { consentText: MARKETING_CONSENT } : null);
         if (r === 'confirm_email') setMessage({ text: 'Compte créé. Ouvrez le lien de confirmation reçu par e-mail, puis connectez-vous.', tone: 'ok' });
       } else {
         await repo.requestPasswordReset(email.trim());
@@ -54,6 +58,12 @@ export function AuthPage() {
           <TextInput label="Mot de passe" type="password" required value={password} onChange={setPassword}
             autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
             hint={mode === 'signup' ? '10 caractères minimum.' : undefined} />
+        )}
+        {mode === 'signup' && !invited && (
+          <>
+            <Checkbox label={MARKETING_CONSENT} checked={marketing} onChange={setMarketing} />
+            <p className="muted small">Facultatif : sans cette case, vous ne recevez que les e-mails liés à votre compte. Si vous la cochez, un lien de confirmation vous est envoyé.</p>
+          </>
         )}
         {message && <p className={message.tone === 'error' ? 'form-error' : 'form-ok'} role={message.tone === 'error' ? 'alert' : 'status'}>{message.text}</p>}
         <Button type="submit" variant="primary" disabled={busy || !email || (mode !== 'reset' && password.length < (mode === 'signup' ? 10 : 1))}>

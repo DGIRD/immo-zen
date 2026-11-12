@@ -370,3 +370,31 @@ main > section.apercu { padding: clamp(2rem, 5vw, 3.5rem) 0 clamp(2.5rem, 6vw, 4
 .savings-card p:last-child { margin-bottom: 0; }
 .savings > .wrap > .small { margin-top: 1.2rem; }
 @media (max-width: 860px) { .savings-grid { grid-template-columns: 1fr; } }
+
+/* ---------- inscriptions (calcul par e-mail, guide, checklist, lettre, alertes) */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.optin { display: flex; flex-direction: column; gap: .6rem; background: var(--papier); border: 1px solid var(--trait); border-left: 4px solid var(--sapin); border-radius: 4px; padding: 1.2rem 1.3rem; margin: 1.6rem 0; }
+.optin .optin-title { margin: 0; font-family: var(--serif); font-size: 1.2rem; line-height: 1.25; }
+.optin .optin-text { margin: 0; color: var(--ardoise); }
+.optin-row { display: flex; gap: .5rem; flex-wrap: wrap; }
+.optin-row input { flex: 1 1 14rem; min-width: 0; font: inherit; color: var(--encre); padding: .6rem .7rem; border: 1px solid var(--trait); border-radius: 4px; background: var(--blanc); }
+.optin-row .btn { flex: 0 0 auto; }
+.optin-check { display: flex; gap: .55rem; align-items: flex-start; font-size: .92rem; color: var(--encre); line-height: 1.4; }
+.optin-check input[type="checkbox"] { margin-top: .2rem; flex: 0 0 auto; width: 1.05rem; height: 1.05rem; accent-color: var(--sapin); }
+.optin-check select { font: inherit; padding: .1rem .3rem; border: 1px solid var(--trait); border-radius: 4px; background: var(--blanc); }
+.optin-consent { color: var(--ardoise); }
+.optin .hp { position: absolute; left: -9999px; }
+.optin .form-msg:empty { display: none; }
+.optin .form-msg a { color: inherit; }
+.optin-legal { margin: 0; font-size: .82rem; color: var(--ardoise); }
+.optin-compact { margin: 0; padding: 1rem 1.1rem; }
+.optin-compact .optin-title { font-size: 1.1rem; }
+.optin-pair, .optin-trio { display: grid; gap: 1.2rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); align-items: stretch; }
+.optin-pair .optin, .optin-trio .optin { margin: 0; }
+.ressources { padding: clamp(2.5rem, 6vw, 4rem) 0; }
+.ressources .optin-trio { margin-top: 1.4rem; }
+.tool .optin { max-width: 46rem; }
+.inscription { padding: clamp(2.5rem, 7vw, 5rem) 0; max-width: 40rem; }
+.inscription[data-state="ok"] h1 { color: var(--sapin); }
+.inscription[data-state="erreur"] h1 { color: #9b3b2a; }
+.inscription-liens { display: flex; gap: .6rem; flex-wrap: wrap; margin: 1.4rem 0; }
