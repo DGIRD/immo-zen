@@ -100,6 +100,9 @@ function writeSite() {
 rmSync(out, { recursive: true, force: true });
 mkdirSync(appOut, { recursive: true });
 cpSync(join(root, 'public'), appOut, { recursive: true });
+// pdf.js (lecture des tableaux d'amortissement en PDF), chargé à la demande depuis vendor/pdfjs/
+mkdirSync(join(appOut, 'vendor', 'pdfjs'), { recursive: true });
+for (const f of ['pdf.min.mjs', 'pdf.worker.min.mjs']) cpSync(join(root, 'node_modules', 'pdfjs-dist', 'build', f), join(appOut, 'vendor', 'pdfjs', f));
 writeSite();
 
 if (serve) {

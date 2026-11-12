@@ -11,6 +11,7 @@ import { isIncome } from './rental.ts';
 import { isCoveredIncome, leaseIncomeIndex } from './incomeOverlap.ts';
 import { amortize, round2 } from './simulator.ts';
 import { loanInfo } from './property.ts';
+import { scheduleRemaining, scheduleYear } from './loanSchedule.ts';
 
 export const MICRO_FONCIER_LIMIT = 15000;
 export const MICRO_BIC_LIMIT = 77700;
@@ -70,15 +71,25 @@ export interface YearAmounts {
   byCategoryCurrent: Partial<Record<ExpenseCategory, number>>;
   /** Part récupérable de la taxe foncière (ordures ménagères), non déductible au foncier. */
   teom: number;
-  /** Intérêts et assurance du crédit retenus (relevé si saisis, sinon tableau d'amortissement du bien). */
+  /** Intérêts et assurance du crédit retenus : saisie de l'année, sinon dépenses « Intérêts » / « Assurance de prêt », sinon tableau importé, sinon échéancier calculé. */
   interest: number;
-  interestSource: 'depenses' | 'credit' | 'aucun';
+  interestSource: LoanSource;
   loanInsurance: number;
-  loanInsuranceSource: 'depenses' | 'credit' | 'aucun';
+  loanInsuranceSource: LoanSource;
+  /** Montants pré-calculés, avant la saisie de l'année (proposés dans la déclaration). */
+  interestComputed: number;
+  interestComputedSource: LoanSource;
+  loanInsuranceComputed: number;
+  loanInsuranceComputedSource: LoanSource;
   /** Mensualités saisies en catégorie « Crédit » (trésorerie, non déductibles en tant que telles). */
   repayments: number;
   warnings: string[];
 }
+
+export type LoanSource = 'saisie' | 'depenses' | 'tableau' | 'credit' | 'aucun';
+export const LOAN_SOURCE_LABELS: Record<LoanSource, string> = {
+  saisie: 'montant saisi', depenses: 'dépenses de l’année', tableau: 'tableau d’amortissement importé', credit: 'échéancier calculé d’après le crédit du bien', aucun: 'aucun crédit renseigné',
+};
 
 const inYear = (d: string | null | undefined, y: number) => !!d && d.startsWith(String(y));
 const sum = (xs: number[]) => round2(xs.reduce((a, b) => a + b, 0));
@@ -90,8 +101,25 @@ function addMonths(iso: string, n: number): string {
   return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
 }
 
-/** Intérêts et assurance d'emprunt échus dans l'année, d'après le crédit saisi sur le bien. */
-export function loanYear(p: Property, year: number): { interest: number; insurance: number; principal: number; months: number } | null {
+/** Mouvements réels de l'année (loyers encaissés ou dépenses payées), hors échéancier de crédit. */
+const hasMovements = (a: YearAmounts) => a.rentsHC + a.chargesCollected > 0 || Object.keys(a.byCategory).length > 0;
+
+/** Le bien n'est pas encore détenu cette année-là (année antérieure à son acquisition). */
+export const beforeAcquisition = (p: Property, year: number) => !!p.acquired_at && Number(p.acquired_at.slice(0, 4)) > year;
+
+/**
+ * Intérêts et assurance d'emprunt échus dans l'année : tableau d'amortissement importé s'il couvre l'année,
+ * sinon échéancier calculé d'après le crédit saisi sur le bien. Rien avant l'année d'acquisition.
+ */
+export function loanYear(p: Property, year: number): { interest: number; insurance: number; principal: number; months: number; source: 'tableau' | 'credit' } | null {
+  if (beforeAcquisition(p, year)) return null;
+  const imported = scheduleYear(p.loan_schedule, year);
+  if (imported) return { interest: imported.interest, insurance: imported.insurance, principal: imported.principal, months: imported.count, source: 'tableau' };
+  if (p.loan_schedule?.rows.length) {
+    // tableau importé ne couvrant pas l'année : avant la première échéance ou après la dernière, rien n'est dû
+    const first = p.loan_schedule.rows[0]!.date.slice(0, 4), last = p.loan_schedule.rows.at(-1)!.date.slice(0, 4);
+    if (String(year) < first || String(year) > last) return null;
+  }
   const amount = p.loan_amount ?? 0;
   const months = Math.round((p.loan_years ?? 0) * 12);
   if (amount <= 0 || months <= 0 || !p.loan_start_date) return null;
@@ -100,7 +128,8 @@ export function loanYear(p: Property, year: number): { interest: number; insuran
   rows.forEach((r, i) => {
     if (inYear(addMonths(p.loan_start_date!, i), year)) { interest += r.interest; principal += r.principal; n++; }
   });
-  return { interest: round2(interest), principal: round2(principal), insurance: round2((p.loan_insurance_monthly ?? 0) * n), months: n };
+  if (!n) return null;
+  return { interest: round2(interest), principal: round2(principal), insurance: round2((p.loan_insurance_monthly ?? 0) * n), months: n, source: 'credit' };
 }
 
 export function yearAmounts(p: Property, year: number, d: FiscalData, inputs: TaxPropertyInputs = {}): YearAmounts {
@@ -153,18 +182,24 @@ export function yearAmounts(p: Property, year: number, d: FiscalData, inputs: Ta
   const loan = loanYear(p, year);
   const interestExp = (byCategory.interets ?? 0);
   const insuranceExp = (byCategory.assurance_credit ?? 0);
-  const interest = interestExp > 0 ? interestExp : loan?.interest ?? 0;
-  const loanInsurance = insuranceExp > 0 ? insuranceExp : loan?.insurance ?? 0;
+  const interestComputed = interestExp > 0 ? interestExp : loan?.interest ?? 0;
+  const interestComputedSource: LoanSource = interestExp > 0 ? 'depenses' : loan ? loan.source : 'aucun';
+  const loanInsuranceComputed = insuranceExp > 0 ? insuranceExp : loan?.insurance ?? 0;
+  const loanInsuranceComputedSource: LoanSource = insuranceExp > 0 ? 'depenses' : loan && loan.insurance > 0 ? loan.source : 'aucun';
+  const typedInterest = inputs.loan_interest, typedInsurance = inputs.loan_insurance;
+  const interest = typedInterest != null ? typedInterest : interestComputed;
+  const loanInsurance = typedInsurance != null ? typedInsurance : loanInsuranceComputed;
   const repayments = byCategory.credit ?? 0;
-  if (repayments > 0 && !loan && interestExp === 0) warnings.push('Mensualités de crédit importées sans crédit renseigné sur le bien : les intérêts déductibles ne peuvent pas être isolés (Mes biens → Modifier → Crédit).');
-  if (loan && repayments > 0 && Math.abs(repayments - (loan.interest + loan.principal + loan.insurance)) > Math.max(50, repayments * 0.05))
-    warnings.push(`Mensualités du relevé (${round2(repayments)} €) différentes du crédit renseigné (${round2(loan.interest + loan.principal + loan.insurance)} €) : vérifiez le crédit du bien.`);
+  if (repayments > 0 && !loan && interestExp === 0 && typedInterest == null) warnings.push('Mensualités de crédit importées sans crédit renseigné sur le bien : les intérêts déductibles ne peuvent pas être isolés (Mes biens → Modifier → Crédit).');
+  if (loan?.source === 'credit' && repayments > 0 && Math.abs(repayments - (loan.interest + loan.principal + loan.insurance)) > Math.max(50, repayments * 0.05))
+    warnings.push(`Mensualités du relevé (${round2(repayments)} €) différentes du crédit renseigné (${round2(loan.interest + loan.principal + loan.insurance)} €) : vérifiez le crédit du bien, ou importez le tableau d’amortissement de la banque.`);
 
   return {
     rentsHC: round2(rentsHC), chargesCollected: round2(chargesCollected), advances: round2(Math.max(0, advances)), importedIncome,
     otherIncome: round2(inputs.other_income ?? 0), byCategory, byCategoryCurrent, teom: round2(teom),
-    interest: round2(interest), interestSource: interestExp > 0 ? 'depenses' : loan ? 'credit' : 'aucun',
-    loanInsurance: round2(loanInsurance), loanInsuranceSource: insuranceExp > 0 ? 'depenses' : loan && loan.insurance > 0 ? 'credit' : 'aucun',
+    interest: round2(interest), interestSource: typedInterest != null ? 'saisie' : interestComputedSource,
+    loanInsurance: round2(loanInsurance), loanInsuranceSource: typedInsurance != null ? 'saisie' : loanInsuranceComputedSource,
+    interestComputed: round2(interestComputed), interestComputedSource, loanInsuranceComputed: round2(loanInsuranceComputed), loanInsuranceComputedSource,
     repayments, warnings,
   };
 }
@@ -249,6 +284,8 @@ export interface ReelBic {
   receipts: number;
   charges: { label: string; amount: number }[];
   chargesTotal: number;
+  /** Charges financières (ligne 294) : intérêts d'emprunt, assurance emprunteur, frais de dossier et de garantie. */
+  financial: { label: string; amount: number }[];
   interest: number;
   resultBeforeDepreciation: number;
   depreciation: DepreciationItem[];
@@ -391,7 +428,9 @@ export function reelBicActivity(props: Property[], year: number, d: FiscalData, 
   const stock = new Map(props.map((p) => [p.id, 0]));
   let out: ReelBic[] = [];
   for (let y = first; y <= year; y++) {
-    const rows = props.map((p) => {
+    // un bien n'entre dans l'activité qu'à partir de son année d'acquisition (ou d'un premier mouvement réel)
+    const active = props.filter((p) => !beforeAcquisition(p, y) || hasMovements(yearAmounts(p, y, d, inputs(p.id, y))));
+    const rows = active.map((p) => {
       const inp = inputs(p.id, y);
       if (inp.deferred_opening !== undefined && inp.deferred_opening !== null) stock.set(p.id, round2(inp.deferred_opening));
       const a = yearAmounts(p, y, d, inp);
@@ -402,16 +441,21 @@ export function reelBicActivity(props: Property[], year: number, d: FiscalData, 
         { label: 'Assurances', amount: catCur(a, 'assurance') },
         { label: 'Entretien et petits travaux', amount: catCur(a, 'entretien') },
         { label: 'Gestion locative', amount: catCur(a, 'gestion') },
-        { label: 'Frais bancaires et financiers', amount: catCur(a, 'frais_bancaires') },
-        { label: 'Frais de crédit', amount: catCur(a, 'frais_credit') },
-        { label: 'Assurance emprunteur', amount: a.loanInsurance },
+        { label: 'Frais bancaires et comptabilité', amount: catCur(a, 'frais_bancaires') },
         { label: 'Autres charges', amount: catCur(a, 'autre') },
       ].filter((c) => c.amount > 0);
+      const financial = [
+        { label: 'Intérêts d’emprunt', amount: a.interest },
+        { label: 'Assurance emprunteur', amount: a.loanInsurance },
+        { label: 'Frais de dossier et de garantie', amount: catCur(a, 'frais_credit') },
+      ].filter((c) => c.amount > 0);
       const chargesTotal = sum(charges.map((c) => c.amount));
-      const r0 = round2(receipts - chargesTotal - a.interest);
+      const interest = sum(financial.map((c) => c.amount));
+      const r0 = round2(receipts - chargesTotal - interest);
       const dep = depreciationItems(p, y, d, inp);
-      return { p, a, receipts, charges, chargesTotal, r0, dep, depYear: sum(dep.items.map((i) => i.amount)), before: stock.get(p.id)! };
+      return { p, a, receipts, charges, chargesTotal, financial, interest, r0, dep, depYear: sum(dep.items.map((i) => i.amount)), before: stock.get(p.id)! };
     });
+    if (!rows.length) { out = []; continue; }
     const R0 = sum(rows.map((r) => r.r0));
     const depTotal = sum(rows.map((r) => r.depYear));
     const stockBefore = sum(rows.map((r) => r.before));
@@ -426,7 +470,7 @@ export function reelBicActivity(props: Property[], year: number, d: FiscalData, 
       stock.set(r.p.id, after);
       const fiscal = round2(r.r0 - deducted);
       return {
-        propertyId: r.p.id, receipts: r.receipts, charges: r.charges, chargesTotal: r.chargesTotal, interest: r.a.interest, resultBeforeDepreciation: r.r0,
+        propertyId: r.p.id, receipts: r.receipts, charges: r.charges, chargesTotal: r.chargesTotal, financial: r.financial, interest: r.interest, resultBeforeDepreciation: r.r0,
         depreciation: r.dep.items, depreciationYear: r.depYear, deferredBefore: r.before, depreciationDeducted: deducted, deferredAfter: after,
         deferredUsed: usedBy[i]!, deferredAdded: excess[i]!,
         box5NA: fiscal > 0 ? fiscal : 0, box5NY: fiscal < 0 ? -fiscal : 0,
@@ -440,12 +484,12 @@ export function reelBicActivity(props: Property[], year: number, d: FiscalData, 
 // ---------------------------------------------------------------- emprunts au bilan
 
 export interface LoanBalance {
-  /** Capital restant dû au 31/12 retenu (banque si saisi, sinon calcul). */
+  /** Capital restant dû au 31/12 retenu (banque si saisi, sinon tableau importé, sinon calcul). */
   remaining: number;
   /** Part remboursable au-delà d'un an. */
   beyondOneYear: number;
   computed: number;
-  source: 'banque' | 'calcul' | 'aucun';
+  source: 'banque' | 'tableau' | 'calcul' | 'aucun';
   /** Écart entre le montant de la banque et le calcul (positif : la banque indique plus). */
   gap: number;
 }
@@ -455,14 +499,15 @@ export interface LoanBalance {
  * crédit du bien. La part à plus d'un an retranche le capital des 12 prochaines échéances calculées.
  */
 export function loanBalance(p: Property, year: number, inputs: TaxPropertyInputs = {}): LoanBalance {
-  const computed = loanInfo(p, `${year}-12-31`)?.remaining ?? 0;
-  const next = loanInfo(p, `${year + 1}-12-31`)?.remaining ?? 0;
+  const fromTable = scheduleRemaining(p.loan_schedule, year);
+  const computed = fromTable ?? loanInfo(p, `${year}-12-31`)?.remaining ?? 0;
+  const next = scheduleRemaining(p.loan_schedule, year + 1) ?? loanInfo(p, `${year + 1}-12-31`)?.remaining ?? 0;
   const bank = inputs.loan_remaining_bank;
   if (bank != null && bank >= 0) {
     const nextPrincipal = Math.max(0, computed - next);
     return { remaining: round2(bank), beyondOneYear: round2(Math.max(0, bank - nextPrincipal)), computed, source: 'banque', gap: round2(bank - computed) };
   }
-  return { remaining: computed, beyondOneYear: next, computed, source: computed > 0 ? 'calcul' : 'aucun', gap: 0 };
+  return { remaining: computed, beyondOneYear: next, computed, source: fromTable != null ? 'tableau' : computed > 0 ? 'calcul' : 'aucun', gap: 0 };
 }
 
 // ---------------------------------------------------------------- liasse LMNP (2031, 2033-B)
@@ -524,7 +569,7 @@ export function liasse2033B(list: ReelBic[], year: number, d: FiscalData, inputs
       { code: '254', label: 'Dotations aux amortissements', amount: l254 },
       { code: '264', label: 'Total des charges d’exploitation', amount: l264 },
       { code: '270', label: 'Résultat d’exploitation', amount: l270 },
-      { code: '294', label: 'Charges financières (intérêts d’emprunt)', amount: l294 },
+      { code: '294', label: 'Charges financières (intérêts, assurance emprunteur, frais de dossier et de garantie)', amount: l294 },
       { code: '310', label: 'Bénéfice ou perte comptable', amount: l310 },
       { code: '318', label: 'Réintégration : amortissements non déductibles (art. 39 C du CGI)', amount: l318 },
       { code: fiscal >= 0 ? '352' : '354', label: fiscal >= 0 ? 'Résultat fiscal : bénéfice' : 'Résultat fiscal : déficit', amount: Math.abs(fiscal) },
@@ -554,7 +599,7 @@ export function fiscalSummary(year: number, d: FiscalData, inputs: (propertyId: 
   // biens détenus pendant l'année, ou ayant des mouvements cette année-là (date d'acquisition parfois approximative)
   const owned = all.filter((p) => {
     const a = allAmounts.get(p.id)!;
-    return !p.acquired_at || p.acquired_at.slice(0, 4) <= String(year) || a.rentsHC + a.chargesCollected > 0 || Object.keys(a.byCategory).length > 0;
+    return !beforeAcquisition(p, year) || hasMovements(a);
   });
   const byRegime = { micro_foncier: [], reel_foncier: [], micro_bic: [], reel_bic: [], is: [], autre: [], non_renseigne: [] } as FiscalSummary['byRegime'];
   for (const p of owned) byRegime[p.tax_regime ?? 'non_renseigne'].push(p);

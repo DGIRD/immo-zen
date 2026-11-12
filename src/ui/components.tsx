@@ -152,6 +152,7 @@ export function Checkbox({ label, checked, onChange }: { label: string; checked:
 
 export function Modal({ open, title, onClose, children, footer, wide }: { open: boolean; title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
@@ -159,11 +160,11 @@ export function Modal({ open, title, onClose, children, footer, wide }: { open: 
     if (!open && d.open) d.close();
   }, [open]);
   return (
-    <dialog ref={ref} className={`modal${wide ? ' modal-wide' : ''}`} onClose={onClose} onCancel={(e) => { e.preventDefault(); onClose(); }}>
+    <dialog ref={ref} aria-labelledby={titleId} className={`modal${wide ? ' modal-wide' : ''}`} onClose={onClose} onCancel={(e) => { e.preventDefault(); onClose(); }}>
       {open && (
         <>
           <div className="modal-head">
-            <h2>{title}</h2>
+            <h2 id={titleId}>{title}</h2>
             <button type="button" className="icon-btn" aria-label="Fermer" onClick={onClose}>×</button>
           </div>
           <div className="modal-body">{children}</div>

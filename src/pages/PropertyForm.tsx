@@ -9,6 +9,7 @@ import { Button, NumberInput, PageHeader, Section, Select, TextArea, TextInput }
 import { navigate } from '../ui/router.ts';
 import { AddressFields } from '../ui/AddressFields.tsx';
 import { EstimatePanel } from '../ui/EstimatePanel.tsx';
+import { LoanScheduleBlock } from './LoanScheduleImport.tsx';
 
 type Draft = Insert<Property> & { title: string };
 const NEW = '__new__';
@@ -76,6 +77,8 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
       if (!owned) { payload.occupation_status = null; }
       // N'envoyer la provision que si elle est renseignée (compatibilité avec une base pas encore migrée)
       for (const k of ['charges_provision', ...ANNUAL_CHARGE_FIELDS.map(([f]) => f), ...LOAN_FIELDS, 'estimate_low', 'estimate_high', 'estimate_median', 'estimate_on', 'estimate_source', 'estimate_details', 'acquisition_breakdown'] as const) if (payload[k] === null || payload[k] === undefined) delete payload[k];
+      // tableau d'amortissement : envoyé s'il est importé, ou pour le retirer (null) ; jamais s'il n'a jamais existé (base pas encore migrée)
+      if (payload.loan_schedule == null && !existing?.loan_schedule) delete payload.loan_schedule;
       if (existing) {
         const row = await update('properties', existing, payload, `Le bien « ${existing.title} »`);
         if (row) navigate(`/bien/${row.id}`);
@@ -266,6 +269,7 @@ function LoanSection({ draft, set, errors, snapshot }: {
           <output className="computed" aria-labelledby="loan-total">{money2(info ? info.payment + info.insurance : 0)}<small> / mois</small></output>
           <small className="muted">{info?.remaining != null ? `Capital restant dû : ${money2(info.remaining)}${info.endDate ? `, fin le ${info.endDate.split('-').reverse().join('/')}` : ''}.` : 'Utilisée pour le cash-flow du bien.'}</small>
         </div>
+        <LoanScheduleBlock draft={draft} set={(k, v) => set(k, v as never)} />
       </div>
     </Section>
   );

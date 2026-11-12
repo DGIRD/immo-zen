@@ -1,4 +1,5 @@
 // Types des lignes, alignés sur supabase/migrations/20261013000100_immozen_core.sql
+import type { LoanSchedule } from '../domain/loanSchedule.ts';
 import type { SimulationInputs, ScenarioSummary } from '../domain/simulator.ts';
 import type { MarketRentSnapshot } from '../domain/marketRent.ts';
 
@@ -81,6 +82,8 @@ export interface Property extends Versioned {
   acquisition_snapshot: AcquisitionSnapshot | null;
   /** Décomposition du coût d'acquisition pour l'amortissement au réel (facultatif). */
   acquisition_breakdown?: AcquisitionBreakdown | null;
+  /** Tableau d'amortissement du crédit importé du document de la banque (prioritaire sur l'échéancier calculé). */
+  loan_schedule?: LoanSchedule | null;
   primary_scenario_id: string | null;
   legacy_simulation_id: string | null;
   legacy_ref: string | null;
@@ -202,6 +205,9 @@ export interface TaxPropertyInputs {
   depreciable_base?: number;
   /** LMNP réel (par année) : stock d'amortissements excédentaires reportables au 1er janvier, repris d'une liasse déposée ailleurs (remplace le calcul). */
   deferred_opening?: number | null;
+  /** Intérêts d'emprunt et assurance emprunteur de l'année retenus (attestation de la banque) : remplacent le montant pré-calculé. */
+  loan_interest?: number | null;
+  loan_insurance?: number | null;
   /** Micro-BIC : nature de la location meublée (cases 5NI, 5NG ou 5NH de la 2042-C-PRO). */
   meuble_kind?: MeubleKind;
   /** Déficits fonciers antérieurs non encore imputés (case 4BD), saisis depuis l'avis d'imposition. */

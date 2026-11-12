@@ -20,14 +20,10 @@ function PropertyCell({ p, fallback }: { p: Property | undefined; fallback: stri
 
 export interface RecapRow { propertyId: string; receipts: number; charges: number; interest: number; depreciation: number; result: number }
 
-/** Lignes du récapitulatif pour la location meublée au réel (intérêts et assurance d'emprunt regroupés, comme la liasse). */
+/** Lignes du récapitulatif pour la location meublée au réel (intérêts, assurance et frais d'emprunt regroupés, comme la liasse). */
 export function recapFromReelBic(list: ReelBic[]): RecapRow[] {
-  return list.map((r) => {
-    const insurance = r.charges.find((c) => c.label === 'Assurance emprunteur')?.amount ?? 0;
-    const interest = round2(r.interest + insurance);
-    return { propertyId: r.propertyId, receipts: r.receipts, charges: round2(r.chargesTotal - insurance), interest, depreciation: r.depreciationYear,
-      result: round2(r.resultBeforeDepreciation - r.depreciationYear) };
-  });
+  return list.map((r) => ({ propertyId: r.propertyId, receipts: r.receipts, charges: r.chargesTotal, interest: r.interest, depreciation: r.depreciationYear,
+    result: round2(r.resultBeforeDepreciation - r.depreciationYear) }));
 }
 
 /** Lignes du récapitulatif pour la location nue au réel (2044 : recettes 215, frais 240, intérêts 250, résultat 263). */
