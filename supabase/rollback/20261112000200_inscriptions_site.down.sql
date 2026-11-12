@@ -1,4 +1,4 @@
--- Annulation de 20261112000100_inscriptions_site.sql
+-- Annulation de 20261112000200_inscriptions_site.sql
 do $$
 begin
   if exists (select 1 from pg_extension where extname = 'pg_cron') then

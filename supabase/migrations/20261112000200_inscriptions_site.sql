@@ -8,7 +8,7 @@
 -- e-mail (double opt-in) ; la preuve est conservée (texte de la case, page, date) ; chaque e-mail porte un
 -- lien de désinscription. Une adresse qui demande seulement un calcul ou un document n'est pas conservée
 -- dans cette table (le message part par la file d'e-mails, rien d'autre).
--- Annulation : rollback/20261112000100_inscriptions_site.down.sql
+-- Annulation : rollback/20261112000200_inscriptions_site.down.sql
 -- =====================================================================
 
 create table if not exists public.site_subscribers (

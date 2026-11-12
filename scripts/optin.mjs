@@ -1,5 +1,5 @@
 // Formulaires d'inscription du site (adresse e-mail + accord facultatif, non coché).
-// Envoyés par site.js à la fonction publique iz_subscribe (voir supabase/migrations/20261112000100_inscriptions_site.sql).
+// Envoyés par site.js à la fonction publique iz_subscribe (voir supabase/migrations/20261112000200_inscriptions_site.sql).
 // Règle : le service demandé (calcul, guide, checklist, alerte) ne dépend jamais de la case « conseils et offres ».
 
 export const CONSENT_TEXT = 'J’accepte de recevoir les conseils et offres d’Immo-Zen par e-mail (environ un par mois, désinscription en un clic).';

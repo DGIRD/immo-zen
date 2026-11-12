@@ -37,7 +37,7 @@ test('« Espace client » dans l’en-tête, après le bouton Menu, sur chaque p
 });
 
 test('inscriptions : formulaires avec case d’accord non cochée, sources reconnues par le serveur', () => {
-  const sql = readFileSync(join(import.meta.dirname, '..', 'supabase', 'migrations', '20261112000100_inscriptions_site.sql'), 'utf8');
+  const sql = readFileSync(join(import.meta.dirname, '..', 'supabase', 'migrations', '20261112000200_inscriptions_site.sql'), 'utf8');
   const allowed = new Set([...(sql.match(/p_source not in \(([^)]*)\)/)?.[1] ?? '').matchAll(/'([a-z-]+)'/g)].map((m) => m[1]));
   const pages = [join(site, 'index.html'), ...['guides', 'outils'].flatMap((d) => readdirSync(join(site, d)).filter((f) => f.endsWith('.html')).map((f) => join(site, d, f)))];
   const seen = new Set<string>();
