@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="../site.css">
   <script type="application/ld+json">[{"@context":"https://schema.org","@type":"Article","headline":"Investissement locatif : le guide pour réussir son premier achat","description":"Objectif, budget, ville, type de bien, visite, offre et mise en location : toutes les étapes d'un premier investissement locatif, et les erreurs à éviter.","inLanguage":"fr-FR","datePublished":"2026-10-20","dateModified":"2026-10-20","mainEntityOfPage":"https://immo-zen.fr/guides/premier-investissement-locatif.html","articleSection":"Investir","author":{"@type":"Organization","name":"Immo-Zen","url":"https://immo-zen.fr"},"publisher":{"@type":"Organization","name":"Immo-Zen","url":"https://immo-zen.fr","logo":{"@type":"ImageObject","url":"https://immo-zen.fr/icon-512.png"}}},{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Quel budget faut-il pour un premier investissement locatif ?","acceptedAnswer":{"@type":"Answer","text":"Il faut surtout un apport qui couvre les frais de notaire (7 à 8 % du prix dans l'ancien) et les frais de garantie, et conserver à côté une épargne de précaution de plusieurs mois de dépenses. Dans de nombreuses villes moyennes, des studios et des T2 se négocient entre 50 000 et 120 000 € ; dans les grandes métropoles, il faut souvent compter le double."}},{"@type":"Question","name":"Faut-il investir près de chez soi ?","acceptedAnswer":{"@type":"Answer","text":"C'est plus simple : vous connaissez le marché, vous pouvez visiter, faire les états des lieux et suivre les travaux. Si les prix locaux sont trop élevés, investir plus loin reste possible, mais au-delà d'une heure de trajet, prévoyez une agence ou un relais sur place, et intégrez ce coût dans vos calculs."}},{"@type":"Question","name":"Neuf ou ancien ?","acceptedAnswer":{"@type":"Answer","text":"L'ancien coûte moins cher au mètre carré et offre souvent une meilleure rentabilité, mais les frais de notaire sont de 7 à 8 % et des travaux sont fréquents. Le neuf a des frais de notaire réduits (2 à 3 %), pas de travaux et un bon DPE, pour un prix plus élevé. Le nouveau dispositif d'amortissement de la loi de finances pour 2026 vise notamment le neuf en immeuble collectif, avec des loyers plafonnés."}},{"@type":"Question","name":"Acheter en nom propre ou en SCI ?","acceptedAnswer":{"@type":"Answer","text":"Pour un premier bien, le nom propre est le plus simple et le moins coûteux. La SCI à l'impôt sur le revenu facilite l'achat à plusieurs et la transmission, avec une comptabilité et des frais de tenue. La SCI à l'impôt sur les sociétés permet d'amortir le bien, mais la plus-value de revente y est beaucoup plus taxée. Le choix dépend de votre projet familial et mérite l'avis d'un notaire."}}]}]</script>
 </head>
-<body>
+<body data-supabase-url="%IMMOZEN_SUPABASE_URL%" data-supabase-key="%IMMOZEN_SUPABASE_ANON_KEY%">
   <a class="skip" href="#contenu">Aller au contenu</a>
   <header class="top">
     <div class="wrap top-in">
@@ -165,6 +165,20 @@
             <p>Repérez vos premiers biens et simulez-les dans Immo-Zen : la fiche du bien, la simulation et le suivi de vos visites restent au même endroit.</p>
             <a class="btn btn-main" href="../app/">Essayer Immo-Zen gratuitement</a>
           </div>
+          <form class="optin" data-source="guide" data-download="../ressources/guide-10-verifications-avant-achat.pdf" novalidate>
+          <h3 class="optin-title">Guide gratuit : les 10 vérifications avant d’acheter un bien locatif</h3>
+          <p class="optin-text">Deux pages à cocher avant de faire une offre : budget, prix réel, loyer, DPE, copropriété, cash-flow. PDF envoyé par e-mail.</p>
+          <div class="optin-row">
+            <label class="sr-only" for="optin-guide-1">Adresse e-mail</label>
+            <input id="optin-guide-1" type="email" name="email" autocomplete="email" placeholder="votre@adresse.fr" required>
+            <button type="submit" class="btn btn-main">Recevoir le guide</button>
+          </div>
+          
+          <label class="optin-check optin-consent"><input type="checkbox" name="marketing"> <span>J’accepte de recevoir les conseils et offres d’Immo-Zen par e-mail (environ un par mois, désinscription en un clic).</span></label>
+          <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <p class="form-msg" role="status" aria-live="polite"></p>
+          <p class="optin-legal">Votre adresse sert à vous envoyer ce que vous demandez ; la case est facultative. <a href="../mentions-legales.html#confidentialite">Confidentialité</a></p>
+        </form>
           <p class="small disclaimer">Ce guide donne des repères généraux, à jour au 20 octobre 2026. Les règles fiscales et juridiques évoluent : vérifiez-les avec les notices officielles (impots.gouv.fr, service-public.fr) ou un professionnel avant de décider. Les exemples chiffrés reposent sur des hypothèses d'illustration.</p>
           <section class="related" aria-labelledby="related-title">
             <h2 id="related-title">À lire aussi</h2>

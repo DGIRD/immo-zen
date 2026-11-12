@@ -307,6 +307,22 @@
             </div>
           </form>
           <div class="savings-side">
+            <!--optin:calcul-economies:compact-->
+        <form class="optin optin-compact" data-source="calcul-economies" novalidate>
+          <h3 class="optin-title">Recevoir cette estimation par e-mail</h3>
+          <p class="optin-text">Le lien pour la retrouver avec vos chiffres.</p>
+          <div class="optin-row">
+            <label class="sr-only" for="optin-calcul-economies-18">Adresse e-mail</label>
+            <input id="optin-calcul-economies-18" type="email" name="email" autocomplete="email" placeholder="votre@adresse.fr" required>
+            <button type="submit" class="btn btn-main">Envoyer</button>
+          </div>
+          
+          <label class="optin-check optin-consent"><input type="checkbox" name="marketing"> <span>J’accepte de recevoir les conseils et offres d’Immo-Zen par e-mail (environ un par mois, désinscription en un clic).</span></label>
+          <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <p class="form-msg" role="status" aria-live="polite"></p>
+          <p class="optin-legal">Votre adresse sert à vous envoyer ce que vous demandez ; la case est facultative. <a href="mentions-legales.html#confidentialite">Confidentialité</a></p>
+        </form>
+        <!--/optin-->
             <div class="savings-card">
               <h3>Ce qui reste à votre charge</h3>
               <p>Une agence fait aussi les visites, le choix du locataire, l'état des lieux et les interventions urgentes, et peut souscrire une garantie loyers impayés. Avec Immo-Zen, vous les assurez vous-même ou les confiez ponctuellement à un professionnel.</p>
@@ -474,6 +490,63 @@
         </div>
         <p><a class="btn btn-ghost" href="guides/">Tous les guides</a></p>
         <p class="small">Ces guides donnent des repères généraux ; ils ne remplacent pas un conseil fiscal ou juridique personnalisé.</p>
+      </div>
+    </section>
+
+    <section class="ressources" id="ressources" aria-labelledby="ressources-title">
+      <div class="wrap">
+        <h2 id="ressources-title">Ressources gratuites</h2>
+        <p class="intro">Deux documents à imprimer et une lettre mensuelle pour les propriétaires bailleurs. Gratuit, sans engagement.</p>
+        <div class="optin-trio">
+        <!--optin:guide-->
+        <form class="optin" data-source="guide" data-download="ressources/guide-10-verifications-avant-achat.pdf" novalidate>
+          <h3 class="optin-title">Guide gratuit : les 10 vérifications avant d’acheter un bien locatif</h3>
+          <p class="optin-text">Deux pages à cocher avant de faire une offre : budget, prix réel, loyer, DPE, copropriété, cash-flow. PDF envoyé par e-mail.</p>
+          <div class="optin-row">
+            <label class="sr-only" for="optin-guide-19">Adresse e-mail</label>
+            <input id="optin-guide-19" type="email" name="email" autocomplete="email" placeholder="votre@adresse.fr" required>
+            <button type="submit" class="btn btn-main">Recevoir le guide</button>
+          </div>
+          
+          <label class="optin-check optin-consent"><input type="checkbox" name="marketing"> <span>J’accepte de recevoir les conseils et offres d’Immo-Zen par e-mail (environ un par mois, désinscription en un clic).</span></label>
+          <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <p class="form-msg" role="status" aria-live="polite"></p>
+          <p class="optin-legal">Votre adresse sert à vous envoyer ce que vous demandez ; la case est facultative. <a href="mentions-legales.html#confidentialite">Confidentialité</a></p>
+        </form>
+        <!--/optin-->
+        <!--optin:checklist-->
+        <form class="optin" data-source="checklist" data-download="ressources/checklist-mise-en-location.pdf" novalidate>
+          <h3 class="optin-title">Checklist gratuite de mise en location</h3>
+          <p class="optin-text">Diagnostics, bail, dépôt de garantie, état des lieux, démarches après l’entrée du locataire : tout ce qu’il faut vérifier, en deux pages à imprimer.</p>
+          <div class="optin-row">
+            <label class="sr-only" for="optin-checklist-20">Adresse e-mail</label>
+            <input id="optin-checklist-20" type="email" name="email" autocomplete="email" placeholder="votre@adresse.fr" required>
+            <button type="submit" class="btn btn-main">Recevoir la checklist</button>
+          </div>
+          
+          <label class="optin-check optin-consent"><input type="checkbox" name="marketing"> <span>J’accepte de recevoir les conseils et offres d’Immo-Zen par e-mail (environ un par mois, désinscription en un clic).</span></label>
+          <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <p class="form-msg" role="status" aria-live="polite"></p>
+          <p class="optin-legal">Votre adresse sert à vous envoyer ce que vous demandez ; la case est facultative. <a href="mentions-legales.html#confidentialite">Confidentialité</a></p>
+        </form>
+        <!--/optin-->
+        <!--optin:lettre-->
+        <form class="optin" data-source="lettre" novalidate>
+          <h3 class="optin-title">La lettre des propriétaires bailleurs</h3>
+          <p class="optin-text">Une actualité, un calcul et un conseil, environ une fois par mois. Gratuit, désinscription en un clic.</p>
+          <div class="optin-row">
+            <label class="sr-only" for="optin-lettre-21">Adresse e-mail</label>
+            <input id="optin-lettre-21" type="email" name="email" autocomplete="email" placeholder="votre@adresse.fr" required>
+            <button type="submit" class="btn btn-main">M’inscrire</button>
+          </div>
+          
+          <label class="optin-check optin-consent"><input type="checkbox" name="marketing" data-required> <span>J’accepte de recevoir la lettre Immo-Zen par e-mail (environ une par mois, désinscription en un clic).</span></label>
+          <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <p class="form-msg" role="status" aria-live="polite"></p>
+          <p class="optin-legal">Un lien de confirmation vous est envoyé. <a href="mentions-legales.html#confidentialite">Confidentialité</a></p>
+        </form>
+        <!--/optin-->
+        </div>
       </div>
     </section>
 

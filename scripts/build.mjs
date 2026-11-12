@@ -88,7 +88,8 @@ function writeServiceWorker(files, version) {
 // Site vitrine : fichiers statiques de site/, avec l'URL et la clé publique Supabase (formulaire de contact).
 function writeSite() {
   cpSync(join(root, 'site'), out, { recursive: true });
-  for (const f of readdirSync(out).filter((x) => x.endsWith('.html'))) {
+  // pages à la racine, des guides et des outils : l'URL et la clé publique servent aux formulaires
+  for (const f of readdirSync(out, { recursive: true }).map(String).filter((x) => x.endsWith('.html') && !x.startsWith('app'))) {
     const html = readFileSync(join(out, f), 'utf8')
       .replaceAll('%IMMOZEN_SUPABASE_URL%', env.IMMOZEN_SUPABASE_URL)
       .replaceAll('%IMMOZEN_SUPABASE_ANON_KEY%', env.IMMOZEN_SUPABASE_ANON_KEY);

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useStore } from '../data/store.tsx';
-import { ACCESS_REASONS, STATUS_LABELS, type AdminUser, type AuditEntry, type Incident, type Lead, type LeadInput, type Plan, type StripeEventRow } from '../data/platform.ts';
+import { ACCESS_REASONS, STATUS_LABELS, type AdminUser, type AuditEntry, type Incident, type Lead, type LeadInput, type Plan, type SiteSubscriber, type StripeEventRow } from '../data/platform.ts';
+import { downloadBlob, toCsv, type ExportColumn } from '../domain/exporting.ts';
 import { describeError } from '../data/repo.ts';
 import { date, dateTime, todayParis } from '../domain/format.ts';
 import { Button, Checkbox, EmptyState, Modal, NotAvailable, NumberInput, PageHeader, Pill, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../ui/components.tsx';
@@ -10,7 +11,7 @@ import { MarketAdmin } from './MarketAdmin.tsx';
 
 const TIER_OPTIONS = TIERS.map((t) => [t.code, t.label] as const);
 
-type Tab = 'comptes' | 'offres' | 'acces' | 'marche' | 'incidents' | 'journal' | 'prospects';
+type Tab = 'comptes' | 'offres' | 'acces' | 'marche' | 'incidents' | 'journal' | 'prospects' | 'inscrits';
 const LEAD_STATUS: [Lead['status'], string][] = [['nouveau', 'Nouveau'], ['contacte', 'Contacté'], ['demo', 'Démonstration'], ['converti', 'Converti'], ['perdu', 'Perdu']];
 
 export function AdminPage() {
@@ -28,7 +29,7 @@ export function AdminPage() {
   return (
     <>
       <PageHeader title="Administration" subtitle="Comptes, offres, contrôle d’accès, incidents et journal. Aucune donnée immobilière des abonnés n’est visible ici." />
-      <Tabs tabs={[['comptes', 'Comptes'], ['offres', 'Offres et tarifs'], ['acces', 'Application des formules'], ['marche', 'Données de marché'], ['incidents', 'Incidents'], ['journal', 'Journal'], ['prospects', 'Prospects commerciaux']]} value={tab} onChange={setTab} />
+      <Tabs tabs={[['comptes', 'Comptes'], ['offres', 'Offres et tarifs'], ['acces', 'Application des formules'], ['marche', 'Données de marché'], ['incidents', 'Incidents'], ['journal', 'Journal'], ['prospects', 'Prospects commerciaux'], ['inscrits', 'Inscrits du site']]} value={tab} onChange={setTab} />
       {tab === 'comptes' && <Users run={run} api={api} />}
       {tab === 'offres' && <Plans plans={platform.plans} run={run} onSaved={refreshPlatform} api={api} />}
       {tab === 'acces' && <AccessConfig run={run} onSaved={refreshPlatform} api={api} />}
@@ -36,6 +37,7 @@ export function AdminPage() {
       {tab === 'incidents' && <Incidents run={run} api={api} />}
       {tab === 'journal' && <Journal run={run} api={api} />}
       {tab === 'prospects' && <Leads run={run} api={api} />}
+      {tab === 'inscrits' && <Subscribers run={run} api={api} />}
     </>
   );
 }
@@ -249,6 +251,66 @@ function Leads({ run, api }: { run: Run; api: Api }) {
           </div>
         )}
       </Modal>
+      {dialog}
+    </Section>
+  );
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  'calcul-cash-flow': 'Simulateur de cash-flow', 'calcul-plafond': 'Plafond de loyer Paris', 'calcul-irl': 'Révision IRL', 'calcul-economies': 'Calculateur d’économies',
+  guide: 'Guide avant achat', checklist: 'Checklist mise en location', lettre: 'Lettre mensuelle', essai: 'Création de compte',
+};
+const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
+/** État d'un inscrit : seules les adresses « Confirmé » peuvent recevoir conseils et offres. */
+export function subscriberState(s: SiteSubscriber): 'Désinscrit' | 'Confirmé' | 'À confirmer' {
+  return s.unsubscribed_at ? 'Désinscrit' : s.confirmed_at ? 'Confirmé' : 'À confirmer';
+}
+
+const SUBSCRIBER_EXPORT: ExportColumn<SiteSubscriber>[] = [
+  { label: 'E-mail', value: (s) => s.email },
+  { label: 'État', value: (s) => subscriberState(s) },
+  { label: 'Accord conseils et offres', value: (s) => (s.marketing_consent && !s.unsubscribed_at ? 'oui' : 'non') },
+  { label: 'Alerte révision IRL (mois)', value: (s) => (s.irl_alert_month ? MONTHS[s.irl_alert_month - 1] : '') },
+  { label: 'Alerte plafonds Paris', value: (s) => (s.paris_alert ? 'oui' : '') },
+  { label: 'Origine', value: (s) => s.sources.map((x) => SOURCE_LABELS[x] ?? x).join(', ') },
+  { label: 'Inscrit le', value: (s) => s.created_at.slice(0, 10) },
+  { label: 'Accord donné le', value: (s) => s.consent_at?.slice(0, 10) ?? '' },
+  { label: 'Confirmé le', value: (s) => s.confirmed_at?.slice(0, 10) ?? '' },
+  { label: 'Page', value: (s) => s.consent_page ?? '' },
+  { label: 'Texte de l’accord', value: (s) => s.consent_text ?? '' },
+];
+
+function Subscribers({ run, api }: { run: Run; api: Api }) {
+  const [list, reload] = useLoad(useCallback(() => api.subscribers(), [api]), run);
+  const { ask, dialog } = useConfirm();
+  const sendable = list?.filter((s) => s.marketing_consent && s.confirmed_at && !s.unsubscribed_at) ?? [];
+  const exportCsv = (rows: SiteSubscriber[], name: string) => downloadBlob(new Blob([toCsv(SUBSCRIBER_EXPORT, rows)], { type: 'text/csv;charset=utf-8' }), name);
+  return (
+    <Section title={`Inscrits du site (${list?.length ?? '…'})`} actions={list && list.length > 0 ? <>
+      <Button size="sm" onClick={() => exportCsv(sendable, `inscrits-a-contacter-${todayParis()}.csv`)} disabled={!sendable.length}>Exporter les adresses à contacter ({sendable.length})</Button>
+      <Button size="sm" variant="ghost" onClick={() => exportCsv(list, `inscrits-tous-${todayParis()}.csv`)}>Tout exporter</Button>
+    </> : undefined}>
+      <p className="muted small">Adresses laissées sur le site (calculs, guide, checklist, lettre, alertes) ou à la création d’un compte, avec la case d’accord. N’envoyez conseils et offres qu’aux adresses « Confirmé » ayant donné leur accord : c’est l’export « à contacter ». Une adresse qui n’a demandé qu’un calcul ou un document n’est pas conservée ici. Supprimez une fiche sur simple demande de la personne.</p>
+      {!list ? <p className="muted">Chargement…</p> : list.length === 0 ? <EmptyState title="Aucun inscrit pour l’instant" /> : (
+        <div className="dt-scroll"><table className="dt-table compact">
+          <thead><tr><th>E-mail</th><th>État</th><th>Accord</th><th>Alertes</th><th>Origine</th><th>Inscrit le</th><th /></tr></thead>
+          <tbody>{list.map((s) => {
+            const state = subscriberState(s);
+            return (
+              <tr key={s.id}>
+                <td>{s.email}</td>
+                <td><Pill tone={state === 'Confirmé' ? 'ok' : state === 'Désinscrit' ? 'bad' : 'warn'}>{state}</Pill></td>
+                <td>{s.marketing_consent && !s.unsubscribed_at ? 'Oui' : 'Non'}</td>
+                <td>{[s.irl_alert_month ? `IRL en ${MONTHS[s.irl_alert_month - 1]}` : null, s.paris_alert ? 'Plafonds Paris' : null].filter(Boolean).join(', ') || '—'}</td>
+                <td>{s.sources.map((x) => SOURCE_LABELS[x] ?? x).join(', ')}</td>
+                <td>{date(s.created_at.slice(0, 10))}</td>
+                <td><Button size="sm" variant="ghost" onClick={async () => { if (await ask('Supprimer l’inscrit', `L’adresse ${s.email} et la preuve de son accord seront supprimées.`, 'Supprimer') && (await run(() => api.deleteSubscriber(s.id), 'Inscrit supprimé.')) !== null) reload(); }}>Supprimer</Button></td>
+              </tr>
+            );
+          })}</tbody>
+        </table></div>
+      )}
       {dialog}
     </Section>
   );

@@ -53,8 +53,13 @@ export function createSupabaseRepo(url: string, anonKey: string): Repo {
     async signIn(email, password) {
       check(await sb.auth.signInWithPassword({ email, password }));
     },
-    async signUp(email, password) {
+    async signUp(email, password, marketing) {
       const data = check(await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname } }));
+      if (marketing) {
+        // accord facultatif : un échec n'empêche jamais la création du compte (double opt-in par e-mail)
+        const { error } = await sb.rpc('iz_subscribe', { p_email: email, p_source: 'essai', p_marketing: true, p_consent_text: marketing.consentText, p_page: '/app/ (création de compte)' });
+        if (error) console.warn('Accord de communication non enregistré :', error.message);
+      }
       return data?.session ? 'session' : 'confirm_email';
     },
     async signOut() {
