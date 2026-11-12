@@ -27,7 +27,7 @@ async function injectLegacyRent(page: import('playwright').Page, propertyTitle: 
   }, { propertyTitle, day, amount, label });
   await page.reload();
 }
-const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.pdf': 'application/pdf', '.css': 'text/css', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
 async function serve(): Promise<{ url: string; close: () => void }> {
   const server = createServer(async (req, res) => {
@@ -1697,6 +1697,49 @@ async function main() {
     await page.locator('details.tax-lmnp').first().getByText('d’après la décomposition du coût d’acquisition saisie dans Mes biens', { exact: false }).waitFor();
     assert.equal(await page.locator('details.tax-lmnp').first().getByLabel('Valeur amortissable').count(), 0);
     await page.getByLabel('Régime de Parking détenu').selectOption('reel_foncier');
+  });
+
+  await step('Mes biens : import du tableau d’amortissement (PDF), intérêts de l’année pré-remplis dans la déclaration', async () => {
+    const year = Number(await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()).slice(0, 4)));
+    // PDF type d'une banque : n°, date, échéance, intérêts, capital amorti, assurance, capital restant dû
+    const { PDFDocument, StandardFonts } = await import('pdf-lib');
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const pg = doc.addPage([595, 842]);
+    const fr = (v: number) => v.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    let y = 800, bal = 20000, interestYear = 0;
+    const right = (s: string, x: number) => pg.drawText(s, { x: x - font.widthOfTextAtSize(s, 8), y, size: 8, font });
+    for (const [s, x] of [['N°', 40], ['Date', 110], ['Échéance', 190], ['Intérêts', 260], ['Capital amorti', 340], ['Assurance', 410], ['Capital restant dû', 520]] as const) right(s, x);
+    for (let i = 0; i < 24; i++) {
+      y -= 14;
+      const it = Math.round(bal * 0.03 / 12 * 100) / 100, pr = 800;
+      bal = Math.round((bal - pr) * 100) / 100;
+      if (i < 12) interestYear += it;
+      right(String(i + 1), 40); right(`05/${String(i % 12 + 1).padStart(2, '0')}/${year + Math.floor(i / 12)}`, 110); right(fr(it + pr + 5), 190); right(fr(it), 260); right(fr(pr), 340); right('5,00', 410); right(fr(bal), 520);
+    }
+    const file = join(out, 'tableau-amortissement.pdf');
+    await writeFile(file, await doc.save());
+    const parkingId = await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!).properties.find((p: { title: string }) => p.title === 'Parking détenu').id);
+    await page.goto(url + `#/bien/${parkingId}/modifier`);
+    await page.getByRole('button', { name: 'Importer le tableau d’amortissement' }).click();
+    const dlg = page.locator('dialog.modal[open]');
+    await dlg.locator('input[type=file]').setInputFiles(file);
+    await dlg.getByText('24 échéance(s) lue(s)', { exact: false }).waitFor();
+    assert.equal(await dlg.getByLabel(/^Colonne 2/).inputValue(), 'interest');
+    await page.screenshot({ path: join(out, '05c-tableau-amortissement.png'), fullPage: true });
+    await dlg.getByRole('button', { name: 'Utiliser ce tableau' }).click();
+    await page.getByText('24 échéances du', { exact: false }).waitFor();
+    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    await page.waitForURL(new RegExp(`#/bien/${parkingId}$`));
+    await page.goto(url + '#/declaration');
+    await page.getByLabel('Année des revenus').selectOption(String(year));
+    const field = page.getByLabel(`Intérêts d’emprunt ${year}`).first();
+    assert.equal(await field.inputValue(), String(Math.round(interestYear * 100) / 100).replace('.', ','));
+    await page.getByText('Pré-calculé : tableau d’amortissement importé', { exact: false }).first().waitFor();
+    await field.fill('500');
+    await page.getByText('Montant saisi. Pré-calcul', { exact: false }).first().waitFor();
+    await page.getByRole('button', { name: 'Revenir au pré-calcul' }).first().click();
+    await page.getByText('Pré-calculé : tableau d’amortissement importé', { exact: false }).first().waitFor();
   });
 
   await step('assistant : questions proposées selon la rubrique, réponses de l’aide intégrée', async () => {

@@ -10,6 +10,7 @@ import { liasseDoc } from '../domain/liassePdf.ts';
 import { CERFA_FILES } from '../domain/cerfaOfficial.ts';
 import { TAX_REGIME_LABELS } from '../domain/labels.ts';
 import { Button, EmptyState, NumberInput, PageHeader, Section, Select } from '../ui/components.tsx';
+import { LoanYearFields } from './FiscalLoan.tsx';
 import { reviewBilan } from '../domain/bilanReview.ts';
 import { navigate } from '../ui/router.ts';
 import { BilanReviewSection } from './FiscalBilan.tsx';
@@ -51,6 +52,14 @@ export function FiscalPage() {
   [year, data, inputs]);
   const title = (id: string) => data.properties.find((p) => p.id === id)?.title ?? '—';
   const boxes = collectBoxes(fiscal, title);
+  const loanFields = (pid: string) => {
+    const a = fiscal.amounts.get(pid);
+    if (!a) return null;
+    const cur = inputs[String(year)]?.[pid] ?? {};
+    return <LoanYearFields a={a} year={year} interest={cur.loan_interest} insurance={cur.loan_insurance}
+      setInterest={(v) => setInput(String(year), pid, 'loan_interest', v)} setInsurance={(v) => setInput(String(year), pid, 'loan_insurance', v)}
+      onOpenProperty={() => navigate(`/bien/${pid}/modifier`)} />;
+  };
   // amortissements de l'année pour chaque bien (bâti seulement pour les régimes qui l'amortissent)
   const fiscalData = { properties: data.properties, leases: data.leases, charges: data.charges, payments: data.payments, allocations: data.allocations, expenses: data.expenses };
   const amort = [...fiscal.amounts.keys()].map((pid) => {
@@ -242,6 +251,7 @@ export function FiscalPage() {
                     <NumberInput label="Ligne 230 : régularisation N−1" suffix="€" value={get(f.propertyId, year).regularisation ?? null} onChange={(v) => setInput(String(year), f.propertyId, 'regularisation', v)}
                       hint="Part non déductible des provisions déduites l’an dernier (décompte annuel du syndic : charges récupérables…)." />
                     <NumberInput label="Ligne 213 : recettes diverses" suffix="€" value={get(f.propertyId, year).other_income ?? null} onChange={(v) => setInput(String(year), f.propertyId, 'other_income', v)} hint="Indemnités d’assurance, subventions…" />
+                    {loanFields(f.propertyId)}
                   </div>
                 ))}
               </div>
@@ -314,7 +324,7 @@ export function FiscalPage() {
                     <KeyRows rows={[
                       ['Recettes (loyers et charges encaissés)', r.receipts],
                       ...r.charges.map((c) => [c.label, -c.amount] as [string, number]),
-                      ['Intérêts d’emprunt', -r.interest],
+                      ...r.financial.map((c) => [c.label, -c.amount] as [string, number]),
                       ['Résultat avant amortissements', r.resultBeforeDepreciation],
                       ['Amortissements de l’année', r.depreciationYear],
                       ['Amortissements reportés des années précédentes', r.deferredBefore],
@@ -341,6 +351,7 @@ export function FiscalPage() {
                       <NumberInput label="Durée des meubles" suffix="ans" value={prm.furniture_years} onChange={(v) => setInput(PARAMS, r.propertyId, 'furniture_years', v)} />
                       <NumberInput label="Durée des travaux amortissables" suffix="ans" value={prm.works_years} onChange={(v) => setInput(PARAMS, r.propertyId, 'works_years', v)} />
                       <NumberInput label={`Recettes diverses ${year}`} suffix="€" value={get(r.propertyId, year).other_income ?? null} onChange={(v) => setInput(String(year), r.propertyId, 'other_income', v)} />
+                      {loanFields(r.propertyId)}
                     </div>
                     {r.warnings.map((w) => <p key={w} className="muted small">⚠ {w}</p>)}
                   </details>

@@ -465,6 +465,10 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 .tax-inputs { margin-top: 1rem; }
 .tax-input-group { display: contents; }
 .tax-input-group > .label { grid-column: 1 / -1; font-weight: 600; margin: .4rem 0 0; }
+.tax-input-group > p { grid-column: 1 / -1; margin: 0; }
+.loan-schedule { display: grid; gap: .5rem; padding-top: .5rem; border-top: 1px solid var(--line, #e5e7eb); }
+.loan-schedule > p { margin: 0; }
+.dt-table th select { font: inherit; font-weight: 600; max-width: 9.5rem; }
 .tax-result { max-width: 40rem; }
 .tax-lmnp { border-top: 1px solid var(--line); padding: .6rem 0; }
 .tax-lmnp > summary { cursor: pointer; }

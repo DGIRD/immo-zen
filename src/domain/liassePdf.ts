@@ -34,7 +34,6 @@ const box = (v: number) => (r0(v) === 0 ? '' : r0(v).toLocaleString('fr-FR').rep
 const fr = (iso: string) => iso.split('-').reverse().join('/');
 const sum = (l: number[]) => Math.round(l.reduce((a, x) => a + x, 0) * 100) / 100;
 const lineOf = (l: Liasse2033B, code: string) => l.lines.find((x) => x.code === code)?.amount ?? 0;
-const insuranceOf = (r: ReelBic) => r.charges.find((c) => c.label === 'Assurance emprunteur')?.amount ?? 0;
 const addressOf = (p: Property | undefined) => (p ? [p.address, [p.zip, p.city].filter(Boolean).join(' ')].filter(Boolean).join(' ') : '');
 
 export function liasseDoc(i: LiasseInput): PdfDoc {
@@ -46,8 +45,8 @@ export function liasseDoc(i: LiasseInput): PdfDoc {
   const where = (id: string) => [name(id), addressOf(prop(id))].filter(Boolean).join(' - ');
 
   const receipts = sum(list.map((r) => r.receipts));
-  const interest = sum(list.map((r) => r.interest + insuranceOf(r)));
-  const charges = sum(list.map((r) => r.chargesTotal - insuranceOf(r)));
+  const interest = sum(list.map((r) => r.interest));
+  const charges = sum(list.map((r) => r.chargesTotal));
   const dotations = sum(list.map((r) => r.depreciationYear));
   const comptable = sum([receipts, -charges, -interest, -dotations]);
   const fiscal = l.fiscalResult;
@@ -89,13 +88,15 @@ export function liasseDoc(i: LiasseInput): PdfDoc {
 
   // ---------------------------------------------------------------- résultat de l'activité
   const byLabel = new Map<string, number>();
-  for (const r of list) for (const c of r.charges) if (c.label !== 'Assurance emprunteur') byLabel.set(c.label, (byLabel.get(c.label) ?? 0) + c.amount);
+  for (const r of list) for (const c of r.charges) byLabel.set(c.label, (byLabel.get(c.label) ?? 0) + c.amount);
+  const finBy = new Map<string, number>();
+  for (const r of list) for (const c of r.financial) finBy.set(c.label, (finBy.get(c.label) ?? 0) + c.amount);
   const kinds: [string, string][] = [['bati', 'Construction'], ['frais', 'Frais d\'acquisition (notaire, agence)'], ['travaux', 'Travaux et agencements'], ['meuble', 'Meubles et équipements']];
   const depBy = (k: string) => sum(list.flatMap((r) => r.depreciation.filter((d) => d.kind === k).map((d) => d.amount)));
   sections.push({ title: "Résultat de l'activité LMNP", newPage: true, blocks: [
     { t: 'table', head: ['Recettes', 'Montant'], widths: [5, 1.6], total: true, rows: [['Loyers et charges encaissés', eur(receipts)], ['Total recettes', eur(receipts)]] },
     { t: 'table', head: ['Dépenses', 'Montant'], widths: [5, 1.6], total: true, rows: [...[...byLabel.entries()].filter(([, v]) => v > 0).map(([k, v]) => [k, eur(v)]), ['Total dépenses', eur(charges)]] },
-    { t: 'table', head: ['Intérêts', 'Montant'], widths: [5, 1.6], total: true, rows: [['Intérêts et assurance d\'emprunt', eur(interest)], ['Total intérêts', eur(interest)]] },
+    { t: 'table', head: ['Intérêts', 'Montant'], widths: [5, 1.6], total: true, rows: [...[...finBy.entries()].filter(([, v]) => v > 0).map(([k, v]) => [k, eur(v)]), ['Total intérêts', eur(interest)]] },
     { t: 'table', head: ['Dotations aux amortissements', 'Montant'], widths: [5, 1.6], total: true, rows: [...kinds.filter(([k]) => depBy(k) > 0).map(([k, lb]) => [lb, eur(depBy(k))]), ['Dotations totales', eur(dotations)]] },
     { t: 'kv', rows: [
       ['Résultat de l\'exercice avant imputation des déficits et des amortissements antérieurs', eur(comptable)],
@@ -107,9 +108,8 @@ export function liasseDoc(i: LiasseInput): PdfDoc {
   // ---------------------------------------------------------------- récapitulatifs par bien
   const withDep = dotations !== 0;
   const recapRows = list.map((r) => {
-    const ins = insuranceOf(r);
     const res = r.resultBeforeDepreciation - r.depreciationYear;
-    return [where(r.propertyId), eur(r.receipts), eur(-(r.chargesTotal - ins)), eur(-(r.interest + ins)), ...(withDep ? [eur(-r.depreciationYear)] : []), eur(res)];
+    return [where(r.propertyId), eur(r.receipts), eur(-r.chargesTotal), eur(-r.interest), ...(withDep ? [eur(-r.depreciationYear)] : []), eur(res)];
   });
   recapRows.push(['Total global', eur(receipts), eur(-charges), eur(-interest), ...(withDep ? [eur(-dotations)] : []), eur(comptable)]);
   const recap: TableBlock = { t: 'table', head: ['Bien', 'Recettes', 'Charges', 'Intérêts d\'emprunt', ...(withDep ? ['Amortissement'] : []), 'Résultat'], rows: recapRows, total: true, widths: [3.2, 1.3, 1.3, 1.4, ...(withDep ? [1.4] : []), 1.3] };
