@@ -13,7 +13,7 @@ import { buildReceiptPdf, type ReceiptData } from './receiptPdf.ts';
 
 export interface OutboxRow {
   id: string;
-  kind: 'confirmation_paiement' | 'quittance' | 'relance' | 'relance_a_valider' | 'invitation_locataire' | 'contact_site' | 'facture_abonnement' | 'alerte_exploitation' | 'inscription_site' | 'alerte_irl';
+  kind: 'confirmation_paiement' | 'quittance' | 'relance' | 'relance_a_valider' | 'invitation_locataire' | 'contact_site' | 'facture_abonnement' | 'alerte_exploitation' | 'inscription_site' | 'alerte_irl' | 'bienvenue';
   to_emails: string[];
   subject: string;
   body_text: string;
