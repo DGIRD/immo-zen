@@ -214,9 +214,9 @@ function TierCompare() {
   const lim = (v: number | null, unit = '') => (v == null ? 'Illimité' : `${v.toLocaleString('fr-FR')}${unit}`);
   const yes = (b: boolean) => (b ? <span aria-label="inclus">✓</span> : <span className="muted" aria-label="non inclus">—</span>);
   const rows: [string, (t: (typeof TIERS)[number]) => ReactNode][] = [
-    ['Prix TTC', (t) => (t.monthly ? `${money2(t.monthly)} / mois ou ${money2(t.annual)} / an` : 'Gratuit 30 jours')],
-    ['Biens détenus', (t) => lim(t.limits.owned)],
-    ['Biens en prospection', (t) => lim(t.limits.prospects)],
+    ['Prix TTC', (t) => (t.monthly ? `${money2(t.monthly)}/mois ou ${t.annual} €/an` : 'Gratuit 30 jours')],
+    ['Nombre de biens détenus', (t) => lim(t.limits.owned)],
+    ['Nombre de biens en prospection', (t) => lim(t.limits.prospects)],
     ['Simulations par bien', (t) => lim(t.limits.scenarios)],
     ['Documents', (t) => (t.limits.storage_mb == null ? 'Illimité' : t.limits.storage_mb >= 1024 ? `${t.limits.storage_mb / 1024} Go` : `${t.limits.storage_mb} Mo`)],
     ['Contacts et comparaison de biens', (t) => yes(t.features.contacts)],
