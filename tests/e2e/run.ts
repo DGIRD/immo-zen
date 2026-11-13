@@ -759,6 +759,7 @@ async function main() {
     await page.goto(leaseUrl);
     await page.getByText(/l’activer dans le bail/).waitFor();
     await page.getByRole('button', { name: 'Modifier' }).first().click();
+    await page.locator('details.section-collapsible', { hasText: 'Révision annuelle (IRL)' }).locator('summary').click();
     await page.getByLabel(/prévoit une révision annuelle/).check();
     assert.ok((await page.getByLabel('IRL de référence du bail').inputValue()).match(/^\d{4}-T[1-4]$/), 'dernier IRL publié à la signature proposé');
     await page.getByRole('button', { name: 'Enregistrer' }).first().click();
@@ -1934,7 +1935,8 @@ async function main() {
       await mp.screenshot({ path: join(out, `${shot}.png`), fullPage: path === '#/bien/nouveau' ? false : true });
     }
     await mp.goto(url + '#/prospection');
-    assert.ok(await mp.locator('.dt-card').count() > 0, 'cartes affichées sur mobile');
+    await mp.locator('.prop-card, .dt-card').first().waitFor();
+    assert.ok(await mp.locator('.prop-card, .dt-card').count() > 0, 'cartes affichées sur mobile');
     await mp.getByRole('button', { name: 'Menu' }).click();
     await mp.locator('#main-nav.open').waitFor();
     await mp.screenshot({ path: join(out, '11-mobile-menu.png') });
