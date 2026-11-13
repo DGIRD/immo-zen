@@ -4,6 +4,7 @@ import { useStore } from '../data/store.tsx';
 import { Button, Checkbox, Help, TextInput } from '../ui/components.tsx';
 import { navigate } from '../ui/router.ts';
 import { readInviteCode } from '../domain/tenantPortal.ts';
+import { editeurLine, MENTIONS_URL } from '../domain/legal.ts';
 
 type Mode = 'login' | 'signup' | 'reset';
 
@@ -75,6 +76,7 @@ export function AuthPage() {
           {mode === 'login' && <button type="button" className="link" onClick={() => setMode('signup')}>Créer un compte</button>}
         </div>
         <p className="muted small">Les offres d’abonnement se consultent dans « Mon abonnement », une fois connecté.</p>
+        <p className="muted small auth-legal">{editeurLine()} · <a href={MENTIONS_URL}>Mentions légales</a> · <a href={`${MENTIONS_URL}#confidentialite`}>Confidentialité</a></p>
       </form>
     </div>
   );
