@@ -6,24 +6,85 @@ export function Button({ variant = 'secondary', size, className = '', ...rest }:
   return <button type="button" className={`btn btn-${variant}${size ? ' btn-sm' : ''} ${className}`} {...rest} />;
 }
 
-export function PageHeader({ title, subtitle, actions }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode }) {
+/** Au-delà de cette longueur, une explication passe dans un point info au lieu de s'afficher en toutes lettres. */
+const LONG_TEXT = 90;
+const isLong = (n: ReactNode) => typeof n === 'string' && n.length > LONG_TEXT;
+
+/**
+ * Point info « i » : l'explication s'ouvre au survol, au clic ou au clavier (Entrée, Espace), se ferme avec Échap,
+ * un clic ailleurs ou le défilement. Le texte reste dans la page pour les lecteurs d'écran (aria-describedby).
+ */
+export function InfoTip({ children, label = 'Aide', className = '', text }: { children: ReactNode; label?: string; className?: string; text?: string }) {
+  const id = useId();
+  const btn = useRef<HTMLButtonElement>(null);
+  const pop = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState<'hover' | 'pinned' | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!open || !btn.current) return;
+    const r = btn.current.getBoundingClientRect();
+    const w = Math.min(352, window.innerWidth - 16);
+    setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left - 12, window.innerWidth - w - 8)) });
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(null);
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { setOpen(null); btn.current?.focus(); } };
+    const click = (e: MouseEvent) => { if (!btn.current?.contains(e.target as Node) && !pop.current?.contains(e.target as Node)) setOpen(null); };
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    document.addEventListener('keydown', key);
+    document.addEventListener('mousedown', click);
+    return () => { window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close); document.removeEventListener('keydown', key); document.removeEventListener('mousedown', click); };
+  }, [open]);
+  return (
+    <span className={`info-tip ${className}`} onMouseEnter={() => setOpen((o) => o ?? 'hover')} onMouseLeave={() => setOpen((o) => (o === 'hover' ? null : o))}>
+      <button ref={btn} type="button" className={text ? 'info-tip-link' : 'info-tip-btn'} aria-label={text ? undefined : 'Plus d’informations'} title={text ? undefined : label} aria-expanded={!!open} aria-describedby={id}
+        onClick={() => setOpen((o) => (o === 'pinned' ? null : 'pinned'))}>{text ? <><span className="info-tip-btn" aria-hidden="true">i</span> {text}</> : 'i'}</button>
+      <span ref={pop} id={id} role="tooltip" className={`info-tip-pop${open ? ' open' : ''}`} style={open && pos ? { top: pos.top, left: pos.left } : undefined}>{children}</span>
+    </span>
+  );
+}
+
+/** Texte d'aide : court, il s'affiche ; long, il passe dans un point info. */
+export function Help({ children, label, inline }: { children: ReactNode; label?: string; inline?: boolean }) {
+  if (!isLong(children) && typeof children === 'string') return inline ? <span className="muted small">{children}</span> : <p className="muted small">{children}</p>;
+  return inline ? <InfoTip label={label}>{children}</InfoTip> : <p className="help-line"><InfoTip label={label} text={label ?? 'En savoir plus'}>{children}</InfoTip></p>;
+}
+
+export function PageHeader({ title, subtitle, actions, info }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; info?: ReactNode }) {
+  const tip = info ?? (isLong(subtitle) ? subtitle : null);
   return (
     <div className="page-header">
       <div>
-        <h1>{title}</h1>
-        {subtitle && <p className="muted">{subtitle}</p>}
+        <div className="title-row"><h1>{title}</h1>{tip && <InfoTip label={typeof title === 'string' ? title : 'Cette page'}>{tip}</InfoTip>}</div>
+        {subtitle && !isLong(subtitle) && <p className="muted">{subtitle}</p>}
       </div>
       {actions && <div className="page-actions">{actions}</div>}
     </div>
   );
 }
 
-export function Section({ title, actions, children, className = '' }: { title?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string }) {
+export function Section({ title, actions, children, className = '', info, collapsible, summary, defaultOpen = true }: {
+  title?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; info?: ReactNode;
+  /** Rubrique repliable : le résumé s'affiche à côté du titre quand elle est fermée. */
+  collapsible?: boolean; summary?: ReactNode; defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const head = title && <div className="title-row"><h2>{title}</h2>{info && <InfoTip label={typeof title === 'string' ? title : 'Cette rubrique'}>{info}</InfoTip>}</div>;
+  if (collapsible) {
+    return (
+      <details className={`section section-collapsible ${className}`} open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
+        <summary className="section-head">{head}{!open && summary && <span className="section-summary muted small">{summary}</span>}{open && actions && <div className="row" onClick={(e) => e.preventDefault()}>{actions}</div>}</summary>
+        {children}
+      </details>
+    );
+  }
   return (
     <section className={`section ${className}`}>
       {(title || actions) && (
         <div className="section-head">
-          {title && <h2>{title}</h2>}
+          {head}
           {actions && <div className="row">{actions}</div>}
         </div>
       )}
@@ -61,11 +122,14 @@ interface FieldProps {
 export function Field({ label, hint, error, wide, full, children }: FieldProps) {
   const id = useId();
   const descId = hint || error ? `${id}-desc` : undefined;
+  // aide longue : point info à côté du libellé (le texte reste lu par les lecteurs d'écran)
+  const longHint = typeof hint === 'string' && hint.length > 60;
   return (
     <div className={`field${wide ? ' field-wide' : ''}${full ? ' field-full' : ''}${error ? ' has-error' : ''}`}>
-      <label htmlFor={id}>{label}</label>
+      <span className="field-label"><label htmlFor={id}>{label}</label>{longHint && <InfoTip label={label}>{hint}</InfoTip>}</span>
       {children(id, descId)}
-      {(error || hint) && <small id={descId} className={error ? 'field-error' : 'muted'}>{error ?? hint}</small>}
+      {error ? <small id={descId} className="field-error">{error}</small>
+        : hint && (longHint ? <span id={descId} className="sr-only">{hint}</span> : <small id={descId} className="muted">{hint}</small>)}
     </div>
   );
 }

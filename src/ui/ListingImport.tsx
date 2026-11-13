@@ -4,7 +4,7 @@ import { FunctionUnavailable } from '../data/platform.ts';
 import { listingScore, mergeListing, parseListing, type ListingData, type ListingField } from '../../supabase/functions/_shared/listing.ts';
 import { TYPE_LABELS } from '../domain/labels.ts';
 import { money } from '../domain/format.ts';
-import { Button, Checkbox } from './components.tsx';
+import { Button, Checkbox, Help } from './components.tsx';
 
 /** Caractéristiques proposées au remplissage, dans l'ordre d'affichage. */
 export const LISTING_APPLY_FIELDS: [ListingField, string][] = [
@@ -89,7 +89,7 @@ export function ListingImport({ url, current, onApply }: {
         <Button size="sm" variant="primary" disabled={busy} onClick={() => void readUrl()}>{busy && !paste ? 'Lecture de l’annonce…' : 'Remplir depuis l’annonce'}</Button>
         <button type="button" className="link small" onClick={() => setPaste((p) => !p)} aria-expanded={paste}>{paste ? 'Masquer le texte collé' : 'ou coller le texte de l’annonce'}</button>
       </div>
-      <p className="muted small">Immo-Zen lit l’annonce et propose prix, surface, pièces, adresse, DPE, charges et taxe foncière. Vous choisissez ce qui est repris.</p>
+      <Help>Immo-Zen lit l’annonce et propose prix, surface, pièces, adresse, DPE, charges et taxe foncière. Vous choisissez ce qui est repris.</Help>
       {paste && (
         <div className="field field-full">
           <label htmlFor="listing-text">Texte de l’annonce</label>
@@ -118,7 +118,7 @@ export function ListingImport({ url, current, onApply }: {
             <Button size="sm" variant="primary" disabled={!chosen.size} onClick={() => { onApply(found.l, [...chosen], found.url); setFound(null); setText(''); setPaste(false); }}>Reprendre dans la fiche ({chosen.size})</Button>
             <Button size="sm" variant="ghost" onClick={() => setFound(null)}>Ignorer</Button>
           </div>
-          <p className="muted small">Les valeurs reprises restent modifiables. Vérifiez-les avec l’agence : une annonce peut être incomplète ou ancienne.</p>
+          <Help>Les valeurs reprises restent modifiables. Vérifiez-les avec l’agence : une annonce peut être incomplète ou ancienne.</Help>
         </div>
       )}
     </div>

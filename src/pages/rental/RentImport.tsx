@@ -8,7 +8,7 @@ import { ledgerRows, ledgerSettings, mmYYYY } from '../../domain/ledger.ts';
 import { monthLabel, PAYMENT_METHOD_LABELS } from '../../domain/rental.ts';
 import { buildRentImportRows, importMonth, importMonths, RENT_IMPORT_COLUMNS, rentRowStatus, toPayment, type ImportMonth, type RentImportRow } from '../../domain/rentImport.ts';
 import { round2 } from '../../domain/simulator.ts';
-import { Button, Checkbox, Modal, NotAvailable } from '../../ui/components.tsx';
+import { Button, Checkbox, Help, Modal, NotAvailable } from '../../ui/components.tsx';
 import { useRental } from './common.tsx';
 import { syncLedgerWith } from './ledgerSync.ts';
 import { applyExcess, ExcessFields, issueMonthDocs, type ExcessDecision } from './monthActions.tsx';
@@ -164,7 +164,7 @@ export function RentImportDialog({ open, onClose }: { open: boolean; onClose: ()
           {months.length > 0 && (
             <div className="month-proposals">
               <h3>Aperçu par mois</h3>
-              <p className="muted small">Les paiements d’un même mois sont additionnés dans la colonne « Réglé » de la ligne de ce mois. Un paiement reçu un autre mois (loyer payé en retard ou en avance) peut être déplacé ci-dessus. Si le réglé dépasse le dû, précisez la nature de l’excédent ; un mois échu resté partiel reporte son reste dû sur le mois suivant.</p>
+              <Help>Les paiements d’un même mois sont additionnés dans la colonne « Réglé » de la ligne de ce mois. Un paiement reçu un autre mois (loyer payé en retard ou en avance) peut être déplacé ci-dessus. Si le réglé dépasse le dû, précisez la nature de l’excédent ; un mois échu resté partiel reporte son reste dû sur le mois suivant.</Help>
               <div className="dt-scroll">
                 <table className="dt-table compact">
                   <thead><tr><th>Bail</th><th>Mois</th><th className="num">Importé</th><th className="num">Dû</th><th className="num">Réglé avant</th><th className="num">Réglé après</th><th className="num">Écart</th><th>Excédent / document</th></tr></thead>
@@ -197,7 +197,7 @@ export function RentImportDialog({ open, onClose }: { open: boolean; onClose: ()
               </div>
             </div>
           )}
-          <p className="muted small">Chaque ligne devient un paiement du bail, à sa date. Un fichier réimporté ne crée pas de doublon. Une quittance n’est émise que pour un mois intégralement réglé.</p>
+          <Help>Chaque ligne devient un paiement du bail, à sa date. Un fichier réimporté ne crée pas de doublon. Une quittance n’est émise que pour un mois intégralement réglé.</Help>
         </>
       )}
     </Modal>

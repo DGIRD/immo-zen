@@ -9,7 +9,7 @@ import { buildDocPdf } from '../domain/docPdf.ts';
 import { liasseDoc } from '../domain/liassePdf.ts';
 import { CERFA_FILES } from '../domain/cerfaOfficial.ts';
 import { TAX_REGIME_LABELS } from '../domain/labels.ts';
-import { Button, EmptyState, NumberInput, PageHeader, Section, Select, Tabs } from '../ui/components.tsx';
+import { Button, EmptyState, Help, NumberInput, PageHeader, Section, Select, Tabs } from '../ui/components.tsx';
 import { ChecksList, collectChecks, CopyAmount, FiledCompare, Lexique, TodoCard, totalsOf, YearCompare, type TabKey } from './FiscalParts.tsx';
 import { round2 } from '../domain/simulator.ts';
 import { LoanYearFields } from './FiscalLoan.tsx';
@@ -192,7 +192,7 @@ export function FiscalPage() {
                   <ResultRecap title="Résultat par bien" rows={recapFromReelBic(fiscal.reelBic.perProperty)} properties={data.properties}
                     footer={[[`Résultat fiscal ${year}, après limitation de l’amortissement (${fiscal.reelBic.box5NY ? 'case 5NY : déficit' : 'case 5NA : bénéfice'})`, fiscal.reelBic.box5NY ? -fiscal.reelBic.box5NY : fiscal.reelBic.box5NA],
                       ['Stock d’amortissements reportables au 31 décembre', fiscal.reelBic.liasse.deferredAfter]]} />
-                  <p className="muted small">Le « résultat » du tableau est le résultat comptable, toutes dotations déduites. Fiscalement, l’amortissement ne peut ni créer ni augmenter un déficit : la part non déduite rejoint le stock reportable ci-dessous.</p>
+                  <Help>Le « résultat » du tableau est le résultat comptable, toutes dotations déduites. Fiscalement, l’amortissement ne peut ni créer ni augmenter un déficit : la part non déduite rejoint le stock reportable ci-dessous.</Help>
                   {fiscal.reelBic.perProperty.some((r) => r.depreciationYear > 0 || r.deferredBefore > 0) && (
                     <DeferredTracking list={fiscal.reelBic.perProperty} properties={data.properties} year={year} editable={false}
                       opening={(pid) => inputs[String(year)]?.[pid]?.deferred_opening ?? null} setOpening={(pid, v) => setInput(String(year), pid, 'deferred_opening', v)} />
@@ -254,7 +254,7 @@ export function FiscalPage() {
 
           {tab === 'saisies' && (
             <>
-              <p className="muted">Seuls champs modifiables de la déclaration, par bien. Laissez vide pour garder le calcul automatique ; pensez à enregistrer.</p>
+              <Help>Seuls champs modifiables de la déclaration, par bien. Laissez vide pour garder le calcul automatique ; pensez à enregistrer.</Help>
               {[...fiscal.amounts.keys()].map((pid) => {
                 const p = data.properties.find((x) => x.id === pid)!;
                 const prm = { ...DEFAULT_TAX_INPUTS, ...get(pid, year) };
@@ -315,7 +315,7 @@ export function FiscalPage() {
                 <Button onClick={() => void exportLiasse()}>Liasse PDF</Button>
                 {tdfcVisible() && <Button variant="primary" onClick={() => navigate('/declaration/teletransmission')}>Télétransmettre la liasse</Button>}
               </> : undefined}>
-              <p className="muted small">Dans l’ordre : d’abord l’espace professionnel (liasse des locations meublées au réel ou des sociétés), puis l’espace particulier (déclaration de revenus). Les montants se saisissent en euros entiers. Les libellés des écrans peuvent varier d’une campagne à l’autre.</p>
+              <Help>Dans l’ordre : d’abord l’espace professionnel (liasse des locations meublées au réel ou des sociétés), puis l’espace particulier (déclaration de revenus). Les montants se saisissent en euros entiers. Les libellés des écrans peuvent varier d’une campagne à l’autre.</Help>
               {fiscal.reelBic && !tdfcVisible() && <p className="note note-info">La liasse 2031 et 2033 doit être télétransmise (dépôt papier refusé), par un partenaire agréé (expert-comptable, service en ligne de déclaration LMNP) ou depuis votre espace professionnel. Immo-Zen prépare tous les montants et la liasse PDF à recopier.</p>}
               <div className="tax-guide">
                 {guide.map((g, i) => (

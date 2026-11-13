@@ -9,7 +9,7 @@ import { EstimatePanel } from '../ui/EstimatePanel.tsx';
 import { MarketRentPanel } from '../ui/MarketRentPanel.tsx';
 import { RenegotiationHint } from '../ui/LoanRateHint.tsx';
 import { normalizeInputs, simulate, simulatedCashflow } from '../domain/simulator.ts';
-import { Button, EmptyState, KeyValue, PageHeader, Section, StatusBadge, Tabs, TextInput, useConfirm } from '../ui/components.tsx';
+import { Button, EmptyState, Help, KeyValue, PageHeader, Section, StatusBadge, Tabs, TextInput, useConfirm } from '../ui/components.tsx';
 import { href, navigate } from '../ui/router.ts';
 import { usePropertyActions } from './useActions.tsx';
 import { DocumentList } from './rental/Documents.tsx';
@@ -228,11 +228,11 @@ function SimulationPanel({ propertyId, main, scenarios, onUse, onDelete }: {
             ['Rendement brut', pct(r.grossYield)], ['Cash-flow / mois', money(simulatedCashflow(r))], ['Mise à jour', date(main.updated_at)],
           ]} />
           : <p className="muted">Hypothèses invalides : ouvrez la simulation pour les corriger.</p>}
-        <p className="muted small">Une seule simulation par bien : modifiez-la autant que vous le souhaitez, elle met à jour la fiche (prix, surface, travaux, loyer).</p>
+        <Help>Une seule simulation par bien : modifiez-la autant que vous le souhaitez, elle met à jour la fiche (prix, surface, travaux, loyer).</Help>
       </Section>
       {others.length > 0 && (
         <Section title={`Anciennes simulations (${others.length})`}>
-          <p className="muted small">Enregistrées quand plusieurs simulations par bien étaient possibles. Elles ne sont plus utilisées : reprenez-en une comme simulation du bien, ou supprimez-les.</p>
+          <Help>Enregistrées quand plusieurs simulations par bien étaient possibles. Elles ne sont plus utilisées : reprenez-en une comme simulation du bien, ou supprimez-les.</Help>
           <ul className="scenario-list">
             {others.map((s) => {
               const x = scenarioResult(s);

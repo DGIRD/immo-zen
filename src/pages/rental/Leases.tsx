@@ -10,7 +10,7 @@ import { LEASE_BACKLOG_WARN, leaseLedger, leaseStartIssue, leaseState, leaseTena
 import { syncLedgerWith } from './ledgerSync.ts';
 import { round2 } from '../../domain/simulator.ts';
 import { DataTable, type Column } from '../../ui/DataTable.tsx';
-import { Button, Checkbox, EmptyState, Modal, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
+import { Button, Checkbox, EmptyState, Help, InfoTip, Modal, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
 import { navigate } from '../../ui/router.ts';
 import { LeaseBadge, useRental } from './common.tsx';
 import { AccessPill, useTenantAccess } from './TenantAccess.tsx';
@@ -316,12 +316,14 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
           <NumberInput label="Dépôt de garantie" suffix="€" value={d.deposit_amount} onChange={(v) => set('deposit_amount', v ?? 0)} error={errors.deposit_amount}
             hint="Suivi à part des loyers (encaissement et restitution dans la fiche du bail)." />
         </div>
-        <p className="muted small">Une modification manuelle du loyer s’applique aux échéances générées ensuite. Pour la révision annuelle, utilisez « Réviser le loyer » dans la fiche du bail.</p>
+        <Help>Une modification manuelle du loyer s’applique aux échéances générées ensuite. Pour la révision annuelle, utilisez « Réviser le loyer » dans la fiche du bail.</Help>
       </Section>
 
       {!existing && selected && <RelocationRent property={selected} lease={d} previous={previous} onUse={(v) => set('rent_hc', v)} />}
 
-      <Section title="Révision annuelle (IRL)">
+      <Section title="Révision annuelle (IRL)" collapsible defaultOpen={!existing}
+        summary={d.irl_enabled ? `Révision selon l’IRL${d.irl_base_label ? ` (${irlLabel(d.irl_base_label)})` : ''}` : 'Pas de révision'}
+        info="Chaque année à la date anniversaire, « Réviser le loyer » (fiche du bail) calcule le nouveau loyer avec la variation annuelle de l’IRL. Révision interdite pour un logement classé F ou G au DPE.">
         <Checkbox label="Le bail prévoit une révision annuelle selon l’indice de référence des loyers (IRL)" checked={!!d.irl_enabled}
           onChange={(v) => setD((x) => ({ ...x, irl_enabled: v, irl_base_label: x.irl_base_label ?? (v ? latestPublishedAt(x.start_date ?? todayParis()) : null), irl_base_value: x.irl_base_value ?? (v ? IRL_VALUES[latestPublishedAt(x.start_date ?? todayParis()) ?? ''] ?? null : null) }))} />
         {d.irl_enabled && (
@@ -334,36 +336,36 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
             <TextInput label="Dernière révision" type="date" value={d.last_revision_on ?? ''} onChange={(v) => set('last_revision_on', v || null)} hint="Si le loyer a déjà été révisé avant l’utilisation d’Immo-Zen." />
           </div>
         )}
-        <p className="muted small">Chaque année à la date anniversaire, « Réviser le loyer » (fiche du bail) calcule le nouveau loyer avec la variation annuelle de l’IRL. Révision interdite pour un logement classé F ou G au DPE.</p>
       </Section>
 
-      <Section title="Quittances">
+      <Section title="Quittances" collapsible defaultOpen={!existing || !d.landlord_name} summary={d.landlord_name ? `Bailleur : ${d.landlord_name}` : 'Bailleur à renseigner'}>
         <div className="grid">
           <TextInput label="Nom du bailleur" value={d.landlord_name} onChange={(v) => set('landlord_name', v)} maxLength={200} hint="Tel qu’il doit figurer sur les quittances." />
           <TextInput label="Adresse du bailleur" wide value={d.landlord_address} onChange={(v) => set('landlord_address', v)} maxLength={500} />
         </div>
       </Section>
 
-      <Section title="Automatisations">
+      <Section title="Automatisations" collapsible defaultOpen={!existing}
+        summary={[d.owner_confirmation_email ? 'confirmation des paiements' : null, d.receipt_auto_send ? 'quittances automatiques' : null, d.reminder_enabled ? 'relances' : null].filter(Boolean).join(' · ') || 'Aucune'}>
         {!auto && !d.owner_confirmation_email && !d.receipt_auto_send && !d.reminder_enabled ? (
           <PlanLock title="Non incluses dans la formule Découverte" compact>Envoi automatique des quittances, relances d’impayés et e-mail mensuel de confirmation du paiement : à partir de la formule Essentiel. Vous pouvez toujours émettre et télécharger les quittances vous-même.</PlanLock>
         ) : (
         <div className="toggles">
-          <Checkbox label="M’envoyer un e-mail le lendemain de chaque échéance non réglée pour confirmer le paiement" checked={!!d.owner_confirmation_email} onChange={(v) => set('owner_confirmation_email', v)} />
-          <p className="muted small">Votre absence de réponse ne vaut jamais paiement : le loyer reste impayé tant que vous ne l’avez pas confirmé.</p>
-          <Checkbox label="Émettre et envoyer automatiquement la quittance quand une période est intégralement réglée" checked={!!d.receipt_auto_send} onChange={(v) => set('receipt_auto_send', v)} />
-          <p className="muted small">Uniquement après un paiement que vous avez saisi ou confirmé, si le montant réglé est exactement le montant dû, et une seule fois par période. Jamais sur la seule base d’une date.</p>
-          <Checkbox label="Préparer une relance amiable quand un loyer reste impayé" checked={!!d.reminder_enabled} onChange={(v) => set('reminder_enabled', v)} />
+          <div className="toggle-row"><Checkbox label="M’envoyer un e-mail le lendemain de chaque échéance non réglée pour confirmer le paiement" checked={!!d.owner_confirmation_email} onChange={(v) => set('owner_confirmation_email', v)} />
+            <InfoTip label="Confirmation des paiements">Votre absence de réponse ne vaut jamais paiement : le loyer reste impayé tant que vous ne l’avez pas confirmé.</InfoTip></div>
+          <div className="toggle-row"><Checkbox label="Émettre et envoyer automatiquement la quittance quand une période est intégralement réglée" checked={!!d.receipt_auto_send} onChange={(v) => set('receipt_auto_send', v)} />
+            <InfoTip label="Quittances automatiques">Uniquement après un paiement que vous avez saisi ou confirmé, si le montant réglé est exactement le montant dû, et une seule fois par période. Jamais sur la seule base d’une date.</InfoTip></div>
+          <div className="toggle-row"><Checkbox label="Préparer une relance amiable quand un loyer reste impayé" checked={!!d.reminder_enabled} onChange={(v) => set('reminder_enabled', v)} />
+            <InfoTip label="Relances">La relance est préparée en brouillon et vous est signalée : rien n’est envoyé au locataire sans votre validation.</InfoTip></div>
           {d.reminder_enabled && (
             <div className="grid"><NumberInput label="Délai après l’échéance" suffix="jours" value={d.reminder_delay_days} onChange={(v) => set('reminder_delay_days', v === null ? 10 : Math.round(v))} error={errors.reminder_delay_days} /></div>
           )}
-          <p className="muted small">La relance est préparée en brouillon et vous est signalée : rien n’est envoyé au locataire sans votre validation.</p>
           {!auto && <p className="muted small">Votre formule n’inclut plus ces automatisations : elles sont suspendues. Vous pouvez les désactiver ici.</p>}
         </div>
         )}
       </Section>
 
-      <Section title="Notes">
+      <Section title="Notes" collapsible defaultOpen={!!d.notes} summary={d.notes ? 'Note saisie' : 'Aucune note'}>
         <div className="grid"><TextArea label="Notes" value={d.notes} onChange={(v) => set('notes', v)} rows={3} /></div>
       </Section>
 
@@ -417,7 +419,7 @@ function RelocationRent({ property, lease, previous, onUse }: { property: Proper
           {m.hc && <Button size="sm" onClick={() => onUse(m.hc!.mid)}>Utiliser le loyer central ({money2(m.hc.mid)} HC)</Button>}
           {m.cap_hc != null && <Button size="sm" onClick={() => onUse(m.cap_hc!)}>Utiliser le plafond légal ({money2(m.cap_hc)} HC)</Button>}
         </>} />
-      <p className="muted small">En zone tendue, le loyer d’un nouveau bail ne peut pas dépasser celui du précédent locataire, révisé selon l’IRL, sauf exceptions (travaux importants, loyer manifestement sous-évalué). Un logement classé F ou G ne peut pas être reloué plus cher. En zone encadrée, le plafond légal s’applique aussi.</p>
+      <Help>En zone tendue, le loyer d’un nouveau bail ne peut pas dépasser celui du précédent locataire, révisé selon l’IRL, sauf exceptions (travaux importants, loyer manifestement sous-évalué). Un logement classé F ou G ne peut pas être reloué plus cher. En zone encadrée, le plafond légal s’applique aussi.</Help>
     </Section>
   );
 }

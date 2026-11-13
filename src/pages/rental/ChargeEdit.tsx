@@ -9,7 +9,7 @@ import type { Allocation, Payment } from '../../data/types.ts';
 import { syncLedgerWith } from './ledgerSync.ts';
 import { issueMonthDocs } from './monthActions.tsx';
 import { round2 } from '../../domain/simulator.ts';
-import { Button, Checkbox, Modal, NumberInput, TextInput } from '../../ui/components.tsx';
+import { Button, Checkbox, Help, Modal, NumberInput, TextInput } from '../../ui/components.tsx';
 import { periodLabel } from './common.tsx';
 
 /** Documents valables (quittance ou reçu) qui couvrent une échéance. */
@@ -171,7 +171,7 @@ export function useChargeEditing() {
               <span className="muted small">Le paiement fait foi : la quittance reprendra ce montant.</span></p>
           )}
           {docsOf(editing).length > 0 && <p className="note">Document{docsOf(editing).length > 1 ? 's' : ''} n° {numbers(docsOf(editing))} : si le montant change, {docsOf(editing).length > 1 ? 'ils seront annulés' : 'il sera annulé'} puis réémis sur le nouveau montant.</p>}
-          <p className="muted small">La modification ne touche que ce mois ; pour changer le loyer des mois suivants, modifiez le bail ou utilisez la révision du loyer.</p>
+          <Help>La modification ne touche que ce mois ; pour changer le loyer des mois suivants, modifiez le bail ou utilisez la révision du loyer.</Help>
           {error && <p className="form-error" role="alert">{error}</p>}
         </>}
       </Modal>

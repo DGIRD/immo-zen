@@ -7,7 +7,7 @@ import { downloadBlob, stamp } from '../domain/exporting.ts';
 import { dateTime } from '../domain/format.ts';
 import { legacyContacts, legacyInputs, legacyProperty, readLegacyLocal, type LegacySimulation } from '../domain/legacy.ts';
 import { DEFAULT_INPUTS, DEFAULT_SETTING_FIELDS, ENGINE_VERSION, type SimulationInputs } from '../domain/simulator.ts';
-import { Button, Modal, NumberInput, PageHeader, Section, Select, TextArea, TextInput, useConfirm } from '../ui/components.tsx';
+import { Button, Help, Modal, NumberInput, PageHeader, Section, Select, TextArea, TextInput, useConfirm } from '../ui/components.tsx';
 import type { ReminderTemplate } from '../data/types.ts';
 import { DEFAULT_REMINDER_TEMPLATES, TEMPLATE_VARIABLES } from '../domain/rental.ts';
 import { loadSampleData } from './sample.ts';
@@ -104,11 +104,11 @@ export function SettingsPage() {
     <>
       <PageHeader title="Paramètres" />
 
-      <Section title="Valeurs par défaut des simulations" actions={<>
+      <Section collapsible defaultOpen={false} title="Valeurs par défaut des simulations" actions={<>
         <Button size="sm" onClick={() => setDefaults({ ...DEFAULT_INPUTS })}>Valeurs d’origine</Button>
         <Button size="sm" variant="primary" onClick={async () => { const picked = Object.fromEntries(DEFAULT_SETTING_FIELDS.map((k) => [k, defaults[k]])); if (await saveSettings({ simulator_defaults: { ...picked, _v: 2 } as never })) notify('Valeurs par défaut enregistrées.'); }}>Enregistrer</Button>
       </>}>
-        <p className="muted small">Utilisées pour toute nouvelle simulation. Les scénarios existants gardent leurs propres hypothèses.</p>
+        <Help>Utilisées pour toute nouvelle simulation. Les scénarios existants gardent leurs propres hypothèses.</Help>
         <div className="grid">
           {numField('notaryRate', 'Frais de notaire', '% du prix')}
           {numField('agencyFees', 'Frais d’agence', '€')}
@@ -121,7 +121,7 @@ export function SettingsPage() {
 
       <RentalSettingsSection />
 
-      <Section title="Sauvegarde et import">
+      <Section collapsible defaultOpen={false} title="Sauvegarde et import">
         <p>Téléchargez une copie complète de vos biens, scénarios, contacts, tâches et échanges au format JSON. Ce fichier peut être réimporté.</p>
         <div className="row">
           <Button onClick={backupNow}>Télécharger une sauvegarde (.json)</Button>
@@ -131,10 +131,10 @@ export function SettingsPage() {
           </label>
         </div>
         {importError && <p className="form-error" role="alert">{importError}</p>}
-        <p className="muted small">L’import affiche d’abord un aperçu ; les doublons (même bien, même contact) sont ignorés ; une sauvegarde de l’état actuel est téléchargée juste avant. La sauvegarde contient aussi la gestion locative (baux, loyers, quittances, dépenses, fiches des documents) ; sa réimportation n’est pas encore disponible et les fichiers eux-mêmes restent dans le stockage.</p>
+        <Help>L’import affiche d’abord un aperçu ; les doublons (même bien, même contact) sont ignorés ; une sauvegarde de l’état actuel est téléchargée juste avant. La sauvegarde contient aussi la gestion locative (baux, loyers, quittances, dépenses, fiches des documents) ; sa réimportation n’est pas encore disponible et les fichiers eux-mêmes restent dans le stockage.</Help>
       </Section>
 
-      <Section title="Données de l’ancienne version">
+      <Section collapsible defaultOpen={false} title="Données de l’ancienne version">
         <p>Les simulations enregistrées en ligne dans l’ancienne version sont reprises automatiquement lors de la mise en service (biens en prospection, scénarios et contacts agence/agent).</p>
         {legacy.length > 0 ? (
           <div className="note">
@@ -155,7 +155,7 @@ export function SettingsPage() {
       </Section>
 
       {store.platform && (
-        <Section title="Accès support">
+        <Section collapsible defaultOpen={false} title="Accès support">
           {store.platform.supportUntil && store.platform.supportUntil > new Date().toISOString() ? (
             <>
               <p>Le support Immo-Zen peut consulter un résumé chiffré de votre compte (nombre de biens, baux, impayés, e-mails en échec) jusqu’au <strong>{dateTime(store.platform.supportUntil)}</strong>. Chaque consultation est journalisée.</p>
@@ -222,7 +222,7 @@ function RentalSettingsSection() {
   const setTpl = (i: number, k: keyof ReminderTemplate, v: string) => setTpls((x) => x.map((t, j) => (j === i ? { ...t, [k]: v } : t)));
   const LEVELS = ['Niveau 1 – rappel', 'Niveau 2 – second rappel', 'Niveau 3 – dernier rappel amiable'];
   return (
-    <Section title="Gestion locative" actions={<>
+    <Section collapsible defaultOpen={false} title="Gestion locative" actions={<>
       <Button size="sm" onClick={() => setTpls(DEFAULT_REMINDER_TEMPLATES.map((t) => ({ ...t })))}>Modèles d’origine</Button>
       <Button size="sm" variant="primary" onClick={async () => {
         if (tpls.some((t) => !t.subject.trim() || !t.body.trim())) { notify('Chaque modèle doit avoir un objet et un message.', 'error'); return; }

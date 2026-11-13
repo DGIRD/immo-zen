@@ -742,9 +742,64 @@ button.figure { text-align: left; font: inherit; background: none; border: 0; bo
 .tax-guide-num { display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%; background: var(--sapin); color: var(--surface); font-weight: 700; font-size: .85rem; }
 .tax-filed > summary, .tax-lexique > summary { cursor: pointer; margin: .4rem 0; }
 .tax-filed td .field { margin: 0; }
-.tax-filed td .field > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.tax-filed td .field .field-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .tax-filed td .input-suffix input { width: 8.5rem; text-align: right; }
 .tax-lexique { margin: 1rem 0; }
 .tax-lexique dl { display: grid; gap: .5rem; margin: .5rem 0 0; }
 .tax-lexique dt { font-weight: 600; }
 .tax-lexique dd { margin: 0; color: var(--ink-soft); }
+
+/* Point info « i » : explications masquées, ouvertes au survol, au clic ou au clavier */
+.info-tip { position: relative; display: inline-flex; vertical-align: middle; margin-left: .35rem; }
+.info-tip-btn { width: 1.15rem; height: 1.15rem; border-radius: 50%; border: 1.5px solid currentColor; background: none; color: var(--ardoise);
+  font: italic 700 .72rem/1 Georgia, serif; display: inline-grid; place-items: center; cursor: pointer; padding: 0; opacity: .75; }
+.info-tip-btn:hover, .info-tip-btn:focus-visible, .info-tip-btn[aria-expanded="true"] { opacity: 1; background: var(--ardoise-tint); }
+.info-tip-btn:focus-visible { outline: 2px solid var(--sapin); outline-offset: 2px; }
+.info-tip-pop { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.info-tip-pop.open { position: fixed; z-index: 1000; width: auto; height: auto; overflow: visible; clip: auto; white-space: normal; max-width: min(22rem, calc(100vw - 16px));
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.14);
+  padding: .6rem .75rem; font: 400 .85rem/1.45 var(--font-body, inherit); text-align: left; letter-spacing: 0; text-transform: none; }
+.field-label { display: inline-flex; align-items: center; gap: 0; }
+.help-line { margin: .25rem 0; }
+h1 .info-tip, h2 .info-tip, h3 .info-tip { margin-left: .5rem; }
+.info-tip-link { background: none; border: 0; padding: 0; color: var(--ardoise); font-size: .85rem; cursor: pointer; display: inline-flex; align-items: center; gap: .35rem; }
+.info-tip-link:hover { text-decoration: underline; }
+.help-line .info-tip { margin-left: 0; }
+
+/* Listes de biens : bascule Cartes / Tableau et cartes */
+.list-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; margin: 0 0 .75rem; }
+.view-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin-left: auto; }
+.view-toggle button { background: none; border: 0; padding: .35rem .85rem; font: inherit; font-size: .85rem; cursor: pointer; color: var(--ink-soft); }
+.view-toggle button.active { background: var(--sapin); color: var(--surface); font-weight: 600; }
+.cards-search { width: 100%; max-width: 26rem; margin-bottom: .75rem; }
+.prop-cards { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(16.5rem, 1fr)); gap: .9rem; }
+.prop-card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: .85rem 1rem; display: grid; gap: .35rem; align-content: start; }
+.prop-card:hover { border-color: var(--sapin); }
+.prop-card-head { display: flex; justify-content: space-between; align-items: start; gap: .5rem; }
+.prop-card-title { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; font-size: 1.02rem; text-align: left; color: var(--ink); cursor: pointer; }
+.prop-card-title:hover { color: var(--sapin); text-decoration: underline; }
+.prop-card > p { margin: 0; }
+.prop-card-tags { display: flex; flex-wrap: wrap; gap: .35rem .5rem; align-items: center; min-height: 1.4rem; }
+.prop-card-figures { display: grid; grid-template-columns: repeat(3, 1fr); gap: .4rem; margin: .35rem 0 0; padding-top: .5rem; border-top: 1px solid var(--line); }
+.prop-card-figures dt { font-size: .72rem; color: var(--ink-soft); }
+.prop-card-figures dd { margin: 0; font-weight: 600; font-size: .9rem; }
+.agenda-short > li:nth-child(n+7) { display: none; }
+.start-list { border: 1px solid var(--line); border-left: 4px solid var(--sapin); border-radius: var(--radius); background: var(--surface); padding: .75rem 1rem; margin-bottom: 1rem; }
+.start-list h2 { font-size: 1.05rem; margin: 0; }
+.start-list ol { margin: .5rem 0 0; padding-left: 1.3rem; display: grid; gap: .3rem; }
+.start-list li.done { color: var(--vert); }
+
+/* Rubriques repliables (formulaires) */
+.section-collapsible > summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap; }
+.section-collapsible > summary::-webkit-details-marker { display: none; }
+.section-collapsible > summary h2::before { content: "▸"; display: inline-block; width: 1rem; color: var(--ink-soft); transition: transform .15s; }
+.section-collapsible[open] > summary h2::before { transform: rotate(90deg); }
+.section-collapsible:not([open]) > summary { margin-bottom: 0; }
+.section-summary { flex: 1 1 auto; }
+/* Bouton Enregistrer toujours accessible en bas des formulaires longs */
+.form-foot { position: sticky; bottom: 0; z-index: 5; background: var(--paper); padding: .6rem 0; border-top: 1px solid var(--line); }
+.toggle-row { display: flex; align-items: center; gap: .25rem; }
+.title-row { display: flex; align-items: center; gap: .1rem; flex-wrap: wrap; }
+.title-row > h1, .title-row > h2 { margin-bottom: 0; }
+.section-collapsible > summary .title-row h2::before { content: "▸"; display: inline-block; width: 1rem; color: var(--ink-soft); transition: transform .15s; }
+.section-collapsible[open] > summary .title-row h2::before { transform: rotate(90deg); }

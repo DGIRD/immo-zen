@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useStore } from '../data/store.tsx';
 import { dateTime } from '../domain/format.ts';
-import { Button, Modal } from './components.tsx';
+import { Button, Help, Modal } from './components.tsx';
 import { href } from './router.ts';
 import { AssistantButton } from './Assistant.tsx';
 
@@ -125,7 +125,7 @@ export function Layout({ active, children }: { active: string; children: ReactNo
           <Button variant="danger" onClick={() => conflict?.resolve('overwrite')}>Remplacer par mes modifications</Button>
         </>}>
         <p>{conflict?.label} a été modifié depuis un autre appareil ou un autre onglet après son ouverture ici.</p>
-        <p className="muted">Rien n’a été écrasé. Choisissez de recharger la version enregistrée (vos modifications sont abandonnées) ou de la remplacer par la vôtre.</p>
+        <p className="muted small">Rien n’a été écrasé. Choisissez de recharger la version enregistrée (vos modifications sont abandonnées) ou de la remplacer par la vôtre.</p>
       </Modal>
     </div>
   );

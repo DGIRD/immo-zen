@@ -6,7 +6,7 @@ import { date, money2 } from '../domain/format.ts';
 import { monthLabel } from '../domain/rental.ts';
 import { portalPreview, readInviteCode, rememberInviteCode } from '../domain/tenantPortal.ts';
 import { downloadBlob } from '../domain/exporting.ts';
-import { Button, EmptyState, PageHeader, Section } from '../ui/components.tsx';
+import { Button, EmptyState, Help, PageHeader, Section } from '../ui/components.tsx';
 import { href, navigate } from '../ui/router.ts';
 import { DOC_CATEGORY_LABELS, size } from './rental/Documents.tsx';
 import type { DocumentCategory } from '../data/types.ts';
@@ -66,7 +66,7 @@ export function PortalView({ account, preview }: { account: PortalAccount; previ
           </table></div>
         )}
       </Section>
-      {!preview && <p className="muted small">Espace en lecture seule. Pour toute question sur votre bail ou vos paiements, contactez votre bailleur.</p>}
+      {!preview && <Help>Espace en lecture seule. Pour toute question sur votre bail ou vos paiements, contactez votre bailleur.</Help>}
     </>
   );
 }

@@ -6,7 +6,7 @@ import { FunctionUnavailable } from '../data/platform.ts';
 import { date, money, todayParis } from '../domain/format.ts';
 import { valuate, ValuationError, type ValuationInput } from '../domain/valuation.ts';
 import { applyFeatures, dpeRentalWarning, featureAdjustments, type EstimateFeatures } from '../domain/valuationFeatures.ts';
-import { Button, NumberInput, Select } from './components.tsx';
+import { Button, Help, NumberInput, Select } from './components.tsx';
 
 export type EstimateFields = Pick<Property, 'estimate_low' | 'estimate_high' | 'estimate_median' | 'estimate_on' | 'estimate_source' | 'estimate_details'>;
 
@@ -128,7 +128,7 @@ export function EstimatePanel({ value, input, onChange, compareTo, compareLabel,
           </table></div>
         )}
         {base && adjustments.length > 0 && <p className="muted small">Estimation de base (ventes DVF) : {money(base.low)} – {money(base.high)}, médiane {money(base.median)}.</p>}
-        {ctx.apartment && ctx.paris && features.parking && <p className="muted small">À Paris, les études ne montrent pas d’effet net d’un parking sur le prix d’un appartement : aucun écart appliqué.</p>}
+        {ctx.apartment && ctx.paris && features.parking && <Help>À Paris, les études ne montrent pas d’effet net d’un parking sur le prix d’un appartement : aucun écart appliqué.</Help>}
         {rentWarning && <p className="estimate-warning" role="note">{rentWarning}</p>}
       </details>
       {editable && (

@@ -2,7 +2,7 @@ import type { Property, TaxPropertyInputs } from '../data/types.ts';
 import { money2 } from '../domain/format.ts';
 import type { Foncier2044, Liasse2033B, ReelBic } from '../domain/fiscal.ts';
 import { round2 } from '../domain/simulator.ts';
-import { NumberInput } from '../ui/components.tsx';
+import { Help, NumberInput } from '../ui/components.tsx';
 
 /**
  * Tableaux récapitulatifs de la déclaration (forme des liasses LMNP) :
@@ -79,7 +79,7 @@ export function DeferredTracking({ list, properties, year, opening, setOpening, 
         ))}</tbody>
         <tfoot><tr className="total"><td>Total suivi</td><td className="num">{eur(t.before)}</td>{cell(t.used)}{cell(t.added)}<td className="num">{eur(t.after)}</td></tr></tfoot>
       </table></div>
-      <p className="muted small">L’amortissement ne peut ni créer ni augmenter le déficit de l’activité : la part non déduite s’ajoute au stock, réparti entre les biens au prorata de leurs dotations, et s’impute sans limite de durée sur les bénéfices des années suivantes.</p>
+      <Help>L’amortissement ne peut ni créer ni augmenter le déficit de l’activité : la part non déduite s’ajoute au stock, réparti entre les biens au prorata de leurs dotations, et s’impute sans limite de durée sur les bénéfices des années suivantes.</Help>
       {editable && <details className="tax-recap-opening">
         <summary>Reprendre le stock au 1er janvier {year} d’une liasse déposée ailleurs</summary>
         <p className="muted small">Indiquez le « stock de fin d’année » de votre liasse {year - 1} pour chaque bien ; il remplace le calcul de l’application. Laissez vide pour le calcul automatique.</p>
@@ -127,7 +127,7 @@ export function AssetsDetail({ liasse, properties, year }: { liasse: Liasse2033B
           </div>
         );
       })}
-      <p className="muted small">Terrain non amortissable. La dotation de l’année d’acquisition est calculée au prorata du temps ; « Amort. annuel » est la dotation d’une année pleine.</p>
+      <Help>Terrain non amortissable. La dotation de l’année d’acquisition est calculée au prorata du temps ; « Amort. annuel » est la dotation d’une année pleine.</Help>
     </div>
   );
 }

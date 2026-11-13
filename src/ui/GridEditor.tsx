@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { Button } from './components.tsx';
+import { Button, InfoTip } from './components.tsx';
 
 /** Colonne modifiable de la grille. Les valeurs sont saisies en texte puis converties à l'enregistrement. */
 export interface GridColumn<T> {
@@ -273,7 +273,7 @@ export function GridEditor<T>({ rows, columns, rowKey, rowLabel, lock, flag, onS
       </div>
       {restored > 0 && <p className="note">Saisie non enregistrée retrouvée sur cet appareil ({restored} ligne{restored > 1 ? 's' : ''}) : vérifiez-la puis enregistrez, ou{' '}
         <button type="button" className="link" onClick={() => setDraft(() => ({}))}>effacez-la</button>.</p>}
-      {note && <p className="muted small">{note}</p>}
+      {note && <p className="help-line"><InfoTip label="Mode d’emploi de la grille" text="Mode d’emploi de la grille">{note}</InfoTip></p>}
       {derive && <p className="muted small">Les montants <em className="grid-recalc">en italique</em> sont recalculés d’après votre saisie (total dû, reports, écart, statut) ; ils deviennent définitifs à l’enregistrement.</p>}
       <div className="dt-scroll">
         <table className="dt-table grid-table" ref={table} onBlur={onBlurTable}>

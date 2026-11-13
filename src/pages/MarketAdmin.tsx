@@ -7,7 +7,7 @@ import {
   CAPS_HEADER, ENCADREMENT_END, parseRentCapsCsv, parseRentIndicatorsCsv, RENT_SEGMENTS, SEGMENT_LABELS, segmentFromFileName, type RentCap, type RentIndicator, type RentSegment,
 } from '../domain/marketRent.ts';
 import { BRACKET_LABELS, currentBenchmarks, quarterOf, type Borrower, type RateBenchmark, type UsuryBracket, type UsuryRate } from '../domain/loanRates.ts';
-import { Button, Checkbox, NumberInput, Section, TextInput, useConfirm } from '../ui/components.tsx';
+import { Button, Checkbox, Help, NumberInput, Section, TextInput, useConfirm } from '../ui/components.tsx';
 import { resetLoanData } from '../ui/LoanRateHint.tsx';
 import { resetMarketRentCache } from '../ui/MarketRentPanel.tsx';
 
@@ -307,7 +307,7 @@ function AutoSync({ rows, demo }: { rows: SyncRow[] | null | undefined; demo: bo
               ))}</tbody>
             </table></div>
           )}
-      <p className="muted small">Un échec de chargement apparaît dans l’onglet Incidents et est signalé par e-mail. Les saisies manuelles ci-dessous restent possibles à tout moment.</p>
+      <Help>Un échec de chargement apparaît dans l’onglet Incidents et est signalé par e-mail. Les saisies manuelles ci-dessous restent possibles à tout moment.</Help>
     </Section>
   );
 }

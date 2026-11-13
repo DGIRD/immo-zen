@@ -7,6 +7,7 @@ import { STATUS_LABELS, STATUS_ORDER } from '../domain/labels.ts';
 import { isProspect } from '../domain/property.ts';
 import { DataTable } from '../ui/DataTable.tsx';
 import { Button, Checkbox, EmptyState, PageHeader, useConfirm } from '../ui/components.tsx';
+import { PropertyCards, useViewMode, ViewToggle } from './PropertyCards.tsx';
 import { navigate, useRoute } from '../ui/router.ts';
 import { CompareDialog } from './Compare.tsx';
 import { exportRows, prospectColumns, usePropertyRows, type PropertyRow } from './propertyShared.tsx';
@@ -38,11 +39,42 @@ export function ProspectionPage() {
     return true;
   });
   const due = all.filter(({ p }) => p.follow_up_date && p.follow_up_date <= today && p.status !== 'archive').length;
+  const [view, setView] = useViewMode('prospection');
+  const [search, setSearch] = useState('');
+  const filters = <>
+    <label className="inline-select">Afficher
+      <select value={scope} onChange={(e) => setScope(e.target.value as Scope)}>
+        <option value="en_cours">En cours</option>
+        <option value="clos">Refusés et abandonnés</option>
+        <option value="archive">Archivés</option>
+        <option value="tous">Tous</option>
+        <optgroup label="Par statut">
+          {STATUS_ORDER.filter((s) => s !== 'acquis').map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+        </optgroup>
+      </select>
+    </label>
+    <Checkbox label={`Relances à faire (${due})`} checked={dueOnly} onChange={setDueOnly} />
+  </>;
+  const rowActions = (r: PropertyRow) => [
+    { label: 'Ouvrir la fiche', onSelect: () => navigate(`/bien/${r.p.id}`) },
+    { label: 'Modifier la fiche et la simulation', onSelect: () => navigate(`/bien/${r.p.id}/modifier`) },
+    { label: 'Dupliquer', onSelect: () => void actions.dup(r.p) },
+    { label: 'Marquer comme acquis', onSelect: () => void actions.setStatus(r.p, 'acquis') },
+    { label: r.p.status === 'archive' ? 'Désarchiver' : 'Archiver', onSelect: () => void actions.toggleArchive(r.p) },
+    { label: 'Supprimer', danger: true, onSelect: () => void actions.del(r.p) },
+  ];
+  const empty = <EmptyState title="Aucun bien en prospection" action={<Button variant="primary" onClick={() => navigate('/bien/nouveau')}>Ajouter un premier bien</Button>}>
+    Saisissez le bien et sa simulation dans un seul écran, puis suivez-le jusqu’à l’offre.
+  </EmptyState>;
 
   return (
     <>
       <PageHeader title="Prospection" subtitle="Les biens que vous étudiez et qui ne sont pas encore acquis."
         actions={<Button variant="primary" onClick={() => navigate('/bien/nouveau')}>Ajouter un bien</Button>} />
+      <div className="list-bar">{view === 'cartes' && filters}<ViewToggle value={view} onChange={setView} />{view === 'cartes' && <span className="muted small">Comparer des biens : affichage Tableau, puis sélection.</span>}</div>
+      {view === 'cartes' ? (
+        <PropertyCards rows={rows} kind="prospect" onOpen={(r) => navigate(`/bien/${r.p.id}`)} actions={rowActions} search={search} onSearch={setSearch} empty={empty} />
+      ) : (
       <DataTable
         id="prospection"
         rows={rows}
@@ -51,29 +83,8 @@ export function ProspectionPage() {
         initialSort={{ id: 'updated', dir: 'desc' }}
         onOpen={(r) => navigate(`/bien/${r.p.id}`)}
         searchPlaceholder="Rechercher un titre, une ville, une agence…"
-        toolbar={<>
-          <label className="inline-select">Afficher
-            <select value={scope} onChange={(e) => setScope(e.target.value as Scope)}>
-              <option value="en_cours">En cours</option>
-              <option value="clos">Refusés et abandonnés</option>
-              <option value="archive">Archivés</option>
-              <option value="tous">Tous</option>
-              <optgroup label="Par statut">
-                {STATUS_ORDER.filter((s) => s !== 'acquis').map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
-              </optgroup>
-            </select>
-          </label>
-          <Checkbox label={`Relances à faire (${due})`} checked={dueOnly} onChange={setDueOnly} />
-        </>}
-        rowActions={(r) => [
-          { label: 'Ouvrir la fiche', onSelect: () => navigate(`/bien/${r.p.id}`) },
-          { label: 'Modifier', onSelect: () => navigate(`/bien/${r.p.id}/modifier`) },
-          { label: 'Modifier la fiche et la simulation', onSelect: () => navigate(`/bien/${r.p.id}/modifier`) },
-          { label: 'Dupliquer', onSelect: () => void actions.dup(r.p) },
-          { label: 'Marquer comme acquis', onSelect: () => void actions.setStatus(r.p, 'acquis') },
-          { label: r.p.status === 'archive' ? 'Désarchiver' : 'Archiver', onSelect: () => void actions.toggleArchive(r.p) },
-          { label: 'Supprimer', danger: true, onSelect: () => void actions.del(r.p) },
-        ]}
+        toolbar={filters}
+        rowActions={rowActions}
         bulkActions={(sel, clear) => <>
           <label className="inline-select">Statut
             <select value="" onChange={async (e) => {
@@ -92,10 +103,9 @@ export function ProspectionPage() {
           <Button size="sm" onClick={() => void exportRows('csv', 'prospection', columns, sel, data.scenarios)}>CSV</Button>
           <Button size="sm" onClick={() => void exportRows('json', 'prospection', columns, sel, data.scenarios)}>JSON</Button>
         </>}
-        empty={<EmptyState title="Aucun bien en prospection" action={<Button variant="primary" onClick={() => navigate('/bien/nouveau')}>Ajouter un premier bien</Button>}>
-          Saisissez le bien et sa simulation dans un seul écran, puis suivez-le jusqu’à l’offre.
-        </EmptyState>}
+        empty={empty}
       />
+      )}
       <div className="export-row">
         <span className="muted">Exporter la liste affichée :</span>
         <Button size="sm" onClick={() => void exportRows('xlsx', 'prospection', columns, rows, data.scenarios)}>Excel (.xlsx)</Button>

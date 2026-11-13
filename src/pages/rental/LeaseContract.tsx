@@ -8,7 +8,7 @@ import { buildDocPdf } from '../../domain/docPdf.ts';
 import {
   buildContract, CONSTRUCTION_LABELS, CONTRACT_KIND_LABELS, defaultContract, defaultDuration, FURNITURE_MINIMUM, NOTICE_URL, type Block, type ContractContext,
 } from '../../domain/leaseContract.ts';
-import { Button, Checkbox, EmptyState, NumberInput, PageHeader, Section, Select, TextArea, TextInput } from '../../ui/components.tsx';
+import { Button, Checkbox, EmptyState, Help, NumberInput, PageHeader, Section, Select, TextArea, TextInput } from '../../ui/components.tsx';
 import { href, navigate } from '../../ui/router.ts';
 import { useUpload } from './Documents.tsx';
 import { AddressFields } from '../../ui/AddressFields.tsx';

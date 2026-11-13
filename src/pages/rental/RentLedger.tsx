@@ -9,7 +9,7 @@ import { round2 } from '../../domain/simulator.ts';
 import { chargeDuplicates, paymentDuplicates } from '../../domain/duplicates.ts';
 import { DataTable, type Column, type RowAction } from '../../ui/DataTable.tsx';
 import { GridEditor, type GridColumn } from '../../ui/GridEditor.tsx';
-import { Button, EmptyState, Section } from '../../ui/components.tsx';
+import { Button, EmptyState, Help, Section } from '../../ui/components.tsx';
 import { navigate } from '../../ui/router.ts';
 import { useChargeEditing } from './ChargeEdit.tsx';
 import { applyPaymentEdit, METHODS, PaymentDialog, ReceiptDialog, receiptsCovering, sendLabel, usePaymentActions, useReceiptActions, useRental } from './common.tsx';
@@ -26,6 +26,15 @@ import { issueMonthDocs, useExcessDialog } from './monthActions.tsx';
 export type Filter = 'a_traiter' | 'reste_du' | 'reglee' | 'a_venir' | 'anomalies' | 'toutes';
 
 export const DupPill = ({ title }: { title: string }) => <span className="pill pill-warn dup-flag" title={title}>doublon possible</span>;
+
+/** Filtre de période : un mois précis (AAAA-MM), le mois en cours, les 3 derniers mois ou une année. */
+function inPeriod(m: string, f: string, today: string): boolean {
+  const cur = today.slice(0, 7);
+  if (f === 'mois') return m === cur;
+  if (f === '3mois') { const [y, mm] = cur.split('-').map(Number) as [number, number]; const d = new Date(Date.UTC(y, mm - 3, 1)).toISOString().slice(0, 7); return m >= d && m <= cur; }
+  if (f.startsWith('annee:')) return m.startsWith(f.slice(6));
+  return m === f;
+}
 
 const TONE: Record<RowStatus, string> = { reglee: 'won', partielle: 'hot', reportee: 'closed', impayee: 'bad', a_venir: 'early', annulee: 'closed', hors_periode: 'closed' };
 const RECEIVED_LABELS = { oui: 'Oui', partiel: 'Partiel', non: 'Non' } as const;
@@ -93,7 +102,7 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
   const overdue = (r: LedgerRow) => (r.status === 'impayee' || r.status === 'partielle' || r.status === 'reportee') && (r.month < today.slice(0, 7) || (r.loyer?.due_date ?? '') <= today);
   const rows = allRows.filter((r) => {
     if (leaseFilter && r.lease_id !== leaseFilter) return false;
-    if (month && r.month !== month) return false;
+    if (month && !inPeriod(r.month, month, today)) return false;
     switch (filter) {
       case 'toutes': return withCancelled || r.status !== 'annulee';
       case 'a_traiter': return (overdue(r) && r.status !== 'reportee') || r.toConfirm || r.excessToQualify || propose(r) || r.status === 'hors_periode';
@@ -413,7 +422,7 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
           <button type="button" className="link" onClick={() => setFilter('anomalies')}>Afficher les doublons</button>{' · '}
           <button type="button" className="link" onClick={() => payActions.removeMany(scopeDupExtra)}>Supprimer les doublons (garder le premier enregistré)</button></p>
       )}
-      {fixedLease && <p className="muted small">Une ligne par mois : le réglé additionne les paiements du mois. Un mois échu partiellement réglé reporte son reste dû dans « Autre somme due » du mois suivant. L’absence de réponse à l’e-mail de confirmation ne vaut jamais paiement.</p>}
+      {fixedLease && <Help>Une ligne par mois : le réglé additionne les paiements du mois. Un mois échu partiellement réglé reporte son reste dû dans « Autre somme due » du mois suivant. L’absence de réponse à l’e-mail de confirmation ne vaut jamais paiement.</Help>}
       {onLeaseFilter && (
         <div className="row lease-filter">
           <label className="inline-select">Bail
@@ -459,9 +468,13 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
             {filter === 'toutes' && (
               <label className="checkbox small"><input type="checkbox" checked={withCancelled} onChange={(e) => setWithCancelled(e.target.checked)} /><span>Inclure les annulés</span></label>
             )}
-            <label className="inline-select">Mois
+            <label className="inline-select">Période
               <select value={month} onChange={(e) => setMonth(e.target.value)}>
-                <option value="">Tous</option>{months.map((m) => <option key={m} value={m}>{monthLabel(`${m}-01`)}</option>)}
+                <option value="">Toutes</option>
+                <option value="mois">Ce mois-ci</option>
+                <option value="3mois">3 derniers mois</option>
+                {[...new Set(months.map((m) => m.slice(0, 4)))].map((y) => <option key={y} value={`annee:${y}`}>Année {y}</option>)}
+                <optgroup label="Un mois précis">{months.map((m) => <option key={m} value={m}>{monthLabel(`${m}-01`)}</option>)}</optgroup>
               </select></label>
             <Button size="sm" onClick={() => setGrid(gridRows.length ? 'lignes' : 'paiements')} disabled={!gridRows.length && !scopePayments.length}>Modifier en grille</Button>
             {toolbarExtra}

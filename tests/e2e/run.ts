@@ -150,6 +150,8 @@ async function main() {
     await page.goto(url);
     await page.getByRole('heading', { name: 'Tableau de bord' }).waitFor();
     await page.getByText('Mode démonstration').first().waitFor();
+    // listes de biens en affichage Tableau pour les étapes suivantes (l'affichage Cartes a sa propre étape)
+    await page.evaluate(() => { localStorage.setItem('immozen:vue:prospection', 'tableau'); localStorage.setItem('immozen:vue:mes-biens', 'tableau'); });
     await page.screenshot({ path: join(out, '01-tableau-de-bord-vide.png') });
   });
 
@@ -515,6 +517,7 @@ async function main() {
     await page.getByLabel('Assurance emprunteur').fill('20');
     await page.getByLabel('Mensualité hors assurance').fill('500');
     assert.match((await page.locator('output[aria-labelledby="loan-total"]').innerText()).replace(/[\u202f\u00a0]/g, ' '), /520,00 €/, 'mensualité assurance comprise');
+    await page.locator('details.section-collapsible', { hasText: 'Détention' }).locator('summary').click();
     await page.getByLabel('Mode de détention').selectOption('nom_propre');
     await page.getByRole('button', { name: 'Enregistrer' }).first().click();
     await page.getByRole('heading', { name: 'Parking détenu' }).waitFor();
@@ -561,6 +564,8 @@ async function main() {
 
   await step('sauvegarde JSON puis réimport sans doublon', async () => {
     await page.goto(url + '#/parametres');
+    await page.getByRole('heading', { name: 'Paramètres', exact: true }).waitFor();
+    await page.evaluate(() => document.querySelectorAll('details.section-collapsible').forEach((d) => { (d as HTMLDetailsElement).open = true; }));
     const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Télécharger une sauvegarde (.json)' }).click()]);
     const file = join(out, 'sauvegarde.json');
     await dl.saveAs(file);
@@ -575,6 +580,8 @@ async function main() {
   await step('reprise des simulations de l’ancienne version restées dans le navigateur', async () => {
     await page.evaluate(() => localStorage.setItem('idf-invest-v6:abc', JSON.stringify({ simulations: [{ id: '9b2c1f00-0000-4000-8000-000000000001', number: 'SIM-2026-0007', title: 'Ancienne simulation', status: 'Offre en cours', surface: 30, offerPrice: 140000, loanYears: 20, rentLevel: 'Personnalisé', customRent: 700, agency: 'agence test', archived: false }] })));
     await page.reload();
+    await page.getByRole('heading', { name: 'Paramètres', exact: true }).waitFor();
+    await page.evaluate(() => document.querySelectorAll('details.section-collapsible').forEach((d) => { (d as HTMLDetailsElement).open = true; }));
     await page.getByText('1 simulation(s) de l’ancienne version').waitFor();
     page.once('download', () => undefined);
     await page.getByRole('button', { name: 'Reprendre ces simulations' }).click();
@@ -1592,6 +1599,8 @@ async function main() {
     await page.getByText('configuration', { exact: true }).waitFor();
     await page.screenshot({ path: join(out, '23-administration.png'), fullPage: true });
     await page.goto(url + '#/parametres');
+    await page.getByRole('heading', { name: 'Paramètres', exact: true }).waitFor();
+    await page.evaluate(() => document.querySelectorAll('details.section-collapsible').forEach((d) => { (d as HTMLDetailsElement).open = true; }));
     await page.getByRole('button', { name: 'Autoriser pendant 7 jours' }).click();
     await page.getByText('Accès support autorisé pour 7 jours.').waitFor();
     await page.getByRole('button', { name: 'Retirer l’autorisation' }).waitFor();
@@ -1713,7 +1722,8 @@ async function main() {
   await step('Mes biens : décomposition du coût d’acquisition, reprise dans la déclaration au réel', async () => {
     const parkingId = await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!).properties.find((p: { title: string }) => p.title === 'Parking détenu').id);
     await page.goto(url + `#/bien/${parkingId}/modifier`);
-    const sec = page.locator('section', { has: page.getByRole('heading', { name: 'Décomposition du coût d’acquisition (déclaration au réel)' }) });
+    const sec = page.locator('details.section-collapsible', { has: page.getByRole('heading', { name: 'Décomposition du coût d’acquisition (déclaration au réel)' }) });
+    await sec.locator('summary').click();
     await sec.getByLabel('Prix d’achat (net vendeur)').fill('100000');
     await sec.getByLabel('Part du terrain').fill('20');
     await sec.getByLabel('Frais de notaire').fill('8000');
@@ -1744,6 +1754,35 @@ async function main() {
     assert.equal(await parkingSaisies.getByLabel('Valeur amortissable').count(), 0);
     await page.getByRole('tab', { name: /Vérifier/ }).click();
     await page.getByLabel('Régime de Parking détenu').selectOption('reel_foncier');
+  });
+
+  await step('ergonomie : cartes de biens, point info, rubriques repliables', async () => {
+    await page.goto(url + '#/biens');
+    await page.getByRole('group', { name: 'Affichage' }).getByRole('button', { name: 'Cartes' }).click();
+    const card = page.locator('.prop-card', { hasText: 'Parking détenu' });
+    await card.waitFor();
+    await card.getByText(/Cash-flow \d{4}/).waitFor();
+    await page.screenshot({ path: join(out, '60-mes-biens-cartes.png'), fullPage: true });
+    await card.getByRole('button', { name: 'Parking détenu' }).click();
+    await page.waitForURL(/#\/bien\/[0-9a-f-]+$/);
+    await page.goto(url + '#/biens');
+    await page.getByRole('group', { name: 'Affichage' }).getByRole('button', { name: 'Tableau' }).click();
+    await page.locator('table').first().waitFor();
+    // point info : fermé, ouvert au clic, refermé avec Échap
+    await page.goto(url + '#/loyers');
+    const tip = page.locator('.page-header .info-tip-btn').first();
+    await tip.click();
+    await page.locator('.info-tip-pop.open').waitFor();
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('.info-tip-pop.open').count(), 0);
+    // rubrique repliable avec résumé
+    const parkingId = await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!).properties.find((p: { title: string }) => p.title === 'Parking détenu').id);
+    await page.goto(url + `#/bien/${parkingId}/modifier`);
+    const deco = page.locator('details.section-collapsible', { hasText: 'Décomposition du coût d’acquisition' });
+    await deco.locator('.section-summary').waitFor();
+    await deco.locator('summary').click();
+    await deco.getByLabel('Prix d’achat (net vendeur)').waitFor();
+    await page.screenshot({ path: join(out, '61-bien-rubriques.png'), fullPage: true });
   });
 
   await step('Mes biens : import du tableau d’amortissement (PDF), intérêts de l’année pré-remplis dans la déclaration', async () => {

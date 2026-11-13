@@ -14,7 +14,7 @@ import { round2 } from '../../domain/simulator.ts';
 import { DataTable, type Column } from '../../ui/DataTable.tsx';
 import { GridEditor, type GridColumn } from '../../ui/GridEditor.tsx';
 import { expenseDuplicates, findDuplicates, sameExpense } from '../../domain/duplicates.ts';
-import { Button, EmptyState, Modal, NumberInput, PageHeader, Select, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
+import { Button, EmptyState, Help, Modal, NumberInput, PageHeader, Select, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
 import { checkFile, openDocument, useUpload } from './Documents.tsx';
 
 const CATS = [...MAIN_EXPENSE_CATEGORIES, ...OTHER_EXPENSE_CATEGORIES].map((k) => [k, EXPENSE_CATEGORY_LABELS[k]] as [ExpenseCategory, string]);
@@ -186,7 +186,7 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
         <Button size="sm" onClick={() => void exp('xlsx')}>Excel (.xlsx)</Button>
         <Button size="sm" onClick={() => void exp('csv')}>CSV</Button>
       </div>
-      <p className="muted small">La nature d’une dépense sert au suivi ; elle ne vaut pas qualification fiscale. Faites valider les cas particuliers (travaux, mobilier) par un professionnel.</p>
+      <Help>La nature d’une dépense sert au suivi ; elle ne vaut pas qualification fiscale. Faites valider les cas particuliers (travaux, mobilier) par un professionnel.</Help>
       <ExpenseDialog expense={edit} onClose={() => setEdit(null)} propertyId={property || propertyId} />
       <ExpenseImportDialog open={importing} onClose={() => setImporting(false)} />
       <IncomeCleanupDialog open={cleanup} items={incomeDups} titles={titles} onClose={() => setCleanup(false)} />
