@@ -14,7 +14,7 @@ import { applyExcess, ExcessFields, issueMonthDocs, type ExcessDecision } from '
 import { round2 } from '../../domain/simulator.ts';
 import { findDuplicates, samePayment } from '../../domain/duplicates.ts';
 import { downloadBlob } from '../../domain/exporting.ts';
-import { Button, Checkbox, Modal, NumberInput, Select, TextInput } from '../../ui/components.tsx';
+import { Button, Checkbox, Help, Modal, NumberInput, Select, TextInput } from '../../ui/components.tsx';
 import { buildReceiptPdf } from '../../../supabase/functions/_shared/receiptPdf.ts';
 
 export const METHODS = Object.entries(PAYMENT_METHOD_LABELS) as [PaymentMethod, string][];
@@ -268,10 +268,10 @@ export function ReceiptDialog({ receipt, onClose, onReplaced }: { receipt: Recei
           }}>Supprimer le document</Button>
         </div>
       )}
-      {cancelReason !== null && <p className="muted small">Le document est annulé et retiré des listes ; il reste consultable dans l’historique (« Afficher les documents annulés ») pour garder une numérotation continue. Les paiements de la période redeviennent modifiables.</p>}
+      {cancelReason !== null && <Help>Le document est annulé et retiré des listes ; il reste consultable dans l’historique (« Afficher les documents annulés ») pour garder une numérotation continue. Les paiements de la période redeviennent modifiables.</Help>}
       {actions.ui}
       {url ? <iframe className="pdf-frame" title={`Aperçu ${label}`} src={url} /> : <p className="muted">Préparation de l’aperçu…</p>}
-      <p className="muted small">Modèle établi d’après les mentions usuelles d’une quittance ; relisez-le avant le premier envoi. Il n’a pas fait l’objet d’une validation juridique.</p>
+      <Help>Modèle établi d’après les mentions usuelles d’une quittance ; relisez-le avant le premier envoi. Il n’a pas fait l’objet d’une validation juridique.</Help>
     </Modal>
   );
 }
@@ -303,7 +303,7 @@ export function ChargeActions({ v, onPay, onConfirm, onReceipt, hideIssued = fal
           <Checkbox key={x.charge.id} label={`${periodLabel(x.charge)} — ${money2(x.total)}`} checked={!!extras?.includes(x.charge.id)}
             onChange={(on) => setExtras((e) => (on ? [...(e ?? []), x.charge.id] : (e ?? []).filter((id) => id !== x.charge.id)))} />
         ))}
-        <p className="muted small">Le rappel figure sur la quittance comme une ligne distincte, après le loyer et les charges du mois.</p>
+        <Help>Le rappel figure sur la quittance comme une ligne distincte, après le loyer et les charges du mois.</Help>
       </Modal>
       {v.remaining > 0 && <Button size="sm" onClick={() => (v.charge.due_date <= todayParis() ? onConfirm(v) : onPay(v))}>{v.charge.due_date <= todayParis() ? 'Confirmer le paiement' : 'Paiement anticipé'}</Button>}
       {v.status === 'payee' && (q
@@ -375,7 +375,7 @@ export function useReceiptActions(onDone?: (r: Receipt) => void) {
       <Modal open={!!confirm} title={confirm ? `Rééditer ${confirm.kind === 'quittance' ? 'la quittance' : 'le reçu'} ${confirm.number}` : ''} onClose={() => setConfirm(null)}
         footer={<><Button onClick={() => setConfirm(null)}>Annuler</Button><Button variant="primary" onClick={() => { if (confirm) void run(confirm, undefined, 'réédité'); }}>Rééditer</Button></>}>
         <p>Le document est émis de nouveau avec les informations actuelles du bail, du bien, des locataires et des paiements (utile après une correction). Il reçoit un nouveau numéro ; l’ancien est annulé et reste dans l’historique.</p>
-        {confirm?.send_status === 'envoye' && <p className="muted small">L’ancien document avait été envoyé au locataire : pensez à lui envoyer la nouvelle version.</p>}
+        {confirm?.send_status === 'envoye' && <Help>L’ancien document avait été envoyé au locataire : pensez à lui envoyer la nouvelle version.</Help>}
       </Modal>
     </>
   );
@@ -505,7 +505,7 @@ export function usePaymentActions() {
             <TextInput label="Commentaire" wide value={f.comment} onChange={(v) => setF({ ...f, comment: v })} maxLength={2000} />
           </div>
           {coveredBy(editing).length > 0 && <p className="note">Ce paiement figure sur {coveredBy(editing).length > 1 ? 'les documents' : 'le document'} n° {numbers(coveredBy(editing))}. Si le montant, la date ou le moyen change, {coveredBy(editing).length > 1 ? 'ils seront annulés et réédités' : 'il sera annulé et réédité'} automatiquement.</p>}
-          <p className="muted small">Le paiement est rattaché au mois choisi (par défaut, celui de sa date) et ne règle que les sommes de ce mois.</p>
+          <Help>Le paiement est rattaché au mois choisi (par défaut, celui de sa date) et ne règle que les sommes de ce mois.</Help>
           {error && <p className="form-error" role="alert">{error}</p>}
         </>}
       </Modal>

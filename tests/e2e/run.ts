@@ -150,6 +150,8 @@ async function main() {
     await page.goto(url);
     await page.getByRole('heading', { name: 'Tableau de bord' }).waitFor();
     await page.getByText('Mode démonstration').first().waitFor();
+    // listes de biens en affichage Tableau pour les étapes suivantes (l'affichage Cartes a sa propre étape)
+    await page.evaluate(() => { localStorage.setItem('immozen:vue:prospection', 'tableau'); localStorage.setItem('immozen:vue:mes-biens', 'tableau'); });
     await page.screenshot({ path: join(out, '01-tableau-de-bord-vide.png') });
   });
 
@@ -471,6 +473,7 @@ async function main() {
     assert.equal(page.url().split('/bien/')[1], propertyId, 'même identifiant');
     const after = await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!).properties.length);
     assert.equal(after, before, 'aucun bien créé');
+    await page.getByRole('tab', { name: 'Finances' }).click();
     await page.getByText('Photographie à l’acquisition').waitFor();
     await page.getByRole('tab', { name: /Historique/ }).click();
     await page.getByText('Bien acquis : transféré dans Mes biens').waitFor();
@@ -481,6 +484,7 @@ async function main() {
     const figs = (await page.locator('.figures').first().innerText()).replace(/[\u202f\u00a0]/g, ' ');
     assert.ok(!/Prix de présentation|Prix proposé|Prix affiché/.test(figs), `plus de prix affiché ni proposé : ${figs}`);
     assert.match(figs, /Estimation du prix actuel/);
+    await page.getByRole('tab', { name: 'Estimation' }).click();
     await page.getByRole('heading', { name: 'Estimation du prix actuel' }).waitFor();
     await page.getByRole('button', { name: 'Recalculer avec les ventes DVF' }).click();
     await page.getByText(/calculée le/).first().waitFor();
@@ -561,6 +565,8 @@ async function main() {
 
   await step('sauvegarde JSON puis réimport sans doublon', async () => {
     await page.goto(url + '#/parametres');
+    await page.getByRole('heading', { name: 'Paramètres', exact: true }).waitFor();
+    await page.evaluate(() => document.querySelectorAll('details.section-collapsible').forEach((d) => { (d as HTMLDetailsElement).open = true; }));
     const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Télécharger une sauvegarde (.json)' }).click()]);
     const file = join(out, 'sauvegarde.json');
     await dl.saveAs(file);
@@ -575,6 +581,8 @@ async function main() {
   await step('reprise des simulations de l’ancienne version restées dans le navigateur', async () => {
     await page.evaluate(() => localStorage.setItem('idf-invest-v6:abc', JSON.stringify({ simulations: [{ id: '9b2c1f00-0000-4000-8000-000000000001', number: 'SIM-2026-0007', title: 'Ancienne simulation', status: 'Offre en cours', surface: 30, offerPrice: 140000, loanYears: 20, rentLevel: 'Personnalisé', customRent: 700, agency: 'agence test', archived: false }] })));
     await page.reload();
+    await page.getByRole('heading', { name: 'Paramètres', exact: true }).waitFor();
+    await page.evaluate(() => document.querySelectorAll('details.section-collapsible').forEach((d) => { (d as HTMLDetailsElement).open = true; }));
     await page.getByText('1 simulation(s) de l’ancienne version').waitFor();
     page.once('download', () => undefined);
     await page.getByRole('button', { name: 'Reprendre ces simulations' }).click();
@@ -591,6 +599,12 @@ async function main() {
   /** Mois du bail de test : M-2, M-1 et le mois en cours (AAAA-MM). */
   let months: [string, string, string] = ['', '', ''];
   const mm = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
+  /** Assistant de création d'un bail : étape suivante, ou fin de l'assistant (« Créer le bail »). */
+  const leaseNext = () => page.getByRole('button', { name: 'Suivant' }).click();
+  const leaseFinish = async () => {
+    while (await page.getByRole('button', { name: 'Suivant' }).count()) await leaseNext();
+    await page.getByRole('button', { name: 'Créer le bail' }).click();
+  };
   const rowOf = (m: string) => page.locator('table.dt-table tbody tr').filter({ hasText: new RegExp(`^\\s*${['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'][Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`, 'm') }).first();
   await step('bail : création avec nouveau locataire, une ligne par mois, reste dû reporté', async () => {
     await page.goto(url + '#/locataires');
@@ -603,6 +617,8 @@ async function main() {
     await dlg.getByLabel('E-mail').fill('lea@example.test');
     await dlg.getByRole('button', { name: 'Enregistrer' }).click();
     await page.locator('.chip.on', { hasText: 'Léa Martin' }).waitFor();
+    await page.getByRole('list', { name: 'Étapes de création du bail' }).waitFor();
+    await leaseNext();
     const today = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()));
     const [y, m] = today.split('-').map(Number) as [number, number];
     const mo = (k: number) => { const d = new Date(Date.UTC(y, m - 1 - k, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
@@ -610,7 +626,8 @@ async function main() {
     await page.getByLabel('Début du bail *').fill(`${months[0]}-01`);
     await page.getByLabel('Jour de paiement').fill('1');
     assert.match((await page.locator('output.computed').innerText()).replace(/[  ]/g, ' '), /825,50 €/, 'loyer CC repris du bien');
-    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    await page.screenshot({ path: join(out, '62-bail-assistant.png'), fullPage: true });
+    await leaseFinish();
     await page.getByRole('tab', { name: /^Loyers et paiements \(3 mois/ }).waitFor();
     leaseUrl = page.url();
     // aucun paiement : le reste dû de chaque mois échu est reporté sur le mois suivant, en cascade
@@ -752,6 +769,7 @@ async function main() {
     await page.goto(leaseUrl);
     await page.getByText(/l’activer dans le bail/).waitFor();
     await page.getByRole('button', { name: 'Modifier' }).first().click();
+    await page.locator('details.section-collapsible', { hasText: 'Révision annuelle (IRL)' }).locator('summary').click();
     await page.getByLabel(/prévoit une révision annuelle/).check();
     assert.ok((await page.getByLabel('IRL de référence du bail').inputValue()).match(/^\d{4}-T[1-4]$/), 'dernier IRL publié à la signature proposé');
     await page.getByRole('button', { name: 'Enregistrer' }).first().click();
@@ -1540,6 +1558,25 @@ async function main() {
     await dlg.getByRole('button', { name: 'Ajouter', exact: true }).click();
     await page.getByText('Document ajouté.').waitFor();
     await page.getByRole('button', { name: 'bail-signe' }).waitFor();
+    // dossiers : par bien et par dossier
+    await page.getByRole('navigation', { name: 'Biens' }).getByRole('button', { name: /Parking détenu/ }).click();
+    await page.getByRole('group', { name: 'Dossiers' }).getByRole('button', { name: /Bail et locataires/ }).click();
+    await page.getByRole('button', { name: 'bail-signe' }).waitFor();
+    await page.getByRole('group', { name: 'Dossiers' }).getByRole('button', { name: /Fiscal/ }).click();
+    assert.equal(await page.getByRole('button', { name: 'bail-signe' }).count(), 0, 'dossier Fiscal vide');
+    // glisser-déposer : la fenêtre d'ajout s'ouvre avec le fichier et le dossier en cours
+    await page.locator('.doc-drop').evaluate((el) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File(['%PDF-1.4'], 'avis-taxe-fonciere.pdf', { type: 'application/pdf' }));
+      el.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      el.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    });
+    const drop = page.locator('dialog[open]');
+    await drop.getByText('Fichier déposé : avis-taxe-fonciere.pdf').waitFor();
+    assert.equal(await drop.getByLabel('Titre *').inputValue(), 'avis-taxe-fonciere');
+    assert.equal(await drop.getByLabel('Catégorie').inputValue(), 'fiscal');
+    await page.screenshot({ path: join(out, '63-documents-dossiers.png'), fullPage: true });
+    await drop.getByRole('button', { name: 'Annuler' }).click();
   });
 
   await step('Mes biens : locataire actif, « Loué », encaissements et cash-flow réel', async () => {
@@ -1592,6 +1629,8 @@ async function main() {
     await page.getByText('configuration', { exact: true }).waitFor();
     await page.screenshot({ path: join(out, '23-administration.png'), fullPage: true });
     await page.goto(url + '#/parametres');
+    await page.getByRole('heading', { name: 'Paramètres', exact: true }).waitFor();
+    await page.evaluate(() => document.querySelectorAll('details.section-collapsible').forEach((d) => { (d as HTMLDetailsElement).open = true; }));
     await page.getByRole('button', { name: 'Autoriser pendant 7 jours' }).click();
     await page.getByText('Accès support autorisé pour 7 jours.').waitFor();
     await page.getByRole('button', { name: 'Retirer l’autorisation' }).waitFor();
@@ -1670,12 +1709,15 @@ async function main() {
     await page.getByLabel('Pièces').fill('2');
     await page.getByRole('button', { name: 'Enregistrer' }).first().click();
     await page.getByRole('heading', { name: 'T2 Fontenay détenu' }).waitFor();
-    // fiche : loyer de marché calculé sur demande et enregistré avec le bien
+    // fiche, onglet Location : loyer de marché calculé sur demande et enregistré avec le bien
+    await page.getByRole('tab', { name: 'Location' }).click();
     await page.getByRole('button', { name: 'Calculer le loyer de marché' }).click();
     await page.locator('.market-rent').getByText(/Fiabilité/).waitFor();
     await page.goto(url + '#/locataires');
     await page.getByRole('button', { name: 'Nouveau bail' }).click();
     await page.getByLabel('Bien', { exact: true }).selectOption({ label: 'T2 Fontenay détenu' });
+    await page.locator('.chip', { hasText: 'Léa Martin' }).click();
+    await leaseNext();
     const sec = page.locator('section', { hasText: 'Loyer de marché pour cette location' });
     await sec.getByText(/Loyer de marché, charges comprises/).waitFor();
     await sec.getByText(/En zone tendue, le loyer d’un nouveau bail/).waitFor();
@@ -1713,7 +1755,8 @@ async function main() {
   await step('Mes biens : décomposition du coût d’acquisition, reprise dans la déclaration au réel', async () => {
     const parkingId = await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!).properties.find((p: { title: string }) => p.title === 'Parking détenu').id);
     await page.goto(url + `#/bien/${parkingId}/modifier`);
-    const sec = page.locator('section', { has: page.getByRole('heading', { name: 'Décomposition du coût d’acquisition (déclaration au réel)' }) });
+    const sec = page.locator('details.section-collapsible', { has: page.getByRole('heading', { name: 'Décomposition du coût d’acquisition (déclaration au réel)' }) });
+    await sec.locator('summary').click();
     await sec.getByLabel('Prix d’achat (net vendeur)').fill('100000');
     await sec.getByLabel('Part du terrain').fill('20');
     await sec.getByLabel('Frais de notaire').fill('8000');
@@ -1744,6 +1787,35 @@ async function main() {
     assert.equal(await parkingSaisies.getByLabel('Valeur amortissable').count(), 0);
     await page.getByRole('tab', { name: /Vérifier/ }).click();
     await page.getByLabel('Régime de Parking détenu').selectOption('reel_foncier');
+  });
+
+  await step('ergonomie : cartes de biens, point info, rubriques repliables', async () => {
+    await page.goto(url + '#/biens');
+    await page.getByRole('group', { name: 'Affichage' }).getByRole('button', { name: 'Cartes' }).click();
+    const card = page.locator('.prop-card', { hasText: 'Parking détenu' });
+    await card.waitFor();
+    await card.getByText(/Cash-flow \d{4}/).waitFor();
+    await page.screenshot({ path: join(out, '60-mes-biens-cartes.png'), fullPage: true });
+    await card.getByRole('button', { name: 'Parking détenu' }).click();
+    await page.waitForURL(/#\/bien\/[0-9a-f-]+$/);
+    await page.goto(url + '#/biens');
+    await page.getByRole('group', { name: 'Affichage' }).getByRole('button', { name: 'Tableau' }).click();
+    await page.locator('table').first().waitFor();
+    // point info : fermé, ouvert au clic, refermé avec Échap
+    await page.goto(url + '#/loyers');
+    const tip = page.locator('.page-header .info-tip-btn').first();
+    await tip.click();
+    await page.locator('.info-tip-pop.open').waitFor();
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('.info-tip-pop.open').count(), 0);
+    // rubrique repliable avec résumé
+    const parkingId = await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!).properties.find((p: { title: string }) => p.title === 'Parking détenu').id);
+    await page.goto(url + `#/bien/${parkingId}/modifier`);
+    const deco = page.locator('details.section-collapsible', { hasText: 'Décomposition du coût d’acquisition' });
+    await deco.locator('.section-summary').waitFor();
+    await deco.locator('summary').click();
+    await deco.getByLabel('Prix d’achat (net vendeur)').waitFor();
+    await page.screenshot({ path: join(out, '61-bien-rubriques.png'), fullPage: true });
   });
 
   await step('Mes biens : import du tableau d’amortissement (PDF), intérêts de l’année pré-remplis dans la déclaration', async () => {
@@ -1813,11 +1885,12 @@ async function main() {
     await page.getByRole('button', { name: 'Nouveau bail' }).click();
     await page.getByLabel('Bien', { exact: true }).selectOption({ label: 'Parking détenu' });
     await page.locator('.chip', { hasText: 'Léa Martin' }).click();
+    await leaseNext();
     await page.getByLabel('Début du bail *').fill('0090-03-01');
-    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    await leaseNext();
     await page.getByText(/Date improbable/).waitFor();
     await page.getByLabel('Début du bail *').fill('1990-03-01');
-    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    await leaseFinish();
     let dlg = page.locator('dialog[open]');
     await dlg.getByRole('heading', { name: 'Vérifiez la date de début' }).waitFor();
     await dlg.getByRole('button', { name: 'La date est correcte, enregistrer' }).click();
@@ -1895,7 +1968,8 @@ async function main() {
       await mp.screenshot({ path: join(out, `${shot}.png`), fullPage: path === '#/bien/nouveau' ? false : true });
     }
     await mp.goto(url + '#/prospection');
-    assert.ok(await mp.locator('.dt-card').count() > 0, 'cartes affichées sur mobile');
+    await mp.locator('.prop-card, .dt-card').first().waitFor();
+    assert.ok(await mp.locator('.prop-card, .dt-card').count() > 0, 'cartes affichées sur mobile');
     await mp.getByRole('button', { name: 'Menu' }).click();
     await mp.locator('#main-nav.open').waitFor();
     await mp.screenshot({ path: join(out, '11-mobile-menu.png') });

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { usePlan, useStore } from '../data/store.tsx';
 import type { PropertyStatus } from '../data/types.ts';
 import { date, dateTime, money, todayParis } from '../domain/format.ts';
@@ -55,6 +55,15 @@ export function DashboardPage() {
   }, [data, today, in7, simulatorDefaults]);
 
   const max = Math.max(1, ...v.counts.map(([, n]) => n));
+  const [allTodo, setAllTodo] = useState(false);
+  const [hideStart, setHideStart] = useState(() => { try { return localStorage.getItem('immozen:demarrage-masque') === '1'; } catch { return false; } });
+  const start: [boolean, string, string][] = [
+    [v.owned.length > 0, 'Ajouter un bien détenu', '/bien/nouveau?mode=owned'],
+    [data.leases.length > 0, 'Créer le bail de votre locataire', '/baux/nouveau'],
+    [data.payments.length > 0 || data.expenses.length > 0, 'Importer un relevé bancaire (loyers et dépenses)', '/loyers'],
+    [v.owned.length > 0 && v.owned.every((p) => p.tax_regime), 'Choisir le régime fiscal de chaque bien', '/declaration'],
+  ];
+  const startLeft = start.filter(([done]) => !done).length;
   const empty = data.properties.length === 0;
 
   return (
@@ -67,6 +76,13 @@ export function DashboardPage() {
         </EmptyState>
       ) : (
         <>
+          {startLeft > 0 && !hideStart && (
+            <section className="start-list" aria-labelledby="start-title">
+              <div className="section-head"><h2 id="start-title">Bien démarrer <span className="muted small">({start.length - startLeft}/{start.length})</span></h2>
+                <button type="button" className="link small" onClick={() => { setHideStart(true); try { localStorage.setItem('immozen:demarrage-masque', '1'); } catch { /* facultatif */ } }}>Masquer</button></div>
+              <ol>{start.map(([done, label, to]) => <li key={label} className={done ? 'done' : ''}>{done ? <span aria-label="fait">✓ {label}</span> : <a href={href(to)}>{label}</a>}</li>)}</ol>
+            </section>
+          )}
           <div className="figures">
             <a className="figure link-figure" href={href('/prospection')}><span className="figure-label">En prospection</span><span className="figure-value">{v.prospects.length}</span><span className="figure-hint">dont {v.offers} offre{v.offers > 1 ? 's' : ''} en cours</span></a>
             <a className="figure link-figure" href={href('/prospection')}><span className="figure-label">Relances à faire</span><span className={`figure-value ${v.followUps.length ? 'neg' : ''}`}>{v.followUps.length + v.contactFollow.length}</span><span className="figure-hint">biens et contacts</span></a>
@@ -94,7 +110,7 @@ export function DashboardPage() {
           <div className="two-col">
             <Section title="À faire">
               {v.followUps.length + v.visits.length + v.tasks.length + v.contactFollow.length + v.overdue.length + v.drafts.length + v.revisions.length === 0 ? <p className="muted">Rien d’urgent cette semaine.</p> : (
-                <ul className="agenda">
+                <ul className={`agenda${allTodo ? '' : ' agenda-short'}`}>
                   {v.overdue.map((c) => <li key={`o${c.charge.id}`}><span className="neg">{date(c.charge.due_date)}</span><a href={href(`/baux/${c.charge.lease_id}`)}>Loyer non confirmé : {v.leaseTitle(c.charge.lease_id)}</a><span className="muted">reste {money(c.remaining)}</span></li>)}
                   {v.revisions.map((l) => <li key={`r${l.id}`}><span>IRL</span><a href={href(`/baux/${l.id}`)}>Révision du loyer possible : {v.leaseTitle(l.id)}</a></li>)}
                   {v.drafts.map((r) => <li key={`d${r.id}`}><span>{date(r.created_at)}</span><a href={href(`/baux/${r.lease_id}`)}>Relance à valider : {v.leaseTitle(r.lease_id)}</a></li>)}
@@ -106,6 +122,9 @@ export function DashboardPage() {
                     return <li key={`t${t.id}`}><span className={t.due_date! < today ? 'neg' : ''}>{date(t.due_date)}</span><a href={href(`/bien/${t.property_id}`)}>{t.title}</a>{p && <span className="muted">{p.title}</span>}</li>;
                   })}
                 </ul>
+              )}
+              {v.followUps.length + v.visits.length + v.tasks.length + v.contactFollow.length + v.overdue.length + v.drafts.length + v.revisions.length > 6 && (
+                <button type="button" className="link small" onClick={() => setAllTodo((x) => !x)}>{allTodo ? 'Réduire' : `Tout voir (${v.followUps.length + v.visits.length + v.tasks.length + v.contactFollow.length + v.overdue.length + v.drafts.length + v.revisions.length})`}</button>
               )}
             </Section>
             <Section title="Parcours de prospection">

@@ -1,10 +1,11 @@
+import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { usePlan, useStore } from '../data/store.tsx';
 import { ACCESS_REASONS, STATUS_LABELS, type Plan } from '../data/platform.ts';
 import { describeError } from '../data/repo.ts';
 import { date, money2 } from '../domain/format.ts';
 import { FISCAL_PACK_PRICE, planUsage, sizeLabel, TIERS, tierDef, type TierDef } from '../domain/plans.ts';
-import { Button, KeyValue, NotAvailable, PageHeader, Pill, Section, Tabs } from '../ui/components.tsx';
+import { Button, Help, KeyValue, NotAvailable, PageHeader, Pill, Section, Tabs } from '../ui/components.tsx';
 import { useRoute } from '../ui/router.ts';
 
 export const planPrice = (p: Plan) => `${money2(p.amount_cents / 100)} / ${p.billing_interval === 'month' ? 'mois' : 'an'}`;
@@ -144,6 +145,10 @@ export function SubscriptionPage() {
               : rank(t.code) > rank(paidTier) ? `Passer à ${t.label}` : `Changer pour ${t.label}`;
             return (
               <div key={t.code} className={`plan${t.code === 'patrimoine' ? ' plan-featured' : ''}${isCurrent || (!running && t.code === plan.tier && plan.enforce) ? ' plan-current' : ''}`}>
+                <p className="plan-badges">
+                  {(isCurrent || (!running && t.code === plan.tier && plan.enforce)) && <span className="pill pill-ok">Votre formule</span>}
+                  {t.code === 'patrimoine' && !isCurrent && <span className="pill pill-info">Recommandée</span>}
+                </p>
                 <h3>{t.label}</h3>
                 <p className="plan-price">{money2(euros)} <span className="muted small">TTC / {period === 'year' ? 'an' : 'mois'}</span></p>
                 {period === 'year' && <p className="muted small">soit {money2(euros / 12)} par mois</p>}
@@ -158,10 +163,11 @@ export function SubscriptionPage() {
             );
           })}
         </div>
+        <TierCompare />
         {!plans.some((p) => p.tier && p.active && p.stripe_price_id) && (
           <NotAvailable>Le paiement en ligne n’est pas encore ouvert.{config?.support_email ? <> Contact : <a href={`mailto:${config.support_email}`}>{config.support_email}</a>.</> : null}</NotAvailable>
         )}
-        {!running && <p className="muted small">Offre Découverte gratuite pendant 30 jours à la création du compte : 1 bien détenu, 5 biens en prospection avec leur simulation, 100 Mo de documents ; ensuite, sans abonnement, consultation et export seulement. Paiement sécurisé par Stripe (carte bancaire, Apple Pay, Google Pay ou prélèvement SEPA) : Immo-Zen ne voit jamais vos coordonnées bancaires. Sans engagement : résiliation en ligne à tout moment, effective à la fin de la période payée.</p>}
+        {!running && <Help>Offre Découverte gratuite pendant 30 jours à la création du compte : 1 bien détenu, 5 biens en prospection avec leur simulation, 100 Mo de documents ; ensuite, sans abonnement, consultation et export seulement. Paiement sécurisé par Stripe (carte bancaire, Apple Pay, Google Pay ou prélèvement SEPA) : Immo-Zen ne voit jamais vos coordonnées bancaires. Sans engagement : résiliation en ligne à tout moment, effective à la fin de la période payée.</Help>}
         {!running && s?.stripe_customer_id && <Button size="sm" disabled={!!busy} onClick={() => void go('portal')}>Mes factures</Button>}
       </Section>
 
@@ -178,7 +184,7 @@ export function SubscriptionPage() {
 
       {(invoices.length > 0 || !!s?.stripe_customer_id) && (
         <Section title="Mes factures">
-          {invoices.length === 0 ? <p className="muted">Aucune facture pour l’instant. Chaque paiement (abonnement, renouvellement, changement de formule, pack fiscal) produit une facture, envoyée par e-mail et disponible ici.</p> : (
+          {invoices.length === 0 ? <p className="muted small">Aucune facture pour l’instant. Chaque paiement (abonnement, renouvellement, changement de formule, pack fiscal) produit une facture, envoyée par e-mail et disponible ici.</p> : (
             <div className="dt-scroll"><table className="dt-table">
               <thead><tr><th>Date</th><th>Objet</th><th>Période</th><th>N°</th><th className="num">Montant TTC</th><th><span className="sr-only">Télécharger</span></th></tr></thead>
               <tbody>
@@ -195,9 +201,37 @@ export function SubscriptionPage() {
               </tbody>
             </table></div>
           )}
-          <p className="muted small">Les factures sont aussi envoyées par e-mail à chaque paiement et restent consultables dans l’espace client Stripe.</p>
+          <Help>Les factures sont aussi envoyées par e-mail à chaque paiement et restent consultables dans l’espace client Stripe.</Help>
         </Section>
       )}
     </>
+  );
+}
+
+/** Tableau comparatif des formules, replié par défaut. */
+function TierCompare() {
+  const tiers = TIERS;
+  const lim = (v: number | null, unit = '') => (v == null ? 'Illimité' : `${v.toLocaleString('fr-FR')}${unit}`);
+  const yes = (b: boolean) => (b ? <span aria-label="inclus">✓</span> : <span className="muted" aria-label="non inclus">—</span>);
+  const rows: [string, (t: (typeof TIERS)[number]) => ReactNode][] = [
+    ['Prix TTC', (t) => (t.monthly ? `${money2(t.monthly)}/mois ou ${t.annual} €/an` : 'Gratuit 30 jours')],
+    ['Nombre de biens détenus', (t) => lim(t.limits.owned)],
+    ['Nombre de biens en prospection', (t) => lim(t.limits.prospects)],
+    ['Simulations par bien', (t) => lim(t.limits.scenarios)],
+    ['Documents', (t) => (t.limits.storage_mb == null ? 'Illimité' : t.limits.storage_mb >= 1024 ? `${t.limits.storage_mb / 1024} Go` : `${t.limits.storage_mb} Mo`)],
+    ['Contacts et comparaison de biens', (t) => yes(t.features.contacts)],
+    ['Quittances et relances automatiques', (t) => yes(t.features.automations)],
+    ['Cash-flow consolidé', (t) => yes(t.features.consolidated)],
+    ['Déclaration fiscale', (t) => (t.features.fiscal ? yes(true) : <span className="muted small">pack fiscal en option</span>)],
+    ['Partage', (t) => yes(t.features.sharing)],
+  ];
+  return (
+    <details className="tier-compare">
+      <summary>Comparer les formules en détail</summary>
+      <div className="dt-scroll"><table className="dt-table compact">
+        <thead><tr><th>Fonction</th>{tiers.map((t) => <th key={t.code} className="num">{t.label}</th>)}</tr></thead>
+        <tbody>{rows.map(([l, f]) => <tr key={l}><td>{l}</td>{tiers.map((t) => <td key={t.code} className="num">{f(t)}</td>)}</tr>)}</tbody>
+      </table></div>
+    </details>
   );
 }

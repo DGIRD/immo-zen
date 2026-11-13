@@ -3,7 +3,7 @@ import { useStore } from '../../data/store.tsx';
 import { buildBackup } from '../../domain/backup.ts';
 import { downloadBlob, stamp } from '../../domain/exporting.ts';
 import { planSize } from '../../domain/ledger.ts';
-import { Button, EmptyState, Modal, PageHeader } from '../../ui/components.tsx';
+import { Button, EmptyState, Help, Modal, PageHeader } from '../../ui/components.tsx';
 import { navigate } from '../../ui/router.ts';
 import { RentImportDialog } from './RentImport.tsx';
 import { RentLedger } from './RentLedger.tsx';
@@ -94,7 +94,7 @@ export function RentsPage() {
           {counts.restored > 0 && <li>{counts.restored} loyer{counts.restored > 1 ? 's' : ''} annulé{counts.restored > 1 ? 's' : ''} sans motif rétabli{counts.restored > 1 ? 's' : ''} ;</li>}
           <li>les quittances déjà émises restent attachées à leur mois, sans modification.</li>
         </ul>
-        <p className="muted small">Une sauvegarde complète (JSON) est téléchargée avant la reprise. Ensuite, le tableau signale les mois dont le réglé diffère du dû (filtre « Écarts ») pour que vous qualifiiez chaque écart.</p>
+        <Help>Une sauvegarde complète (JSON) est téléchargée avant la reprise. Ensuite, le tableau signale les mois dont le réglé diffère du dû (filtre « Écarts ») pour que vous qualifiiez chaque écart.</Help>
       </Modal>
       <PaymentDialog open={pay} onClose={() => setPay(false)} mode="saisie" />
     </>

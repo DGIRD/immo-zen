@@ -1,6 +1,6 @@
 import { date, money, number, pct } from '../domain/format.ts';
 import { STATUS_LABELS, TYPE_LABELS } from '../domain/labels.ts';
-import { Modal } from '../ui/components.tsx';
+import { Help, Modal } from '../ui/components.tsx';
 import type { PropertyRow } from './propertyShared.tsx';
 import { simulatedCashflow } from '../domain/simulator.ts';
 
@@ -45,7 +45,7 @@ export function CompareDialog({ rows, onClose }: { rows: PropertyRow[] | null; o
               })}
             </tbody>
           </table>
-          <p className="muted small">La meilleure valeur de chaque critère chiffré est mise en évidence. Les calculs utilisent la simulation de chaque bien.</p>
+          <Help>La meilleure valeur de chaque critère chiffré est mise en évidence. Les calculs utilisent la simulation de chaque bien.</Help>
         </div>
       )}
     </Modal>

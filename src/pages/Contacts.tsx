@@ -6,7 +6,7 @@ import { downloadBlob, stamp, toCsv, toXlsx, type ExportColumn } from '../domain
 import { date, dateTime, todayParis } from '../domain/format.ts';
 import { CHANNEL_LABELS, CONTACT_KIND_LABELS, STATUS_LABELS } from '../domain/labels.ts';
 import { DataTable, type Column } from '../ui/DataTable.tsx';
-import { Button, Checkbox, EmptyState, KeyValue, PageHeader, Section, Select, TextArea, TextInput, useConfirm } from '../ui/components.tsx';
+import { Button, Checkbox, EmptyState, Help, KeyValue, PageHeader, Section, Select, TextArea, TextInput, useConfirm } from '../ui/components.tsx';
 import { href, navigate } from '../ui/router.ts';
 
 const KINDS = Object.entries(CONTACT_KIND_LABELS) as [ContactKind, string][];
@@ -84,7 +84,7 @@ export function ContactsPage() {
           Les agences et agents saisis sur un bien apparaissent aussi ici.
         </EmptyState>}
       />
-      <p className="muted small">Les prospects commerciaux d’Immo-Zen ne figurent jamais ici : ils relèvent de l’administration de la plateforme et sont stockés séparément (lot 3).</p>
+      <Help>Les prospects commerciaux d’Immo-Zen ne figurent jamais ici : ils relèvent de l’administration de la plateforme et sont stockés séparément (lot 3).</Help>
       <div className="export-row">
         <span className="muted">Exporter la liste affichée :</span>
         <Button size="sm" onClick={() => void exp('xlsx', rows)}>Excel (.xlsx)</Button>

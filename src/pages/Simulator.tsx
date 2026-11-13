@@ -7,7 +7,7 @@ import { downloadBlob, stamp, toXlsx } from '../domain/exporting.ts';
 import { money, money2, pct, todayParis } from '../domain/format.ts';
 import { inputsFromProperty, isProspect, primaryScenario, prospectFieldsFromSimulation } from '../domain/property.ts';
 import { autoProvisionMonthly, autoRecoverableAnnual, ENGINE_VERSION, normalizeInputs, simulate, simulatedCashflow, summarize, type FieldError, type SimulationInputs } from '../domain/simulator.ts';
-import { Button, Checkbox, NumberInput, PageHeader, Section, Select, TextArea, TextInput } from '../ui/components.tsx';
+import { Button, Checkbox, Help, NumberInput, PageHeader, Section, Select, TextArea, TextInput } from '../ui/components.tsx';
 import { EstimatePanel, type EstimateFields } from '../ui/EstimatePanel.tsx';
 import { MarketRentPanel } from '../ui/MarketRentPanel.tsx';
 import { LoanRateHint, useLoanData } from '../ui/LoanRateHint.tsx';
@@ -259,7 +259,7 @@ export function SimulatorPage({ propertyId }: { propertyId?: string }) {
                 </>
               ) : <p className="muted small field-full">Bien détenu : sa fiche se modifie dans Mes biens. La simulation ne la change pas.</p>}
             </div>
-            {(!linkedProperty || isProspect(linkedProperty)) && <p className="muted small">Une seule fiche : tout ce qui est saisi ici (bien, estimation, simulation, suivi des actions) est enregistré ensemble et repris tel quel dans la prospection.</p>}
+            {(!linkedProperty || isProspect(linkedProperty)) && <Help>Une seule fiche : tout ce qui est saisi ici (bien, estimation, simulation, suivi des actions) est enregistré ensemble et repris tel quel dans la prospection.</Help>}
           </Section>
 
           {(!linkedProperty || isProspect(linkedProperty)) && (
@@ -416,7 +416,7 @@ export function SimulatorPage({ propertyId }: { propertyId?: string }) {
                 </>}
                 <div><dt>Capital remboursé année 1</dt><dd>{money(r.year1PrincipalRepaid)}</dd></div>
               </dl>
-              <p className="muted small">Le capital remboursé n’est pas une charge : il diminue la trésorerie mais constitue votre patrimoine. Aucune fiscalité n’est calculée.</p>
+              <Help>Le capital remboursé n’est pas une charge : il diminue la trésorerie mais constitue votre patrimoine. Aucune fiscalité n’est calculée.</Help>
               {r.warnings.length > 0 && <ul className="warnings">{r.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
               {sensitivity && sensitivity.length > 0 && (
                 <div className="sensitivity">

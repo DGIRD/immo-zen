@@ -8,7 +8,7 @@ import type { TdfcCheck } from '../domain/edi/tdfc.ts';
 import { downloadBlob } from '../domain/exporting.ts';
 import { money2 } from '../domain/format.ts';
 import { navigate } from '../ui/router.ts';
-import { Button, Checkbox, PageHeader, Pill, Section, Select, TextInput } from '../ui/components.tsx';
+import { Button, Checkbox, Help, PageHeader, Pill, Section, Select, TextInput } from '../ui/components.tsx';
 
 const EMPTY: TdfcDeclarant = { siren: '', rof: 'BIC1', name: '', address: { street: '', zip: '', city: '' }, home: null, naf: '6820A', activity: null };
 const FORM_LABELS: Record<string, string> = {
@@ -164,7 +164,7 @@ export function TeletransmissionPage() {
       </div>
 
       <Section title={<StepTitle n={1} title="Identité fiscale" state={identityState} />}>
-        <p className="muted small">Ces informations figurent dans votre espace professionnel sur impots.gouv.fr (rubrique « Mon dossier professionnel »).</p>
+        <Help>Ces informations figurent dans votre espace professionnel sur impots.gouv.fr (rubrique « Mon dossier professionnel »).</Help>
         <div className="grid">
           <TextInput label="SIREN" required value={form.siren} onChange={(v) => set({ siren: v.replace(/\D/g, '').slice(0, 9) })} error={tried ? errors.siren : undefined} hint="9 chiffres, attribué lors de la déclaration de début d’activité (P0i)." />
           <TextInput label="Référence d’obligation fiscale" required value={form.rof} onChange={(v) => set({ rof: v.toUpperCase() })} error={tried ? errors.rof : undefined} hint="En général BIC1." />
@@ -209,7 +209,7 @@ export function TeletransmissionPage() {
       </Section>
 
       <Section title={<StepTitle n={3} title="Vérification de la déclaration" state={previewState} />}>
-        <p className="muted small">La vérification reprend vos loyers, dépenses, amortissements et le bilan relu dans la déclaration fiscale. Elle ne transmet rien.</p>
+        <Help>La vérification reprend vos loyers, dépenses, amortissements et le bilan relu dans la déclaration fiscale. Elle ne transmet rien.</Help>
         <div className="tdfc-actions">
           <Button variant="primary" onClick={() => void check()} disabled={busy !== '' || !saved || dirty}>{busy === 'preview' ? 'Vérification…' : `Vérifier ma déclaration ${Number(year) + 1}`}</Button>
           <Button variant="ghost" onClick={() => navigate('/declaration')}>Relire le bilan</Button>

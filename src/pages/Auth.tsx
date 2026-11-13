@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { describeError } from '../data/repo.ts';
 import { useStore } from '../data/store.tsx';
-import { Button, Checkbox, TextInput } from '../ui/components.tsx';
+import { Button, Checkbox, Help, TextInput } from '../ui/components.tsx';
 import { navigate } from '../ui/router.ts';
 import { readInviteCode } from '../domain/tenantPortal.ts';
 
@@ -48,7 +48,7 @@ export function AuthPage() {
           <span>Immo-Zen</span>
         </div>
         <h1 className="auth-title">Prospectez, investissez et gérez vos locations sereinement.</h1>
-        <p className="muted">Vos biens, simulations et contacts, enregistrés en ligne et accessibles depuis tous vos appareils.</p>
+        <Help>Vos biens, simulations et contacts, enregistrés en ligne et accessibles depuis tous vos appareils.</Help>
       </div>
       <form className="auth-form" onSubmit={submit} noValidate={false}>
         <h2>{mode === 'login' ? 'Connexion' : mode === 'signup' ? 'Créer un compte' : 'Mot de passe oublié'}</h2>

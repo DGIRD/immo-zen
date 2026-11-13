@@ -7,7 +7,7 @@ import {
   type ChargeView,
 } from '../../domain/rental.ts';
 import { round2 } from '../../domain/simulator.ts';
-import { Button, EmptyState, KeyValue, Modal, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
+import { Button, EmptyState, Help, KeyValue, Modal, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
 import { href, navigate } from '../../ui/router.ts';
 import { DocumentList } from './Documents.tsx';
 import { findDuplicates, sameCharge } from '../../domain/duplicates.ts';
@@ -79,7 +79,7 @@ export function LeaseDetailPage({ id }: { id: string }) {
       {tab === 'loyers' && (
         <Section title="Loyers et paiements" actions={<Button size="sm" onClick={() => setChargeForm(true)}>Ajouter une somme due</Button>}>
           {charges.length === 0 && payments.length === 0
-            ? <p className="muted">Aucune ligne. Elles sont créées pour chaque mois à partir des dates du bail ; utilisez « Mettre à jour les lignes » pour les créer dès maintenant.</p>
+            ? <Help>Aucune ligne. Elles sont créées pour chaque mois à partir des dates du bail ; utilisez « Mettre à jour les lignes » pour les créer dès maintenant.</Help>
             : <RentLedger leaseFilter={lease.id} fixedLease figures={false} initialFilter="toutes" inlineEdit />}
         </Section>
       )}
@@ -187,7 +187,7 @@ function RentRevision({ leaseId }: { leaseId: string }) {
           <div className="field"><span className="label" id="irl-new">Nouveau loyer hors charges</span><output className="computed" aria-labelledby="irl-new">{plan.newRent ? money2(plan.newRent) : '—'}</output>
             <small className="muted">Actuel : {money2(plan.currentRent)}</small></div>
         </div>
-        <p className="muted small">Les échéances de loyer à partir de la date d’effet encore sans paiement sont mises à jour ; les suivantes sont générées au nouveau montant. Informez le locataire par écrit (courrier ou e-mail).</p>
+        <Help>Les échéances de loyer à partir de la date d’effet encore sans paiement sont mises à jour ; les suivantes sont générées au nouveau montant. Informez le locataire par écrit (courrier ou e-mail).</Help>
       </Modal>
     </Section>
   );
@@ -229,7 +229,7 @@ function Reminders({ leaseId, reminders, views }: { leaseId: string; reminders: 
 
   return (
     <Section title="Relances amiables" actions={<Button size="sm" variant="primary" disabled={!overdue.length} title={overdue.length ? undefined : 'Aucun impayé échu'} onClick={() => open('new')}>Préparer une relance</Button>}>
-      <p className="muted small">Relance amiable uniquement : aucune pénalité n’est ajoutée et ce message n’est pas un acte juridique. Une relance en attente est annulée automatiquement si la dette est réglée.</p>
+      <Help>Relance amiable uniquement : aucune pénalité n’est ajoutée et ce message n’est pas un acte juridique. Une relance en attente est annulée automatiquement si la dette est réglée.</Help>
       {reminders.length === 0 ? <p className="muted">Aucune relance.</p> : (
         <ul className="scenario-list">
           {reminders.map((r) => (
@@ -284,7 +284,7 @@ function Deposits({ leaseId, planned, movements, held }: { leaseId: string; plan
   const LABELS = { encaissement: 'Encaissement', restitution: 'Restitution au locataire', retenue: 'Retenue (justifiée)' } as const;
   return (
     <Section title="Dépôt de garantie">
-      <p className="muted small">Le dépôt de garantie est suivi séparément : il n’entre ni dans les loyers encaissés ni dans le solde du locataire.</p>
+      <Help>Le dépôt de garantie est suivi séparément : il n’entre ni dans les loyers encaissés ni dans le solde du locataire.</Help>
       <KeyValue items={[['Prévu au bail', money2(planned)], ['Détenu actuellement', money2(held)]]} />
       {movements.length > 0 && (
         <table className="dt-table compact"><thead><tr><th>Date</th><th>Mouvement</th><th className="num">Montant</th><th>Commentaire</th><th /></tr></thead>
@@ -315,7 +315,7 @@ function Holders({ leaseId }: { leaseId: string }) {
   const access = useTenantAccess();
   return (
     <Section title="Titulaires du bail" actions={<Button size="sm" onClick={() => navigate(`/baux/${leaseId}/modifier`)}>Ajouter ou retirer</Button>}>
-      <p className="muted small">Départ d’un colocataire : indiquez sa date de départ ; il reste dans l’historique et n’apparaît plus sur les quittances suivantes. Espace locataire : chaque titulaire invité consulte en ligne ses quittances et les documents partagés.</p>
+      <Help>Départ d’un colocataire : indiquez sa date de départ ; il reste dans l’historique et n’apparaît plus sur les quittances suivantes. Espace locataire : chaque titulaire invité consulte en ligne ses quittances et les documents partagés.</Help>
       <ul className="tasks">
         {links.map((l) => {
           const t = data.tenants.find((x) => x.id === l.tenant_id);

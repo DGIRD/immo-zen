@@ -5,7 +5,7 @@ import { date, todayParis } from '../domain/format.ts';
 import {
   BRACKET_LABELS, bracketFor, estimateTaeg, latestUsury, proposedRate, remainingYears, renegotiation, usuryFor, usuryStatus, type Borrower,
 } from '../domain/loanRates.ts';
-import { Button, Pill } from './components.tsx';
+import { Button, Help, Pill } from './components.tsx';
 
 let loanCache: Promise<LoanData | null> | null = null;
 /** Barème et taux d'usure, lus une fois par session (rechargés après une mise à jour par l'administrateur). */
@@ -34,7 +34,7 @@ export function LoanRateHint({ years, rate, onUseRate, amount, insuranceRate, fe
   const data = useLoanData();
   const today = todayParis();
   if (data === undefined) return null;
-  if (data === null) return <p className="muted small">Taux de référence indisponibles : la base de données n’est pas à jour (migration du 30/10/2026).</p>;
+  if (data === null) return <Help>Taux de référence indisponibles : la base de données n’est pas à jour (migration du 30/10/2026).</Help>;
   const ref = proposedRate(data.benchmarks, years, today);
   const bracket = bracketFor(years);
   const usury = usuryFor(data.usury, borrower, years, today);
@@ -62,7 +62,7 @@ export function LoanRateHint({ years, rate, onUseRate, amount, insuranceRate, fe
         </p>
       ) : <p className="muted small">Plafond non à jour : taux d’usure du trimestre en cours non chargé{last ? ` (dernier connu : ${last.quarter.replace('-Q', ', trimestre ')}, ${fr(last.usury)} %)` : ''}.</p>}
       {status === 'depasse' && <p className="form-error" role="alert">Financement probablement refusé : le TAEG estimé dépasse le taux d’usure. Réduisez la durée, l’assurance ou les frais, ou augmentez l’apport.</p>}
-      {taeg !== null && <p className="muted small">TAEG estimé avec le taux nominal, l’assurance emprunteur et les frais de garantie et de dossier, sans différé. Seul le TAEG de l’offre de prêt fait foi.</p>}
+      {taeg !== null && <Help>TAEG estimé avec le taux nominal, l’assurance emprunteur et les frais de garantie et de dossier, sans différé. Seul le TAEG de l’offre de prêt fait foi.</Help>}
     </div>
   );
 }

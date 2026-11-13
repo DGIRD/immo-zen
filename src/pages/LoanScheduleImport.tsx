@@ -6,7 +6,7 @@ import {
   buildSchedule, cellsToLines, COLUMN_ROLE_LABELS, parseTable, readPdfLines, scheduleYears, tokenizeText,
   type ColumnRole, type LoanSchedule, type ParsedTable,
 } from '../domain/loanSchedule.ts';
-import { Button, Modal } from '../ui/components.tsx';
+import { Button, Help, Modal } from '../ui/components.tsx';
 
 const fr = (iso: string) => iso.split('-').reverse().join('/');
 
@@ -50,7 +50,7 @@ export function LoanScheduleBlock({ draft, set }: {
         </>
       ) : (
         <>
-          <p className="muted small">Sans tableau, les intérêts sont calculés d’après le montant, le taux, la durée et la première échéance : ils diffèrent des intérêts réels en cas d’intérêts intercalaires, de différé ou d’assurance prélevée avec l’échéance. Importez le tableau d’amortissement de votre offre de prêt pour retenir les montants exacts.</p>
+          <Help>Sans tableau, les intérêts sont calculés d’après le montant, le taux, la durée et la première échéance : ils diffèrent des intérêts réels en cas d’intérêts intercalaires, de différé ou d’assurance prélevée avec l’échéance. Importez le tableau d’amortissement de votre offre de prêt pour retenir les montants exacts.</Help>
           <Button size="sm" onClick={() => setOpen(true)}>Importer le tableau d’amortissement</Button>
         </>
       )}

@@ -281,7 +281,7 @@ export function DataTable<T>({ id, rows, columns, rowKey, onOpen, rowActions, bu
   );
 }
 
-function RowMenu<T>({ actions, row }: { actions: RowAction<T>[]; row: T }) {
+export function RowMenu<T>({ actions, row }: { actions: RowAction<T>[]; row: T }) {
   const ref = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) ref.current.open = false; };

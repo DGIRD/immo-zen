@@ -5,7 +5,7 @@ import { acquisitionComponents, breakdownTotal, DEFAULT_TAX_INPUTS } from '../do
 import { DPE_VALUES, OCCUPATION_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, STATUS_ORDER, TAX_REGIME_LABELS, TYPE_LABELS } from '../domain/labels.ts';
 import { money2, todayParis } from '../domain/format.ts';
 import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, LOAN_FIELDS, loanInfo, rentWithCharges } from '../domain/property.ts';
-import { Button, NumberInput, PageHeader, Section, Select, TextArea, TextInput } from '../ui/components.tsx';
+import { Button, Help, NumberInput, PageHeader, Section, Select, TextArea, TextInput } from '../ui/components.tsx';
 import { navigate } from '../ui/router.ts';
 import { AddressFields } from '../ui/AddressFields.tsx';
 import { EstimatePanel } from '../ui/EstimatePanel.tsx';
@@ -144,18 +144,19 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
               <small className="muted">Soit {money2((annualChargesTotal(draft) ?? 0) / 12)} par mois.</small>
             </div>
           </div>
-          <p className="muted small">Ces montants pré-remplissent les simulations du bien. Les dépenses réellement payées se saisissent dans Dépenses.</p>
+          <Help>Ces montants pré-remplissent les simulations du bien. Les dépenses réellement payées se saisissent dans Dépenses.</Help>
         </Section>
       ) : (
         <Section title="Prix, surface et loyer">
           <p>{[draft.surface ? `${String(draft.surface).replace('.', ',')} m²` : null, draft.asking_price ? `présentation ${money2(draft.asking_price)}` : null, draft.offer_price ? `proposé ${money2(draft.offer_price)}` : null, draft.estimated_rent ? `loyer ${money2(draft.estimated_rent)} / mois` : null].filter(Boolean).join(' · ') || 'Pas encore simulé.'}</p>
-          <p className="muted small">Ces valeurs se saisissent une seule fois, dans le simulateur, qui met à jour la fiche du bien.</p>
+          <Help>Ces valeurs se saisissent une seule fois, dans le simulateur, qui met à jour la fiche du bien.</Help>
           {existing && <Button onClick={() => navigate(existing.primary_scenario_id ? `/simulateur/${existing.primary_scenario_id}` : `/simulateur?bien=${existing.id}`)}>Ouvrir le simulateur</Button>}
         </Section>
       )}
 
       {owned && (
-        <Section title="Estimation du prix actuel">
+        <Section title="Estimation du prix actuel" collapsible defaultOpen={false}
+          summary={draft.estimate_low != null && draft.estimate_high != null ? `${money2(draft.estimate_low)} – ${money2(draft.estimate_high)}` : 'Non estimé'}>
           <EstimatePanel value={draft} input={draft} onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
             compareTo={draft.acquisition_cost ?? existing?.acquisition_snapshot?.results?.totalCost ?? null} compareLabel="Coût d’acquisition" />
         </Section>
@@ -164,23 +165,25 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
       {owned && <LoanSection draft={draft} set={set} errors={errors} snapshot={existing?.acquisition_snapshot ?? null} />}
 
       {owned && (
-        <Section title="Détention">
+        <Section title="Détention" collapsible defaultOpen={!existing}
+          summary={[draft.ownership_mode ? OWNERSHIP_LABELS[draft.ownership_mode] : null, draft.tax_regime ? TAX_REGIME_LABELS[draft.tax_regime] : 'régime fiscal à choisir', draft.acquired_at ? `acquis le ${draft.acquired_at.split('-').reverse().join('/')}` : null].filter(Boolean).join(' · ')}>
           <div className="grid">
             <Select label="Mode de détention" value={draft.ownership_mode ?? null} onChange={(v) => set('ownership_mode', v as OwnershipMode | null)} allowEmpty="Non renseigné" options={entries(OWNERSHIP_LABELS)} />
             <Select label="Régime fiscal renseigné" value={draft.tax_regime ?? null} onChange={(v) => set('tax_regime', v as TaxRegime | null)} allowEmpty="Non renseigné" options={entries(TAX_REGIME_LABELS)}
-              hint="Information déclarative, utilisée pour la synthèse annuelle (lot 3)." />
+              hint="Utilisé par la déclaration fiscale." />
             <TextInput label="Date d’acquisition" type="date" value={draft.acquired_at} onChange={(v) => set('acquired_at', v || null)} />
             <NumberInput label="Coût d’acquisition réel" suffix="€" value={draft.acquisition_cost} onChange={(v) => set('acquisition_cost', v)} error={errors.acquisition_cost}
               hint="Prix + frais réellement payés. Sinon, le coût du scénario acquis est utilisé." />
             <Select label="Occupation" value={draft.occupation_status ?? 'vacant'} onChange={(v) => set('occupation_status', (v ?? 'vacant') as OccupationStatus)}
-              options={entries(OCCUPATION_LABELS)} hint="« Loué » sera déterminé par les baux au lot 2." />
+              options={entries(OCCUPATION_LABELS)} hint="« Loué » découle des baux en cours." />
           </div>
         </Section>
       )}
 
       {owned && <BreakdownSection draft={draft} set={set} />}
 
-      <Section title="Agence et agent">
+      <Section title="Agence et agent" collapsible defaultOpen={!owned}
+        summary={[agencies.find((a) => a.id === agencyChoice)?.name, agents.find((a) => a.id === agentChoice)?.name].filter(Boolean).join(' · ') || 'Aucun'}>
         <div className="grid">
           <Select label="Agence" value={agencyChoice} onChange={(v) => { setAgencyChoice(v ?? ''); }} allowEmpty="Aucune" error={errors.agency}
             options={[...agencies.map((a) => [a.id, a.name] as const), [NEW, '+ Nouvelle agence…'] as const]} />
@@ -189,7 +192,7 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
             options={[...agents.map((a) => [a.id, a.name] as const), [NEW, '+ Nouvel agent…'] as const]} />
           {agentChoice === NEW && <TextInput label="Nom du nouvel agent" value={newAgent} onChange={setNewAgent} error={errors.agent} />}
         </div>
-        <p className="muted small">Coordonnées complètes, échanges et relances : rubrique Contacts.</p>
+        <p className="muted small">Coordonnées et échanges : rubrique Contacts.</p>
       </Section>
 
       {!owned && (
@@ -203,7 +206,8 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
         </Section>
       )}
 
-      <Section title="Commentaires et vigilance">
+      <Section title="Commentaires et vigilance" collapsible defaultOpen={!existing}
+        summary={[draft.comments ? 'commentaire' : null, (draft.vigilance ?? []).length ? `${(draft.vigilance ?? []).length} élément(s) de vigilance` : null].filter(Boolean).join(' · ') || 'Aucun'}>
         <div className="grid">
           <TextArea label="Commentaires" value={draft.comments} onChange={(v) => set('comments', v || null)} rows={5} />
         </div>
@@ -291,8 +295,9 @@ function BreakdownSection({ draft, set }: { draft: Draft; set: <K extends keyof 
   const cost = draft.acquisition_cost ?? null;
   const d = DEFAULT_TAX_INPUTS;
   return (
-    <Section title="Décomposition du coût d’acquisition (déclaration au réel)">
-      <p className="muted small">Pour l’amortissement en LMNP au réel et la liasse fiscale : le terrain n’est pas amortissable ; la construction, les frais de notaire et d’agence et le mobilier compris dans la vente s’amortissent chacun sur leur durée, à partir de la date d’acquisition. Facultatif : sans décomposition, la déclaration amortit le coût d’acquisition global.</p>
+    <Section title="Décomposition du coût d’acquisition (déclaration au réel)" collapsible defaultOpen={false}
+      summary={total ? `Total ${money2(total)}` : 'Non décomposé (facultatif)'}
+      info="Pour l’amortissement en LMNP au réel et la liasse fiscale : le terrain n’est pas amortissable ; la construction, les frais de notaire et d’agence et le mobilier compris dans la vente s’amortissent chacun sur leur durée, à partir de la date d’acquisition. Facultatif : sans décomposition, la déclaration amortit le coût d’acquisition global.">
       <div className="grid">
         <NumberInput label="Prix d’achat (net vendeur)" suffix="€" value={b.price ?? null} onChange={(v) => patch('price', v)} hint="Prix de l’acte, hors frais" />
         <NumberInput label="Part du terrain" suffix="%" value={b.land_pct ?? null} onChange={(v) => patch('land_pct', v)} hint={`Non amortissable ; ${d.land_pct} % par défaut (souvent 15 à 25 %)`} />

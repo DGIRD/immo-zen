@@ -3,7 +3,7 @@ import type { BilanCorrection, Property, TaxPropertyInputs } from '../data/types
 import { money2 } from '../domain/format.ts';
 import { CORRECTABLE, ORIGIN_LABELS, activeCorrection, type BilanReview, type Origin, type ReviewLine } from '../domain/bilanReview.ts';
 import { loanBalance } from '../domain/fiscal.ts';
-import { Button, NumberInput, Select, TextInput } from '../ui/components.tsx';
+import { Button, Help, NumberInput, Select, TextInput } from '../ui/components.tsx';
 
 const TONE: Record<Origin, 'neutral' | 'ok' | 'warn' | 'bad'> = {
   calcul: 'ok', liasse: 'ok', historique: 'ok', banque: 'ok', saisie: 'neutral', 'bilan_n-1': 'neutral', convention: 'neutral', correction: 'warn', total: 'neutral',
@@ -42,7 +42,7 @@ export function BilanReviewSection({ year, review, properties, get, foyer, setFo
   return (
     <section className="bilan-review" aria-label="Relecture du bilan 2033-A">
       <h3>Bilan simplifié au 31/12/{year} (2033-A)</h3>
-      <p className="muted small">Établi à partir de vos biens, loyers, dépôts, dépenses et crédits, sans compte bancaire dédié par défaut. Chaque ligne indique son origine ; dépliez-la pour le détail.</p>
+      <Help>Établi à partir de vos biens, loyers, dépôts, dépenses et crédits, sans compte bancaire dédié par défaut. Chaque ligne indique son origine ; dépliez-la pour le détail.</Help>
       <p className={`bilan-status bilan-${gapMessage.level}`} role={gapMessage.level === 'ok' ? 'status' : 'alert'}>
         <strong>{balanced ? `Actif = passif = ${money2(bilan.assetsNet)}` : `Bilan déséquilibré : actif ${money2(bilan.assetsNet)}, passif ${money2(bilan.liabilities)}`}</strong>
         {' — '}{gapMessage.text}
@@ -74,7 +74,7 @@ export function BilanReviewSection({ year, review, properties, get, foyer, setFo
       </div>
 
       <h4>Corrections manuelles</h4>
-      <p className="muted small">Pour remplacer un montant calculé, indiquez le montant retenu et le motif. Chaque correction reste dans l’historique, même annulée.</p>
+      <Help>Pour remplacer un montant calculé, indiquez le montant retenu et le motif. Chaque correction reste dans l’historique, même annulée.</Help>
       <div className="grid tax-inputs bilan-correction">
         <Select label="Ligne" value={field} onChange={(v) => setField((v ?? 'receivables') as BilanCorrection['field'])} options={Object.entries(CORRECTABLE) as [BilanCorrection['field'], string][]} />
         <NumberInput label="Montant retenu" suffix="€" value={amount} onChange={setAmount} error={tried && (amount === null || !(amount >= 0)) ? 'Montant positif ou nul requis' : undefined} />
@@ -96,7 +96,7 @@ export function BilanReviewSection({ year, review, properties, get, foyer, setFo
           })}</tbody>
         </table></div>
       )}
-      <p className="muted small">Pensez à enregistrer vos saisies. Choix comptables à valider avec un professionnel : trésorerie nulle sans compte dédié, résultat calculé sur les encaissements, frais d’acquisition inclus dans la valeur du bien.</p>
+      <Help>Pensez à enregistrer vos saisies. Choix comptables à valider avec un professionnel : trésorerie nulle sans compte dédié, résultat calculé sur les encaissements, frais d’acquisition inclus dans la valeur du bien.</Help>
     </section>
   );
 }

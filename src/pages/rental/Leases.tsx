@@ -10,7 +10,7 @@ import { LEASE_BACKLOG_WARN, leaseLedger, leaseStartIssue, leaseState, leaseTena
 import { syncLedgerWith } from './ledgerSync.ts';
 import { round2 } from '../../domain/simulator.ts';
 import { DataTable, type Column } from '../../ui/DataTable.tsx';
-import { Button, Checkbox, EmptyState, Modal, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
+import { Button, Checkbox, EmptyState, Help, InfoTip, Modal, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../../ui/components.tsx';
 import { navigate } from '../../ui/router.ts';
 import { LeaseBadge, useRental } from './common.tsx';
 import { AccessPill, useTenantAccess } from './TenantAccess.tsx';
@@ -167,6 +167,10 @@ export function TenantDialog({ tenant, onClose, onCreated }: { tenant: Tenant | 
 
 // ---------------------------------------------------------------------
 // Formulaire de bail
+/** Assistant de création d'un bail : étapes et champs contrôlés à chacune. */
+const LEASE_STEPS = ['Bien et locataires', 'Loyer et durée', 'Révision IRL', 'Quittances et automatisations'] as const;
+const STEP_FIELDS: string[][] = [['property_id', 'tenants'], ['start_date', 'end_date', 'rent_hc', 'charges_amount', 'deposit_amount', 'payment_day', 'charges_mode'], [], ['reminder_delay_days']];
+
 // ---------------------------------------------------------------------
 export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: string }) {
   const store = useStore();
@@ -188,6 +192,7 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
   const [newTenant, setNewTenant] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState(0);
   const { ask, dialog } = useConfirm();
   const set = <K extends keyof Lease>(k: K, v: Lease[K] | null | undefined) => setD((x) => ({ ...x, [k]: v }));
 
@@ -197,7 +202,7 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
   const selected = data.properties.find((p) => p.id === d.property_id);
   const previous = selected ? data.leases.filter((l) => l.property_id === selected.id && l.id !== existing?.id).sort((a, b) => b.start_date.localeCompare(a.start_date))[0] : undefined;
 
-  function validate() {
+  function computeErrors() {
     const e: Record<string, string> = {};
     if (!d.property_id) e.property_id = 'Choisissez le bien.';
     const startIssue = leaseStartIssue(d.start_date, todayParis());
@@ -211,8 +216,26 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
     const legal = leaseFormIssues(d, tenantIds.length);
     if (legal.deposit_amount && !e.deposit_amount) e.deposit_amount = legal.deposit_amount;
     if (legal.charges_mode) e.charges_mode = legal.charges_mode;
+    return e;
+  }
+  function validate() {
+    const e = computeErrors();
     setErrors(e);
+    if (!existing) {
+      // assistant : retour à la première étape qui contient une erreur
+      const first = STEP_FIELDS.findIndex((keys) => keys.some((k) => e[k]));
+      if (first >= 0 && first !== step) setStep(first);
+    }
     return !Object.keys(e).length;
+  }
+  /** Assistant de création : passe à l'étape suivante si celle-ci est valide. */
+  function next() {
+    const e = computeErrors();
+    const mine = Object.fromEntries(Object.entries(e).filter(([k]) => STEP_FIELDS[step]!.includes(k)));
+    setErrors(mine);
+    if (Object.keys(mine).length) return;
+    setStep((x) => Math.min(x + 1, LEASE_STEPS.length - 1));
+    window.scrollTo?.({ top: 0 });
   }
 
   /** Confirmations avant enregistrement : échéances supprimées si la date de début change, échéancier ancien. */
@@ -265,14 +288,27 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
     }
   }
 
+  const wizard = !existing;
+  const show = (i: number) => !wizard || step === i;
   const tenantsList = data.tenants.filter((t) => !t.archived_at || tenantIds.includes(t.id)).sort((a, b) => tenantName(a).localeCompare(tenantName(b), 'fr'));
   return (
-    <form onSubmit={(e) => { e.preventDefault(); void save(); }} noValidate>
+    <form onSubmit={(e) => { e.preventDefault(); if (wizard && step < LEASE_STEPS.length - 1) next(); else void save(); }} noValidate>
       <PageHeader title={existing ? 'Modifier le bail' : 'Nouveau bail'}
-        actions={<><Button onClick={() => history.back()}>Annuler</Button><Button type="submit" variant="primary" disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button></>} />
+        actions={wizard ? <Button onClick={() => history.back()}>Annuler</Button>
+          : <><Button onClick={() => history.back()}>Annuler</Button><Button type="submit" variant="primary" disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button></>} />
+      {wizard && (
+        <ol className="stepper" aria-label="Étapes de création du bail">
+          {LEASE_STEPS.map((l, i) => (
+            <li key={l} className={i === step ? 'current' : i < step ? 'done' : ''} aria-current={i === step ? 'step' : undefined}>
+              {i < step ? <button type="button" className="link" onClick={() => { setErrors({}); setStep(i); }}><span className="stepper-num">✓</span> {l}</button>
+                : <span><span className="stepper-num">{i + 1}</span> {l}</span>}
+            </li>
+          ))}
+        </ol>
+      )}
       {Object.keys(errors).length > 0 && <p className="form-error" role="alert">Corrigez les champs signalés.</p>}
 
-      <Section title="Bien et titulaires">
+      {show(0) && <Section title="Bien et titulaires">
         <div className="grid">
           <Select label="Bien" wide value={d.property_id ?? null} error={errors.property_id} allowEmpty="Choisir…"
             onChange={(v) => {
@@ -297,9 +333,9 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
           </div>
           <p className="muted small">Colocation : cochez plusieurs titulaires sur un même bail, ou créez un bail par chambre.</p>
         </div>
-      </Section>
+      </Section>}
 
-      <Section title="Durée et loyer">
+      {show(1) && <Section title="Durée et loyer">
         <div className="grid">
           <Select label="Location" value={d.furnished ? 'meuble' : 'vide'} onChange={(v) => set('furnished', v === 'meuble')} options={[['vide', 'Vide'], ['meuble', 'Meublée']] as const} />
           <TextInput label="Début du bail" type="date" required value={d.start_date} onChange={(v) => set('start_date', v)} error={errors.start_date} />
@@ -316,12 +352,14 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
           <NumberInput label="Dépôt de garantie" suffix="€" value={d.deposit_amount} onChange={(v) => set('deposit_amount', v ?? 0)} error={errors.deposit_amount}
             hint="Suivi à part des loyers (encaissement et restitution dans la fiche du bail)." />
         </div>
-        <p className="muted small">Une modification manuelle du loyer s’applique aux échéances générées ensuite. Pour la révision annuelle, utilisez « Réviser le loyer » dans la fiche du bail.</p>
-      </Section>
+        <Help>Une modification manuelle du loyer s’applique aux échéances générées ensuite. Pour la révision annuelle, utilisez « Réviser le loyer » dans la fiche du bail.</Help>
+      </Section>}
 
-      {!existing && selected && <RelocationRent property={selected} lease={d} previous={previous} onUse={(v) => set('rent_hc', v)} />}
+      {!existing && show(1) && selected && <RelocationRent property={selected} lease={d} previous={previous} onUse={(v) => set('rent_hc', v)} />}
 
-      <Section title="Révision annuelle (IRL)">
+      {show(2) && <Section title="Révision annuelle (IRL)" collapsible defaultOpen={!existing}
+        summary={d.irl_enabled ? `Révision selon l’IRL${d.irl_base_label ? ` (${irlLabel(d.irl_base_label)})` : ''}` : 'Pas de révision'}
+        info="Chaque année à la date anniversaire, « Réviser le loyer » (fiche du bail) calcule le nouveau loyer avec la variation annuelle de l’IRL. Révision interdite pour un logement classé F ou G au DPE.">
         <Checkbox label="Le bail prévoit une révision annuelle selon l’indice de référence des loyers (IRL)" checked={!!d.irl_enabled}
           onChange={(v) => setD((x) => ({ ...x, irl_enabled: v, irl_base_label: x.irl_base_label ?? (v ? latestPublishedAt(x.start_date ?? todayParis()) : null), irl_base_value: x.irl_base_value ?? (v ? IRL_VALUES[latestPublishedAt(x.start_date ?? todayParis()) ?? ''] ?? null : null) }))} />
         {d.irl_enabled && (
@@ -334,42 +372,44 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
             <TextInput label="Dernière révision" type="date" value={d.last_revision_on ?? ''} onChange={(v) => set('last_revision_on', v || null)} hint="Si le loyer a déjà été révisé avant l’utilisation d’Immo-Zen." />
           </div>
         )}
-        <p className="muted small">Chaque année à la date anniversaire, « Réviser le loyer » (fiche du bail) calcule le nouveau loyer avec la variation annuelle de l’IRL. Révision interdite pour un logement classé F ou G au DPE.</p>
-      </Section>
+      </Section>}
 
-      <Section title="Quittances">
+      {show(3) && <><Section title="Quittances" collapsible defaultOpen={!existing || !d.landlord_name} summary={d.landlord_name ? `Bailleur : ${d.landlord_name}` : 'Bailleur à renseigner'}>
         <div className="grid">
           <TextInput label="Nom du bailleur" value={d.landlord_name} onChange={(v) => set('landlord_name', v)} maxLength={200} hint="Tel qu’il doit figurer sur les quittances." />
           <TextInput label="Adresse du bailleur" wide value={d.landlord_address} onChange={(v) => set('landlord_address', v)} maxLength={500} />
         </div>
       </Section>
 
-      <Section title="Automatisations">
+      <Section title="Automatisations" collapsible defaultOpen={!existing}
+        summary={[d.owner_confirmation_email ? 'confirmation des paiements' : null, d.receipt_auto_send ? 'quittances automatiques' : null, d.reminder_enabled ? 'relances' : null].filter(Boolean).join(' · ') || 'Aucune'}>
         {!auto && !d.owner_confirmation_email && !d.receipt_auto_send && !d.reminder_enabled ? (
           <PlanLock title="Non incluses dans la formule Découverte" compact>Envoi automatique des quittances, relances d’impayés et e-mail mensuel de confirmation du paiement : à partir de la formule Essentiel. Vous pouvez toujours émettre et télécharger les quittances vous-même.</PlanLock>
         ) : (
         <div className="toggles">
-          <Checkbox label="M’envoyer un e-mail le lendemain de chaque échéance non réglée pour confirmer le paiement" checked={!!d.owner_confirmation_email} onChange={(v) => set('owner_confirmation_email', v)} />
-          <p className="muted small">Votre absence de réponse ne vaut jamais paiement : le loyer reste impayé tant que vous ne l’avez pas confirmé.</p>
-          <Checkbox label="Émettre et envoyer automatiquement la quittance quand une période est intégralement réglée" checked={!!d.receipt_auto_send} onChange={(v) => set('receipt_auto_send', v)} />
-          <p className="muted small">Uniquement après un paiement que vous avez saisi ou confirmé, si le montant réglé est exactement le montant dû, et une seule fois par période. Jamais sur la seule base d’une date.</p>
-          <Checkbox label="Préparer une relance amiable quand un loyer reste impayé" checked={!!d.reminder_enabled} onChange={(v) => set('reminder_enabled', v)} />
+          <div className="toggle-row"><Checkbox label="M’envoyer un e-mail le lendemain de chaque échéance non réglée pour confirmer le paiement" checked={!!d.owner_confirmation_email} onChange={(v) => set('owner_confirmation_email', v)} />
+            <InfoTip label="Confirmation des paiements">Votre absence de réponse ne vaut jamais paiement : le loyer reste impayé tant que vous ne l’avez pas confirmé.</InfoTip></div>
+          <div className="toggle-row"><Checkbox label="Émettre et envoyer automatiquement la quittance quand une période est intégralement réglée" checked={!!d.receipt_auto_send} onChange={(v) => set('receipt_auto_send', v)} />
+            <InfoTip label="Quittances automatiques">Uniquement après un paiement que vous avez saisi ou confirmé, si le montant réglé est exactement le montant dû, et une seule fois par période. Jamais sur la seule base d’une date.</InfoTip></div>
+          <div className="toggle-row"><Checkbox label="Préparer une relance amiable quand un loyer reste impayé" checked={!!d.reminder_enabled} onChange={(v) => set('reminder_enabled', v)} />
+            <InfoTip label="Relances">La relance est préparée en brouillon et vous est signalée : rien n’est envoyé au locataire sans votre validation.</InfoTip></div>
           {d.reminder_enabled && (
             <div className="grid"><NumberInput label="Délai après l’échéance" suffix="jours" value={d.reminder_delay_days} onChange={(v) => set('reminder_delay_days', v === null ? 10 : Math.round(v))} error={errors.reminder_delay_days} /></div>
           )}
-          <p className="muted small">La relance est préparée en brouillon et vous est signalée : rien n’est envoyé au locataire sans votre validation.</p>
           {!auto && <p className="muted small">Votre formule n’inclut plus ces automatisations : elles sont suspendues. Vous pouvez les désactiver ici.</p>}
         </div>
         )}
       </Section>
 
-      <Section title="Notes">
+      <Section title="Notes" collapsible defaultOpen={!!d.notes} summary={d.notes ? 'Note saisie' : 'Aucune note'}>
         <div className="grid"><TextArea label="Notes" value={d.notes} onChange={(v) => set('notes', v)} rows={3} /></div>
-      </Section>
+      </Section></>}
 
       <div className="form-foot">
         <Button onClick={() => history.back()}>Annuler</Button>
-        <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button>
+        {wizard && step > 0 && <Button onClick={() => { setErrors({}); setStep(step - 1); }}>Précédent</Button>}
+        {wizard && step < LEASE_STEPS.length - 1 ? <Button type="submit" variant="primary">Suivant</Button>
+          : <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Enregistrement…' : wizard ? 'Créer le bail' : 'Enregistrer'}</Button>}
       </div>
       <TenantDialog tenant={newTenant ? 'new' : null} onClose={() => setNewTenant(false)} onCreated={(t) => setTenantIds((x) => [...x, t.id])} />
       {dialog}
@@ -417,7 +457,7 @@ function RelocationRent({ property, lease, previous, onUse }: { property: Proper
           {m.hc && <Button size="sm" onClick={() => onUse(m.hc!.mid)}>Utiliser le loyer central ({money2(m.hc.mid)} HC)</Button>}
           {m.cap_hc != null && <Button size="sm" onClick={() => onUse(m.cap_hc!)}>Utiliser le plafond légal ({money2(m.cap_hc)} HC)</Button>}
         </>} />
-      <p className="muted small">En zone tendue, le loyer d’un nouveau bail ne peut pas dépasser celui du précédent locataire, révisé selon l’IRL, sauf exceptions (travaux importants, loyer manifestement sous-évalué). Un logement classé F ou G ne peut pas être reloué plus cher. En zone encadrée, le plafond légal s’applique aussi.</p>
+      <Help>En zone tendue, le loyer d’un nouveau bail ne peut pas dépasser celui du précédent locataire, révisé selon l’IRL, sauf exceptions (travaux importants, loyer manifestement sous-évalué). Un logement classé F ou G ne peut pas être reloué plus cher. En zone encadrée, le plafond légal s’applique aussi.</Help>
     </Section>
   );
 }

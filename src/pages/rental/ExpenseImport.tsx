@@ -7,7 +7,7 @@ import { buildImportRows, IMPORT_COLUMNS, parseDelimited, readImportFile, rentRo
 import { leaseIncomeIndex } from '../../domain/incomeOverlap.ts';
 import { syncLedgerWith } from './ledgerSync.ts';
 import { EXPENSE_CATEGORY_LABELS, MAIN_EXPENSE_CATEGORIES, OTHER_EXPENSE_CATEGORIES } from '../../domain/rental.ts';
-import { Button, Modal, NotAvailable } from '../../ui/components.tsx';
+import { Button, Help, Modal, NotAvailable } from '../../ui/components.tsx';
 
 /** « Loyer » reste proposé à l'import : la ligne part dans Loyers et paiements (paiement du bail). */
 const CATEGORY_OPTIONS: ExpenseCategory[] = [...MAIN_EXPENSE_CATEGORIES, ...OTHER_EXPENSE_CATEGORIES, 'loyer'];
@@ -191,7 +191,7 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
               </tbody>
             </table>
           </div>
-          <p className="muted small">Chaque ligne devient une dépense payée à la date du relevé. Un loyer va dans Loyers et paiements : il devient un paiement du bail, ou n’est pas importé s’il y est déjà saisi (sans bail à sa date, créez d’abord le bail). Un relevé réimporté ne crée pas de doublon. Ajoutez ensuite, si besoin, la part récupérable (ex. taxe d’ordures ménagères) et le justificatif en modifiant la dépense.</p>
+          <Help>Chaque ligne devient une dépense payée à la date du relevé. Un loyer va dans Loyers et paiements : il devient un paiement du bail, ou n’est pas importé s’il y est déjà saisi (sans bail à sa date, créez d’abord le bail). Un relevé réimporté ne crée pas de doublon. Ajoutez ensuite, si besoin, la part récupérable (ex. taxe d’ordures ménagères) et le justificatif en modifiant la dépense.</Help>
         </>
       )}
     </Modal>

@@ -4,7 +4,7 @@ import { ACCESS_REASONS, STATUS_LABELS, type AdminUser, type AuditEntry, type In
 import { downloadBlob, toCsv, type ExportColumn } from '../domain/exporting.ts';
 import { describeError } from '../data/repo.ts';
 import { date, dateTime, todayParis } from '../domain/format.ts';
-import { Button, Checkbox, EmptyState, Modal, NotAvailable, NumberInput, PageHeader, Pill, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../ui/components.tsx';
+import { Button, Checkbox, EmptyState, Help, Modal, NotAvailable, NumberInput, PageHeader, Pill, Section, Select, Tabs, TextArea, TextInput, useConfirm } from '../ui/components.tsx';
 import { planPrice } from './Subscription.tsx';
 import { TIERS, tierDef, type TierCode } from '../domain/plans.ts';
 import { MarketAdmin } from './MarketAdmin.tsx';
@@ -69,7 +69,7 @@ function Users({ run, api }: { run: Run; api: Api }) {
           <input aria-label="E-mail à inviter" type="email" value={invite} placeholder="adresse@exemple.fr" onChange={(e) => setInvite(e.target.value)} />
           <Button variant="primary" disabled={!invite.trim()} onClick={async () => { if (await run(() => api.invite(invite), `Invitation envoyée à ${invite}.`) !== null) setInvite(''); }}>Envoyer l’invitation</Button>
         </div>
-        <p className="muted small">L’invité reçoit un lien et choisit lui-même son mot de passe : aucun mot de passe ne transite par e-mail.</p>
+        <Help>L’invité reçoit un lien et choisit lui-même son mot de passe : aucun mot de passe ne transite par e-mail.</Help>
       </Section>
       <Section title={`Comptes (${users?.length ?? '…'})`} actions={<input aria-label="Rechercher un compte" placeholder="Rechercher un e-mail" value={q} onChange={(e) => setQ(e.target.value)} />}>
         {!users ? <p className="muted">Chargement…</p> : (
@@ -152,7 +152,7 @@ function AccessConfig({ run, onSaved, api }: { run: Run; onSaved: () => Promise<
   return (
     <Section title="Application des formules">
       <Checkbox label="Appliquer les limites des formules" checked={enforce} onChange={setEnforce} />
-      <p className="muted small">Désactivé (phase de lancement) : tout le monde dispose de toutes les fonctions. Activé : chaque compte a les limites de sa formule. Un nouveau compte dispose de l’offre Découverte (1 bien détenu, 5 en prospection) pendant la durée ci-dessous ; ensuite, sans abonnement ni accès manuel, il passe en consultation seule (données consultables et exportables, plus de modification). Les administrateurs ont toujours la formule Pro.</p>
+      <Help>Désactivé (phase de lancement) : tout le monde dispose de toutes les fonctions. Activé : chaque compte a les limites de sa formule. Un nouveau compte dispose de l’offre Découverte (1 bien détenu, 5 en prospection) pendant la durée ci-dessous ; ensuite, sans abonnement ni accès manuel, il passe en consultation seule (données consultables et exportables, plus de modification). Les administrateurs ont toujours la formule Pro.</Help>
       <div className="grid">
         <NumberInput label="Durée de l’offre Découverte" suffix="jours" value={trial} onChange={setTrial} hint="Comptée depuis la création du compte (30 jours annoncés sur le site)" />
         <Select label="Formule pendant cette période" value={trialTier} onChange={(v) => setTrialTier(v ?? 'decouverte')} options={TIER_OPTIONS} />
@@ -218,7 +218,7 @@ function Leads({ run, api }: { run: Run; api: Api }) {
   const today = todayParis();
   return (
     <Section title="Prospects commerciaux" actions={<Button variant="primary" onClick={() => setEdit({ id: null, v: { ...EMPTY_LEAD } })}>Ajouter</Button>}>
-      <p className="muted small">Personnes intéressées par Immo-Zen (salons, démonstrations, partenaires). Ces fiches sont séparées des contacts des abonnés.</p>
+      <Help>Personnes intéressées par Immo-Zen (salons, démonstrations, partenaires). Ces fiches sont séparées des contacts des abonnés.</Help>
       {!list ? <p className="muted">Chargement…</p> : list.length === 0 ? <EmptyState title="Aucun prospect" /> : (
         <div className="dt-scroll"><table className="dt-table compact">
           <thead><tr><th>Nom</th><th>Contact</th><th>Origine</th><th>Statut</th><th>Relance</th><th /></tr></thead>
@@ -292,7 +292,7 @@ function Subscribers({ run, api }: { run: Run; api: Api }) {
       <Button size="sm" onClick={() => exportCsv(sendable, `inscrits-a-contacter-${todayParis()}.csv`)} disabled={!sendable.length}>Exporter les adresses à contacter ({sendable.length})</Button>
       <Button size="sm" variant="ghost" onClick={() => exportCsv(list, `inscrits-tous-${todayParis()}.csv`)}>Tout exporter</Button>
     </> : undefined}>
-      <p className="muted small">Adresses laissées sur le site (calculs, guide, checklist, lettre, alertes) ou à la création d’un compte, avec la case d’accord. N’envoyez conseils et offres qu’aux adresses « Confirmé » ayant donné leur accord : c’est l’export « à contacter ». Une adresse qui n’a demandé qu’un calcul ou un document n’est pas conservée ici. Après confirmation, la séquence de bienvenue part toute seule : un e-mail à la confirmation, un à J+4 (coût d’une agence), un à J+10 (essai gratuit, sauf si l’adresse a déjà un compte). Supprimez une fiche sur simple demande de la personne.</p>
+      <Help>Adresses laissées sur le site (calculs, guide, checklist, lettre, alertes) ou à la création d’un compte, avec la case d’accord. N’envoyez conseils et offres qu’aux adresses « Confirmé » ayant donné leur accord : c’est l’export « à contacter ». Une adresse qui n’a demandé qu’un calcul ou un document n’est pas conservée ici. Après confirmation, la séquence de bienvenue part toute seule : un e-mail à la confirmation, un à J+4 (coût d’une agence), un à J+10 (essai gratuit, sauf si l’adresse a déjà un compte). Supprimez une fiche sur simple demande de la personne.</Help>
       {!list ? <p className="muted">Chargement…</p> : list.length === 0 ? <EmptyState title="Aucun inscrit pour l’instant" /> : (
         <div className="dt-scroll"><table className="dt-table compact">
           <thead><tr><th>E-mail</th><th>État</th><th>Accord</th><th>Bienvenue</th><th>Alertes</th><th>Origine</th><th>Inscrit le</th><th /></tr></thead>
