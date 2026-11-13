@@ -322,6 +322,19 @@ async function main() {
     assert.equal(await val('dont récupérables', '960'), '960', 'part récupérable recalculée');
     assert.equal(await val('Provision sur charges', '50'), '50', 'valeur modifiée à la main conservée');
     await page.screenshot({ path: join(out, '19-simulateur-loyer-m2.png'), fullPage: true });
+    // dossier de financement pour la banque : endettement calculé, PDF téléchargé
+    await page.getByRole('button', { name: 'Dossier banque (PDF)' }).click();
+    const bank = page.getByRole('dialog', { name: 'Dossier de financement pour la banque' });
+    await bank.getByLabel('Emprunteur(s)').fill('Alex Test');
+    await bank.getByLabel('Revenus nets mensuels du foyer').fill('5000');
+    await bank.getByLabel('Crédits en cours').fill('500');
+    await bank.getByText(/Taux d’endettement après le projet/).waitFor();
+    await page.screenshot({ path: join(out, '19b-dossier-banque.png'), fullPage: false });
+    const [bankPdf] = await Promise.all([page.waitForEvent('download'), bank.getByRole('button', { name: 'Télécharger le PDF' }).click()]);
+    assert.match(bankPdf.suggestedFilename(), /^dossier-financement-.*\.pdf$/);
+    const bankFile = join(out, 'dossier-financement.pdf');
+    await bankPdf.saveAs(bankFile);
+    assert.equal((await readFile(bankFile)).subarray(0, 5).toString(), '%PDF-');
     // la simulation alimente la prospection
     await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
     await page.getByText('Donnez un titre au bien').last().waitFor();
