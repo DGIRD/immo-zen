@@ -10,6 +10,7 @@
  *  - une relance est re-vérifiée juste avant l'envoi : si la dette est réglée, elle est annulée.
  */
 import { buildReceiptPdf, type ReceiptData } from './receiptPdf.ts';
+import { renderWelcomeHtml, type WelcomeData } from './welcomeEmail.ts';
 
 export interface OutboxRow {
   id: string;
@@ -23,6 +24,9 @@ export interface OutboxRow {
   reply_to?: string | null;
   /** Facture Stripe à joindre (confirmation d'abonnement ou de pack). */
   stripe_invoice_id?: string | null;
+  /** Gabarit HTML illustré (« bienvenue ») et ses données ; sinon, HTML déduit du texte. */
+  template?: string | null;
+  template_data?: unknown;
 }
 
 export interface MailMessage {
@@ -102,7 +106,12 @@ export async function buildMessage(row: OutboxRow, deps: Pick<OutboxDeps, 'recei
     text = text.split('{{APP_URL}}').join(url.endsWith('/') ? url : url + '/');
   }
   if (row.kind !== 'contact_site' && !text.includes(CONTACT_EMAIL)) text = `${text.trimEnd()}\n\n${MAIL_FOOTER}`;
-  const m: MailMessage = { to, subject: row.subject, text, html: renderEmailHtml(row.subject, text, logoUrl(deps.appUrl)), attachments: [], ...(row.reply_to && EMAIL.test(row.reply_to) ? { replyTo: row.reply_to } : {}) };
+  let html = renderEmailHtml(row.subject, text, logoUrl(deps.appUrl));
+  if (row.template === 'bienvenue' && row.template_data) {
+    try { html = renderWelcomeHtml(row.subject, row.template_data as WelcomeData, logoUrl(deps.appUrl)); }
+    catch (e) { deps.log?.('Gabarit de bienvenue inutilisable : version simple envoyée', { id: row.id, error: e instanceof Error ? e.message : String(e) }); }
+  }
+  const m: MailMessage = { to, subject: row.subject, text, html, attachments: [], ...(row.reply_to && EMAIL.test(row.reply_to) ? { replyTo: row.reply_to } : {}) };
   if (row.kind === 'quittance') {
     if (!row.receipt_id) throw new Error('Quittance absente.');
     const r = await deps.receipt(row.receipt_id);
