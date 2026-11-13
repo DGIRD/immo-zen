@@ -10,6 +10,7 @@ import { DEFAULT_INPUTS, DEFAULT_SETTING_FIELDS, ENGINE_VERSION, type Simulation
 import { Button, Help, Modal, NumberInput, PageHeader, Section, Select, TextArea, TextInput, useConfirm } from '../ui/components.tsx';
 import type { ReminderTemplate } from '../data/types.ts';
 import { DEFAULT_REMINDER_TEMPLATES, TEMPLATE_VARIABLES } from '../domain/rental.ts';
+import { EDITEUR, MENTIONS_URL } from '../domain/legal.ts';
 import { loadSampleData } from './sample.ts';
 
 export function SettingsPage() {
@@ -152,6 +153,17 @@ export function SettingsPage() {
           <Button onClick={() => void store.signOut()}>Se déconnecter de cet appareil</Button>
         </div>
         <p className="muted small">La déconnexion efface la copie locale de vos données sur cet appareil.</p>
+      </Section>
+
+      <Section collapsible defaultOpen={false} title="Mentions légales">
+        <p>Application éditée par <strong>{EDITEUR.denomination}</strong>, {EDITEUR.forme.toLowerCase()} au capital de {EDITEUR.capital}, dont le siège est situé {EDITEUR.siege}, immatriculée au {EDITEUR.rcs}.</p>
+        <ul className="plain small">
+          <li>N° de TVA intracommunautaire : {EDITEUR.tva}</li>
+          <li>Président : {EDITEUR.president}</li>
+          <li>Directeur de la publication : {EDITEUR.directeurPublication}</li>
+          <li>Contact : <a href={`mailto:${EDITEUR.contact}`}>{EDITEUR.contact}</a></li>
+        </ul>
+        <p className="small"><a href={MENTIONS_URL} target="_blank" rel="noopener">Mentions légales complètes</a> · <a href={`${MENTIONS_URL}#confidentialite`} target="_blank" rel="noopener">Confidentialité et données personnelles</a></p>
       </Section>
 
       {store.platform && (

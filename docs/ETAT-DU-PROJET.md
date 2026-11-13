@@ -106,7 +106,7 @@ Limites : les valeurs IRL sont intégrées jusqu'au 3e trimestre 2026 (à compl�
 |---|---|---|
 | Site vitrine à la racine (raison d'être, parcours tout compris, accompagnement, guides, sécurité, tarifs, questions), calculateur de cash-flow, lien « Espace client » vers l'application publiée sous `/app/` | Implémenté et testé | e2e (bureau et mobile) |
 | Formulaire « Être recontacté » → prospects commerciaux de l'administration (anti-robot, limites de fréquence) | Implémenté et testé (SQL) / **à configurer** (migration) | SQL + e2e |
-| Mentions légales et confidentialité | **À compléter** (identité de l'éditeur ; contact : contact@immo-zen.fr) | — |
+| Mentions légales et confidentialité | Implémenté : identité de l'éditeur d'après le Kbis du 13/11/2026 (Immo-Zen SASU, RCS Créteil 132 762 634), reprise dans l'application (Paramètres, écran de connexion) via `src/domain/legal.ts` | unitaires (`tests/legal.test.ts`) |
 
 ## Fiche unique et estimation DVF (18 octobre 2026)
 
@@ -152,7 +152,7 @@ Cahier de test de 166 cas exécuté (voir le document de recette du projet). Cor
 | ANO-005 Pas d'alerte DPE sur la fiche | Alertes automatiques F, G, E (`dpeAlerts`) dans la vigilance | unitaires + recette |
 | ANO-006 Parcours du tableau de bord non cliquable | Chaque étape ouvre la prospection filtrée (`?statut=`) | recette |
 | ANO-008 Analyse de sécurité Supabase | Fonctions SECURITY DEFINER retirées au rôle anonyme (sauf le formulaire du site), search_path fixé | SQL + analyse en ligne |
-| ANO-007 Mentions légales | **À compléter** : identité de l'éditeur | — |
+| ANO-007 Mentions légales | Corrigée le 13/11/2026 : identité de l'éditeur complétée | unitaires |
 
 Migration à exécuter sur un autre projet : `20261020000300_corrections_recette.sql` (déjà appliquée sur le projet en ligne). Réglage manuel restant : Authentication → Password security → protection contre les mots de passe compromis.
 
