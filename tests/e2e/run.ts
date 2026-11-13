@@ -484,6 +484,7 @@ async function main() {
     const figs = (await page.locator('.figures').first().innerText()).replace(/[\u202f\u00a0]/g, ' ');
     assert.ok(!/Prix de présentation|Prix proposé|Prix affiché/.test(figs), `plus de prix affiché ni proposé : ${figs}`);
     assert.match(figs, /Estimation du prix actuel/);
+    await page.getByRole('tab', { name: 'Estimation' }).click();
     await page.getByRole('heading', { name: 'Estimation du prix actuel' }).waitFor();
     await page.getByRole('button', { name: 'Recalculer avec les ventes DVF' }).click();
     await page.getByText(/calculée le/).first().waitFor();
