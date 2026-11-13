@@ -473,6 +473,7 @@ async function main() {
     assert.equal(page.url().split('/bien/')[1], propertyId, 'même identifiant');
     const after = await page.evaluate(() => JSON.parse(localStorage.getItem('immozen:demo:v1')!).properties.length);
     assert.equal(after, before, 'aucun bien créé');
+    await page.getByRole('tab', { name: 'Finances' }).click();
     await page.getByText('Photographie à l’acquisition').waitFor();
     await page.getByRole('tab', { name: /Historique/ }).click();
     await page.getByText('Bien acquis : transféré dans Mes biens').waitFor();
@@ -597,6 +598,12 @@ async function main() {
   /** Mois du bail de test : M-2, M-1 et le mois en cours (AAAA-MM). */
   let months: [string, string, string] = ['', '', ''];
   const mm = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
+  /** Assistant de création d'un bail : étape suivante, ou fin de l'assistant (« Créer le bail »). */
+  const leaseNext = () => page.getByRole('button', { name: 'Suivant' }).click();
+  const leaseFinish = async () => {
+    while (await page.getByRole('button', { name: 'Suivant' }).count()) await leaseNext();
+    await page.getByRole('button', { name: 'Créer le bail' }).click();
+  };
   const rowOf = (m: string) => page.locator('table.dt-table tbody tr').filter({ hasText: new RegExp(`^\\s*${['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'][Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`, 'm') }).first();
   await step('bail : création avec nouveau locataire, une ligne par mois, reste dû reporté', async () => {
     await page.goto(url + '#/locataires');
@@ -609,6 +616,8 @@ async function main() {
     await dlg.getByLabel('E-mail').fill('lea@example.test');
     await dlg.getByRole('button', { name: 'Enregistrer' }).click();
     await page.locator('.chip.on', { hasText: 'Léa Martin' }).waitFor();
+    await page.getByRole('list', { name: 'Étapes de création du bail' }).waitFor();
+    await leaseNext();
     const today = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()));
     const [y, m] = today.split('-').map(Number) as [number, number];
     const mo = (k: number) => { const d = new Date(Date.UTC(y, m - 1 - k, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
@@ -616,7 +625,8 @@ async function main() {
     await page.getByLabel('Début du bail *').fill(`${months[0]}-01`);
     await page.getByLabel('Jour de paiement').fill('1');
     assert.match((await page.locator('output.computed').innerText()).replace(/[  ]/g, ' '), /825,50 €/, 'loyer CC repris du bien');
-    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    await page.screenshot({ path: join(out, '62-bail-assistant.png'), fullPage: true });
+    await leaseFinish();
     await page.getByRole('tab', { name: /^Loyers et paiements \(3 mois/ }).waitFor();
     leaseUrl = page.url();
     // aucun paiement : le reste dû de chaque mois échu est reporté sur le mois suivant, en cascade
@@ -1547,6 +1557,25 @@ async function main() {
     await dlg.getByRole('button', { name: 'Ajouter', exact: true }).click();
     await page.getByText('Document ajouté.').waitFor();
     await page.getByRole('button', { name: 'bail-signe' }).waitFor();
+    // dossiers : par bien et par dossier
+    await page.getByRole('navigation', { name: 'Biens' }).getByRole('button', { name: /Parking détenu/ }).click();
+    await page.getByRole('group', { name: 'Dossiers' }).getByRole('button', { name: /Bail et locataires/ }).click();
+    await page.getByRole('button', { name: 'bail-signe' }).waitFor();
+    await page.getByRole('group', { name: 'Dossiers' }).getByRole('button', { name: /Fiscal/ }).click();
+    assert.equal(await page.getByRole('button', { name: 'bail-signe' }).count(), 0, 'dossier Fiscal vide');
+    // glisser-déposer : la fenêtre d'ajout s'ouvre avec le fichier et le dossier en cours
+    await page.locator('.doc-drop').evaluate((el) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File(['%PDF-1.4'], 'avis-taxe-fonciere.pdf', { type: 'application/pdf' }));
+      el.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      el.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    });
+    const drop = page.locator('dialog[open]');
+    await drop.getByText('Fichier déposé : avis-taxe-fonciere.pdf').waitFor();
+    assert.equal(await drop.getByLabel('Titre *').inputValue(), 'avis-taxe-fonciere');
+    assert.equal(await drop.getByLabel('Catégorie').inputValue(), 'fiscal');
+    await page.screenshot({ path: join(out, '63-documents-dossiers.png'), fullPage: true });
+    await drop.getByRole('button', { name: 'Annuler' }).click();
   });
 
   await step('Mes biens : locataire actif, « Loué », encaissements et cash-flow réel', async () => {
@@ -1679,12 +1708,15 @@ async function main() {
     await page.getByLabel('Pièces').fill('2');
     await page.getByRole('button', { name: 'Enregistrer' }).first().click();
     await page.getByRole('heading', { name: 'T2 Fontenay détenu' }).waitFor();
-    // fiche : loyer de marché calculé sur demande et enregistré avec le bien
+    // fiche, onglet Location : loyer de marché calculé sur demande et enregistré avec le bien
+    await page.getByRole('tab', { name: 'Location' }).click();
     await page.getByRole('button', { name: 'Calculer le loyer de marché' }).click();
     await page.locator('.market-rent').getByText(/Fiabilité/).waitFor();
     await page.goto(url + '#/locataires');
     await page.getByRole('button', { name: 'Nouveau bail' }).click();
     await page.getByLabel('Bien', { exact: true }).selectOption({ label: 'T2 Fontenay détenu' });
+    await page.locator('.chip', { hasText: 'Léa Martin' }).click();
+    await leaseNext();
     const sec = page.locator('section', { hasText: 'Loyer de marché pour cette location' });
     await sec.getByText(/Loyer de marché, charges comprises/).waitFor();
     await sec.getByText(/En zone tendue, le loyer d’un nouveau bail/).waitFor();
@@ -1852,11 +1884,12 @@ async function main() {
     await page.getByRole('button', { name: 'Nouveau bail' }).click();
     await page.getByLabel('Bien', { exact: true }).selectOption({ label: 'Parking détenu' });
     await page.locator('.chip', { hasText: 'Léa Martin' }).click();
+    await leaseNext();
     await page.getByLabel('Début du bail *').fill('0090-03-01');
-    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    await leaseNext();
     await page.getByText(/Date improbable/).waitFor();
     await page.getByLabel('Début du bail *').fill('1990-03-01');
-    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    await leaseFinish();
     let dlg = page.locator('dialog[open]');
     await dlg.getByRole('heading', { name: 'Vérifiez la date de début' }).waitFor();
     await dlg.getByRole('button', { name: 'La date est correcte, enregistrer' }).click();

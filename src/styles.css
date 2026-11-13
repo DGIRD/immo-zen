@@ -803,3 +803,36 @@ h1 .info-tip, h2 .info-tip, h3 .info-tip { margin-left: .5rem; }
 .title-row > h1, .title-row > h2 { margin-bottom: 0; }
 .section-collapsible > summary .title-row h2::before { content: "▸"; display: inline-block; width: 1rem; color: var(--ink-soft); transition: transform .15s; }
 .section-collapsible[open] > summary .title-row h2::before { transform: rotate(90deg); }
+
+/* Assistant en étapes (création d'un bail) */
+.stepper { list-style: none; display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; padding: 0; margin: 0 0 1rem; counter-reset: none; }
+.stepper li { display: flex; align-items: center; color: var(--ink-soft); font-size: .9rem; }
+.stepper li.current { color: var(--ink); font-weight: 700; }
+.stepper li.done .link { color: var(--vert); }
+.stepper-num { display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%; border: 1.5px solid currentColor; margin-right: .35rem; font-size: .8rem; font-weight: 700; }
+.stepper li.current .stepper-num { background: var(--sapin); border-color: var(--sapin); color: var(--surface); }
+
+/* Documents : biens à gauche, dossiers en tuiles, dépôt par glisser-déposer */
+.doc-layout { display: grid; grid-template-columns: 14rem minmax(0, 1fr); gap: 1rem; align-items: start; }
+.doc-props { display: grid; gap: .15rem; position: sticky; top: 70px; }
+.doc-props button { display: flex; justify-content: space-between; gap: .5rem; background: none; border: 0; border-radius: 6px; padding: .45rem .6rem; text-align: left; font: inherit; cursor: pointer; color: var(--ink); }
+.doc-props button:hover { background: var(--mousse); }
+.doc-props button.active { background: var(--sapin); color: var(--surface); }
+.doc-props button.active .muted { color: inherit; opacity: .8; }
+.doc-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: .6rem; margin-bottom: 1rem; }
+.doc-folder { display: grid; gap: .1rem; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: .65rem .8rem; font: inherit; cursor: pointer; color: var(--ink); }
+.doc-folder:hover { border-color: var(--sapin); }
+.doc-folder.active { border-color: var(--sapin); box-shadow: inset 0 0 0 1px var(--sapin); background: var(--mousse); }
+.doc-folder-icon { font-size: 1.3rem; }
+.doc-folder-label { font-weight: 600; }
+.doc-drop { position: relative; }
+.doc-drop-active { outline: 2px dashed var(--sapin); outline-offset: 4px; }
+.doc-drop-hint { position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; margin: 0; background: color-mix(in srgb, var(--surface) 85%, transparent); font-weight: 700; color: var(--sapin); pointer-events: none; }
+@media (max-width: 760px) {
+  .doc-layout { grid-template-columns: 1fr; }
+  .doc-props { position: static; display: flex; overflow-x: auto; }
+  .doc-props button { white-space: nowrap; }
+}
+.plan-badges { display: flex; gap: .35rem; min-height: 1.35rem; margin: 0 0 .25rem; }
+.tier-compare { margin-top: 1rem; }
+.tier-compare > summary { cursor: pointer; font-weight: 600; color: var(--sapin); margin-bottom: .5rem; }

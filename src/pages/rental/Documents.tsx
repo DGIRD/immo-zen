@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../data/store.tsx';
 import type { DocumentCategory, DocumentRow } from '../../data/types.ts';
 import { dateTime } from '../../domain/format.ts';
@@ -64,28 +64,70 @@ export async function openDocument(repo: ReturnType<typeof useStore>['repo'], d:
   }
 }
 
+/** Dossiers de la page Documents : regroupement des catégories. */
+export const DOC_FOLDERS: { key: string; label: string; icon: string; cats: DocumentCategory[] }[] = [
+  { key: 'location', label: 'Bail et locataires', icon: '🔑', cats: ['bail', 'quittance', 'identite'] },
+  { key: 'charges', label: 'Factures et charges', icon: '🧾', cats: ['facture', 'copropriete', 'assurance'] },
+  { key: 'diagnostics', label: 'Diagnostics et photos', icon: '📐', cats: ['diagnostic', 'photo'] },
+  { key: 'fiscal', label: 'Fiscal', icon: '📊', cats: ['fiscal'] },
+  { key: 'autre', label: 'Autres', icon: '📁', cats: ['autre'] },
+];
+
 export function DocumentsPage() {
+  const { data } = useStore();
+  const [prop, setProp] = useState<string>('');
+  const [folder, setFolder] = useState<string>('');
+  const props = data.properties.filter((p) => p.status === 'acquis' || data.documents.some((d) => d.property_id === p.id));
+  const inProp = (pid: string) => data.documents.filter((d) => (pid === '' ? true : pid === '-' ? !d.property_id : d.property_id === pid));
+  const scoped = inProp(prop);
   return (
     <>
-      <PageHeader title="Documents" subtitle="Documents privés de vos biens, baux et dépenses. Accès par lien temporaire, réservé à votre compte." />
-      <DocumentList />
+      <PageHeader title="Documents" info="Documents privés de vos biens, baux et dépenses. Accès par lien temporaire, réservé à votre compte. Glissez-déposez un fichier sur la liste pour l’ajouter." />
+      <div className="doc-layout">
+        <nav className="doc-props" aria-label="Biens">
+          {[['', 'Tous les biens'] as const, ...props.map((p) => [p.id, p.title] as const), ['-', 'Sans bien'] as const].map(([id, label]) => (
+            <button key={id} type="button" aria-pressed={prop === id} className={prop === id ? 'active' : ''} onClick={() => setProp(id)}>
+              <span>{label}</span><span className="muted small">{inProp(id).length}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="doc-main">
+          <div className="doc-folders" role="group" aria-label="Dossiers">
+            {DOC_FOLDERS.map((f) => {
+              const n = scoped.filter((d) => f.cats.includes(d.category)).length;
+              return (
+                <button key={f.key} type="button" aria-pressed={folder === f.key} className={`doc-folder${folder === f.key ? ' active' : ''}`} onClick={() => setFolder(folder === f.key ? '' : f.key)}>
+                  <span aria-hidden="true" className="doc-folder-icon">{f.icon}</span><span className="doc-folder-label">{f.label}</span><span className="muted small">{n} document{n > 1 ? 's' : ''}</span>
+                </button>
+              );
+            })}
+          </div>
+          <DocumentList scope={{ property: prop, folder }} />
+        </div>
+      </div>
     </>
   );
 }
 
 /** Liste de documents, éventuellement restreinte à un bien ou un bail. */
-export function DocumentList({ filter }: { filter?: { property_id?: string; lease_id?: string } }) {
+export function DocumentList({ filter, scope }: { filter?: { property_id?: string; lease_id?: string }; scope?: { property: string; folder: string } }) {
   const store = useStore();
   const { data, notify } = store;
   const { leaseById, leaseLabel, propertyById } = useRental();
   const { ask, dialog } = useConfirm();
   const [upload, setUpload] = useState(false);
+  const [dropped, setDropped] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [category, setCategory] = useState<DocumentCategory | ''>('');
+  const folderCats = scope?.folder ? DOC_FOLDERS.find((f) => f.key === scope.folder)?.cats ?? null : null;
   const rows = useMemo(() => data.documents.filter((d) => {
     if (filter?.lease_id && d.lease_id !== filter.lease_id && !(filter.property_id && d.property_id === filter.property_id && !d.lease_id)) return false;
     if (!filter?.lease_id && filter?.property_id && d.property_id !== filter.property_id) return false;
+    if (scope?.property === '-' && d.property_id) return false;
+    if (scope?.property && scope.property !== '-' && d.property_id !== scope.property) return false;
+    if (folderCats && !folderCats.includes(d.category)) return false;
     return !category || d.category === category;
-  }), [data.documents, filter, category]);
+  }), [data.documents, filter, category, scope?.property, folderCats]);
 
   const columns: Column<DocumentRow>[] = [
     { id: 'title', label: 'Titre', value: (d) => d.title, primary: true },
@@ -109,8 +151,13 @@ export function DocumentList({ filter }: { filter?: { property_id?: string; leas
   };
   const open = (d: DocumentRow) => openDocument(store.repo, d).catch((e: Error) => notify(e.message, 'error'));
 
+  const uploadDefaults = { ...filter, ...(scope?.property && scope.property !== '-' ? { property_id: scope.property } : {}), category: folderCats?.[0] };
   return (
-    <Section>
+    <Section className={dragging ? 'doc-drop-active' : ''}>
+      <div className="doc-drop" onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true); } }}
+        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); }}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) { setDropped(f); setUpload(true); } }}>
+      {dragging && <p className="doc-drop-hint" aria-hidden="true">Déposez le fichier pour l’ajouter</p>}
       <DataTable id={filter ? 'documents-lies' : 'documents'} rows={rows} columns={columns} rowKey={(d) => d.id} initialSort={{ id: 'created', dir: 'desc' }}
         onOpen={(d) => void open(d)}
         toolbar={<>
@@ -126,13 +173,14 @@ export function DocumentList({ filter }: { filter?: { property_id?: string; leas
           { label: 'Supprimer', danger: true, onSelect: () => void remove(d) },
         ]}
         empty={<EmptyState title="Aucun document" action={<Button variant="primary" onClick={() => setUpload(true)}>Ajouter un document</Button>}>PDF, images, Word, Excel ou texte, 10 Mo maximum par fichier.</EmptyState>} />
-      <UploadDialog open={upload} onClose={() => setUpload(false)} defaults={filter} />
+      </div>
+      <UploadDialog open={upload} onClose={() => { setUpload(false); setDropped(null); }} defaults={uploadDefaults} initialFile={dropped} />
       {dialog}
     </Section>
   );
 }
 
-function UploadDialog({ open, onClose, defaults }: { open: boolean; onClose: () => void; defaults?: { property_id?: string; lease_id?: string } }) {
+function UploadDialog({ open, onClose, defaults, initialFile }: { open: boolean; onClose: () => void; defaults?: { property_id?: string; lease_id?: string; category?: DocumentCategory }; initialFile?: File | null }) {
   const store = useStore();
   const upload = useUpload();
   const { leaseLabel } = useRental();
@@ -140,13 +188,28 @@ function UploadDialog({ open, onClose, defaults }: { open: boolean; onClose: () 
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [autoTitle, setAutoTitle] = useState('');
-  const [category, setCategory] = useState<DocumentCategory>('autre');
+  const [category, setCategory] = useState<DocumentCategory>(defaults?.category ?? 'autre');
   const [property, setProperty] = useState<string>(defaults?.property_id ?? '');
   const [lease, setLease] = useState<string>(defaults?.lease_id ?? '');
   const [shared, setShared] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const reset = () => { setFile(null); setTitle(''); setAutoTitle(''); setError(null); setCategory('autre'); if (input.current) input.current.value = ''; };
+  const reset = () => { setFile(null); setTitle(''); setAutoTitle(''); setError(null); setCategory(defaults?.category ?? 'autre'); if (input.current) input.current.value = ''; };
+  const pick = (f: File | null) => {
+    const bad = f ? checkFile(f) : null;
+    setError(bad);
+    setFile(f && !bad ? f : null);
+    // titre proposé à partir du nom de fichier, sans écraser un titre saisi à la main
+    if (f && !bad && (!title || title === autoTitle)) { const t = f.name.replace(/\.[^.]+$/, ''); setTitle(t); setAutoTitle(t); }
+  };
+  // à l'ouverture : dossier et bien de la vue en cours, fichier déposé
+  useEffect(() => {
+    if (!open) return;
+    setCategory(defaults?.category ?? 'autre');
+    setProperty(defaults?.property_id ?? '');
+    if (initialFile) pick(initialFile);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialFile]);
   return (
     <Modal open={open} title="Ajouter un document" onClose={() => { reset(); onClose(); }}
       footer={<><Button onClick={() => { reset(); onClose(); }}>Annuler</Button><Button variant="primary" disabled={!file || !title.trim() || busy} onClick={async () => {
@@ -159,15 +222,8 @@ function UploadDialog({ open, onClose, defaults }: { open: boolean; onClose: () 
       <div className="grid">
         <div className="field field-full">
           <label htmlFor="doc-file">Fichier</label>
-          <input id="doc-file" ref={input} type="file" accept={Object.keys(ALLOWED_TYPES).join(',') + ',.heic'} onChange={(e) => {
-            const f = e.target.files?.[0] ?? null;
-            const bad = f ? checkFile(f) : null;
-            setError(bad);
-            setFile(f && !bad ? f : null);
-            // titre proposé à partir du nom de fichier, sans écraser un titre saisi à la main
-            if (f && !bad && (!title || title === autoTitle)) { const t = f.name.replace(/\.[^.]+$/, ''); setTitle(t); setAutoTitle(t); }
-          }} />
-          <small className={error ? 'field-error' : 'muted'}>{error ?? 'PDF, JPEG, PNG, WebP, HEIC, Word, Excel ou texte ; 10 Mo maximum.'}</small>
+          <input id="doc-file" ref={input} type="file" accept={Object.keys(ALLOWED_TYPES).join(',') + ',.heic'} onChange={(e) => pick(e.target.files?.[0] ?? null)} />
+          <small className={error ? 'field-error' : 'muted'}>{error ?? (file && !input.current?.files?.length ? `Fichier déposé : ${file.name}` : 'PDF, JPEG, PNG, WebP, HEIC, Word, Excel ou texte ; 10 Mo maximum.')}</small>
         </div>
         <TextInput label="Titre" required wide value={title} onChange={setTitle} maxLength={200} />
         <Select label="Catégorie" value={category} onChange={(v) => setCategory(v ?? 'autre')} options={Object.entries(DOC_CATEGORY_LABELS) as [DocumentCategory, string][]} />

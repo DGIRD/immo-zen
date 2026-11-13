@@ -16,7 +16,7 @@ import { DocumentList } from './rental/Documents.tsx';
 import { LeaseBadge } from './rental/common.tsx';
 import { EXPENSE_CATEGORY_LABELS, leaseTenants, propertyRentalSummary, tenantName } from '../domain/rental.ts';
 
-type Tab = 'synthese' | 'simulations' | 'historique' | 'taches' | 'documents' | 'gestion';
+type Tab = 'synthese' | 'location' | 'finances' | 'estimation' | 'simulations' | 'historique' | 'taches' | 'documents';
 
 export function PropertyDetailPage({ id }: { id: string }) {
   const store = useStore();
@@ -44,14 +44,42 @@ export function PropertyDetailPage({ id }: { id: string }) {
   const simCharges = r && r.monthlyRentWithCharges > r.monthlyRent ? Math.round((r.monthlyRentWithCharges - r.monthlyRent) * 100) / 100 : null;
   const loan = owned ? loanInfo(p, today) : null;
 
-  const tabs: [Tab, string][] = [
-    ['synthese', 'Synthèse'],
-    ...(owned ? [] : [['simulations', 'Simulation'] as [Tab, string]]),
-    ['historique', `Historique et échanges (${events.length})`],
-    ['taches', `Tâches (${openTasks})`],
-    ['documents', 'Photos et documents'],
-    ...(owned ? [['gestion', 'Baux, loyers, dépenses'] as [Tab, string]] : []),
+  const tabs: [Tab, string][] = owned ? [
+    ['synthese', 'Vue d’ensemble'], ['location', 'Location'], ['finances', 'Finances'], ['estimation', 'Estimation'],
+    ['documents', 'Documents'], ['historique', `Historique (${events.length})`], ['taches', `Tâches (${openTasks})`],
+  ] : [
+    ['synthese', 'Vue d’ensemble'], ['estimation', 'Estimation et loyer de marché'], ['simulations', 'Simulation'],
+    ['historique', `Historique et échanges (${events.length})`], ['taches', `Tâches (${openTasks})`], ['documents', 'Photos et documents'],
   ];
+  const finance: [string, React.ReactNode][] = owned ? [
+    ['Loyer hors charges', p.estimated_rent != null ? `${money2(p.estimated_rent)} / mois` : '—'],
+    ['Provision sur charges', p.charges_provision != null ? `${money2(p.charges_provision)} / mois` : '—'],
+    ['Loyer charges comprises', rentWithCharges(p) != null ? `${money2(rentWithCharges(p))} / mois` : '—'],
+    ...ANNUAL_CHARGE_FIELDS.filter(([k]) => p[k] != null).map(([k, label]) => [`${label}`, `${money2(p[k]!)} / an`] as [string, string]),
+    ...(annualChargesTotal(p) != null ? [['Total des charges', `${money2(annualChargesTotal(p))} / an`] as [string, string]] : []),
+    ...(loan ? [
+      ['Crédit', `${money(p.loan_amount ?? null)}${p.loan_rate != null ? ` à ${String(p.loan_rate).replace('.', ',')} %` : ''}${p.loan_years ? ` sur ${String(p.loan_years).replace('.', ',')} ans` : ''}`],
+      ['Mensualité de crédit', loan.finished ? 'Crédit remboursé' : `${money2(loan.payment + loan.insurance)} / mois (dont assurance ${money2(loan.insurance)})`],
+      ...(loan.remaining != null ? [['Capital restant dû', `${money2(loan.remaining)}${loan.endDate ? ` (fin le ${date(loan.endDate)})` : ''}`]] : []),
+    ] as [string, string][] : [['Crédit', 'Non renseigné']] as [string, string][]),
+    ['Coût d’acquisition', money(p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null)],
+    ['Régime fiscal', p.tax_regime ? TAX_REGIME_LABELS[p.tax_regime] : 'Non renseigné'],
+  ] : [];
+  const estimation = <>
+    <Section title={owned ? 'Estimation du prix actuel' : 'Estimation DVF'}>
+      <EstimatePanel value={p} input={p} onChange={async (patch) => { await update('properties', p, patch, `Le bien « ${p.title} »`); }}
+        compareTo={owned ? (p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null) : (r?.offerFai ?? p.offer_price)}
+        compareLabel={owned ? 'Coût d’acquisition' : 'Prix proposé (frais d’agence inclus)'} />
+    </Section>
+  </>;
+  const marketRent = (
+    <Section title={owned ? 'Loyer de marché (relocation)' : 'Loyer de marché'}>
+      <MarketRentPanel auto={false} value={p.market_rent}
+        input={{ ...p, furnished: activeLease ? activeLease.furnished : p.furnished, chargesMonthly: owned ? (activeLease?.charges_amount ?? p.charges_provision ?? null) : simCharges }}
+        onChange={async (m) => { await update('properties', p, { market_rent: m }, `Le bien « ${p.title} »`); }}
+        rentHc={owned ? activeLease?.rent_hc ?? null : r?.monthlyRent || null} rentLabel={owned ? 'Loyer du bail en cours' : 'Loyer de la simulation'} />
+    </Section>
+  );
 
   return (
     <>
@@ -115,16 +143,7 @@ export function PropertyDetailPage({ id }: { id: string }) {
               ['Adresse', [p.address, p.zip, p.city].filter(Boolean).join(' ') || '—'],
               ['DPE renseigné', p.dpe ?? 'Non renseigné'],
               ...(owned ? [
-                ['Loyer hors charges', p.estimated_rent != null ? `${money2(p.estimated_rent)} / mois` : '—'],
-                ['Provision sur charges', p.charges_provision != null ? `${money2(p.charges_provision)} / mois` : '—'],
                 ['Loyer charges comprises', rentWithCharges(p) != null ? `${money2(rentWithCharges(p))} / mois` : '—'],
-                ...ANNUAL_CHARGE_FIELDS.filter(([k]) => p[k] != null).map(([k, label]) => [`${label}`, `${money2(p[k]!)} / an`] as [string, string]),
-                ...(annualChargesTotal(p) != null ? [['Total des charges', `${money2(annualChargesTotal(p))} / an`] as [string, string]] : []),
-                ...(loan ? [
-                  ['Crédit', `${money(p.loan_amount ?? null)}${p.loan_rate != null ? ` à ${String(p.loan_rate).replace('.', ',')} %` : ''}${p.loan_years ? ` sur ${String(p.loan_years).replace('.', ',')} ans` : ''}`],
-                  ['Mensualité de crédit', loan.finished ? 'Crédit remboursé' : `${money2(loan.payment + loan.insurance)} / mois (dont assurance ${money2(loan.insurance)})`],
-                  ...(loan.remaining != null ? [['Capital restant dû', `${money2(loan.remaining)}${loan.endDate ? ` (fin le ${date(loan.endDate)})` : ''}`]] : []),
-                ] as [string, string][] : [['Crédit', 'Non renseigné']] as [string, string][]),
               ] as [string, string][] : [
                 ['Surface du logement', p.surface ? `${number(p.surface)} m²` : '—'],
                 ['Travaux', money(p.works_budget)],
@@ -134,9 +153,7 @@ export function PropertyDetailPage({ id }: { id: string }) {
               ['Agent', agent ? <a href={href(`/contacts/${agent.id}`)}>{agent.name}</a> : '—'],
               ...(owned ? [
                 ['Mode de détention', p.ownership_mode ? OWNERSHIP_LABELS[p.ownership_mode] : 'Non renseigné'],
-                ['Régime fiscal renseigné', p.tax_regime ? TAX_REGIME_LABELS[p.tax_regime] : 'Non renseigné'],
                 ['Acquis le', date(p.acquired_at)],
-                ['Coût d’acquisition', money(p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null)],
               ] as [string, string][] : [
                 ['Prochaine action', p.next_action ?? '—'],
                 ['Relance', p.follow_up_date ? <span className={p.follow_up_date <= todayParis() ? 'neg' : ''}>{date(p.follow_up_date)}</span> : '—'],
@@ -144,7 +161,6 @@ export function PropertyDetailPage({ id }: { id: string }) {
               ] as [string, React.ReactNode][]),
               ...(p.legacy_ref ? [['Origine', `Reprise de l’ancienne version (${p.legacy_ref})`] as [string, string]] : []),
             ]} />
-            {owned && loan && !loan.finished && <RenegotiationHint rate={p.loan_rate} years={p.loan_years} start={p.loan_start_date} />}
           </Section>
           <div>
             {(p.vigilance.length > 0 || dpeAlerts(p.dpe, todayParis()).length > 0) && (
@@ -155,30 +171,29 @@ export function PropertyDetailPage({ id }: { id: string }) {
                 </ul>
               </Section>
             )}
-            <Section title={owned ? 'Estimation du prix actuel' : 'Estimation DVF'}>
-              <EstimatePanel value={p} input={p} onChange={async (patch) => { await update('properties', p, patch, `Le bien « ${p.title} »`); }}
-                compareTo={owned ? (p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null) : (r?.offerFai ?? p.offer_price)}
-                compareLabel={owned ? 'Coût d’acquisition' : 'Prix proposé (frais d’agence inclus)'} />
-            </Section>
-            <Section title={owned ? 'Loyer de marché (relocation)' : 'Loyer de marché'}>
-              <MarketRentPanel auto={false} value={p.market_rent}
-                input={{ ...p, furnished: activeLease ? activeLease.furnished : p.furnished, chargesMonthly: owned ? (activeLease?.charges_amount ?? p.charges_provision ?? null) : simCharges }}
-                onChange={async (m) => { await update('properties', p, { market_rent: m }, `Le bien « ${p.title} »`); }}
-                rentHc={owned ? activeLease?.rent_hc ?? null : r?.monthlyRent || null} rentLabel={owned ? 'Loyer du bail en cours' : 'Loyer de la simulation'} />
-            </Section>
             <Section title="Commentaires">
               {p.comments ? <p className="prewrap">{p.comments}</p> : <p className="muted">Aucun commentaire.</p>}
             </Section>
-            {owned && p.acquisition_snapshot && (
-              <Section title="Photographie à l’acquisition">
-                <p className="muted small">Hypothèses figées le {dateTime(p.acquisition_snapshot.taken_at)} depuis « {p.acquisition_snapshot.scenario_name} ». Elles ne changent plus si le scénario est modifié.</p>
-                <SnapshotFigures inputs={p.acquisition_snapshot.inputs} />
-              </Section>
-            )}
           </div>
         </div>
       )}
 
+      {tab === 'location' && <>{owned && <PropertyRental propertyId={p.id} />}{marketRent}</>}
+      {tab === 'finances' && (
+        <>
+          <Section title="Loyer, charges et crédit">
+            <KeyValue items={finance} />
+            {loan && !loan.finished && <RenegotiationHint rate={p.loan_rate} years={p.loan_years} start={p.loan_start_date} />}
+          </Section>
+          {owned && p.acquisition_snapshot && (
+            <Section title="Photographie à l’acquisition">
+                <p className="muted small">Hypothèses figées le {dateTime(p.acquisition_snapshot.taken_at)} depuis « {p.acquisition_snapshot.scenario_name} ». Elles ne changent plus si le scénario est modifié.</p>
+                <SnapshotFigures inputs={p.acquisition_snapshot.inputs} />
+            </Section>
+          )}
+        </>
+      )}
+      {tab === 'estimation' && <>{estimation}{!owned && marketRent}</>}
       {tab === 'simulations' && <SimulationPanel propertyId={p.id} main={primaryScenario(p, scenarios) ?? undefined} scenarios={scenarios}
         onUse={async (s) => { await update('properties', p, { primary_scenario_id: s.id }, `Le bien « ${p.title} »`); notify('Simulation du bien remplacée.'); }}
         onDelete={async (s) => { if (await ask('Supprimer l’ancienne simulation', `« ${s.name} » sera supprimée. La simulation du bien n’est pas modifiée.`, 'Supprimer')) await remove('scenarios', s.id); }}
@@ -187,7 +202,6 @@ export function PropertyDetailPage({ id }: { id: string }) {
       {tab === 'historique' && <Timeline propertyId={p.id} events={events} />}
       {tab === 'taches' && <Tasks propertyId={p.id} tasks={tasks} />}
       {tab === 'documents' && <DocumentList filter={{ property_id: p.id }} />}
-      {tab === 'gestion' && <PropertyRental propertyId={p.id} />}
       {dialog}
     </>
   );

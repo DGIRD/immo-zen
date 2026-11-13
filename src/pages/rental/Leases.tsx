@@ -167,6 +167,10 @@ export function TenantDialog({ tenant, onClose, onCreated }: { tenant: Tenant | 
 
 // ---------------------------------------------------------------------
 // Formulaire de bail
+/** Assistant de création d'un bail : étapes et champs contrôlés à chacune. */
+const LEASE_STEPS = ['Bien et locataires', 'Loyer et durée', 'Révision IRL', 'Quittances et automatisations'] as const;
+const STEP_FIELDS: string[][] = [['property_id', 'tenants'], ['start_date', 'end_date', 'rent_hc', 'charges_amount', 'deposit_amount', 'payment_day', 'charges_mode'], [], ['reminder_delay_days']];
+
 // ---------------------------------------------------------------------
 export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: string }) {
   const store = useStore();
@@ -188,6 +192,7 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
   const [newTenant, setNewTenant] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState(0);
   const { ask, dialog } = useConfirm();
   const set = <K extends keyof Lease>(k: K, v: Lease[K] | null | undefined) => setD((x) => ({ ...x, [k]: v }));
 
@@ -197,7 +202,7 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
   const selected = data.properties.find((p) => p.id === d.property_id);
   const previous = selected ? data.leases.filter((l) => l.property_id === selected.id && l.id !== existing?.id).sort((a, b) => b.start_date.localeCompare(a.start_date))[0] : undefined;
 
-  function validate() {
+  function computeErrors() {
     const e: Record<string, string> = {};
     if (!d.property_id) e.property_id = 'Choisissez le bien.';
     const startIssue = leaseStartIssue(d.start_date, todayParis());
@@ -211,8 +216,26 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
     const legal = leaseFormIssues(d, tenantIds.length);
     if (legal.deposit_amount && !e.deposit_amount) e.deposit_amount = legal.deposit_amount;
     if (legal.charges_mode) e.charges_mode = legal.charges_mode;
+    return e;
+  }
+  function validate() {
+    const e = computeErrors();
     setErrors(e);
+    if (!existing) {
+      // assistant : retour à la première étape qui contient une erreur
+      const first = STEP_FIELDS.findIndex((keys) => keys.some((k) => e[k]));
+      if (first >= 0 && first !== step) setStep(first);
+    }
     return !Object.keys(e).length;
+  }
+  /** Assistant de création : passe à l'étape suivante si celle-ci est valide. */
+  function next() {
+    const e = computeErrors();
+    const mine = Object.fromEntries(Object.entries(e).filter(([k]) => STEP_FIELDS[step]!.includes(k)));
+    setErrors(mine);
+    if (Object.keys(mine).length) return;
+    setStep((x) => Math.min(x + 1, LEASE_STEPS.length - 1));
+    window.scrollTo?.({ top: 0 });
   }
 
   /** Confirmations avant enregistrement : échéances supprimées si la date de début change, échéancier ancien. */
@@ -265,14 +288,27 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
     }
   }
 
+  const wizard = !existing;
+  const show = (i: number) => !wizard || step === i;
   const tenantsList = data.tenants.filter((t) => !t.archived_at || tenantIds.includes(t.id)).sort((a, b) => tenantName(a).localeCompare(tenantName(b), 'fr'));
   return (
-    <form onSubmit={(e) => { e.preventDefault(); void save(); }} noValidate>
+    <form onSubmit={(e) => { e.preventDefault(); if (wizard && step < LEASE_STEPS.length - 1) next(); else void save(); }} noValidate>
       <PageHeader title={existing ? 'Modifier le bail' : 'Nouveau bail'}
-        actions={<><Button onClick={() => history.back()}>Annuler</Button><Button type="submit" variant="primary" disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button></>} />
+        actions={wizard ? <Button onClick={() => history.back()}>Annuler</Button>
+          : <><Button onClick={() => history.back()}>Annuler</Button><Button type="submit" variant="primary" disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button></>} />
+      {wizard && (
+        <ol className="stepper" aria-label="Étapes de création du bail">
+          {LEASE_STEPS.map((l, i) => (
+            <li key={l} className={i === step ? 'current' : i < step ? 'done' : ''} aria-current={i === step ? 'step' : undefined}>
+              {i < step ? <button type="button" className="link" onClick={() => { setErrors({}); setStep(i); }}><span className="stepper-num">✓</span> {l}</button>
+                : <span><span className="stepper-num">{i + 1}</span> {l}</span>}
+            </li>
+          ))}
+        </ol>
+      )}
       {Object.keys(errors).length > 0 && <p className="form-error" role="alert">Corrigez les champs signalés.</p>}
 
-      <Section title="Bien et titulaires">
+      {show(0) && <Section title="Bien et titulaires">
         <div className="grid">
           <Select label="Bien" wide value={d.property_id ?? null} error={errors.property_id} allowEmpty="Choisir…"
             onChange={(v) => {
@@ -297,9 +333,9 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
           </div>
           <p className="muted small">Colocation : cochez plusieurs titulaires sur un même bail, ou créez un bail par chambre.</p>
         </div>
-      </Section>
+      </Section>}
 
-      <Section title="Durée et loyer">
+      {show(1) && <Section title="Durée et loyer">
         <div className="grid">
           <Select label="Location" value={d.furnished ? 'meuble' : 'vide'} onChange={(v) => set('furnished', v === 'meuble')} options={[['vide', 'Vide'], ['meuble', 'Meublée']] as const} />
           <TextInput label="Début du bail" type="date" required value={d.start_date} onChange={(v) => set('start_date', v)} error={errors.start_date} />
@@ -317,11 +353,11 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
             hint="Suivi à part des loyers (encaissement et restitution dans la fiche du bail)." />
         </div>
         <Help>Une modification manuelle du loyer s’applique aux échéances générées ensuite. Pour la révision annuelle, utilisez « Réviser le loyer » dans la fiche du bail.</Help>
-      </Section>
+      </Section>}
 
-      {!existing && selected && <RelocationRent property={selected} lease={d} previous={previous} onUse={(v) => set('rent_hc', v)} />}
+      {!existing && show(1) && selected && <RelocationRent property={selected} lease={d} previous={previous} onUse={(v) => set('rent_hc', v)} />}
 
-      <Section title="Révision annuelle (IRL)" collapsible defaultOpen={!existing}
+      {show(2) && <Section title="Révision annuelle (IRL)" collapsible defaultOpen={!existing}
         summary={d.irl_enabled ? `Révision selon l’IRL${d.irl_base_label ? ` (${irlLabel(d.irl_base_label)})` : ''}` : 'Pas de révision'}
         info="Chaque année à la date anniversaire, « Réviser le loyer » (fiche du bail) calcule le nouveau loyer avec la variation annuelle de l’IRL. Révision interdite pour un logement classé F ou G au DPE.">
         <Checkbox label="Le bail prévoit une révision annuelle selon l’indice de référence des loyers (IRL)" checked={!!d.irl_enabled}
@@ -336,9 +372,9 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
             <TextInput label="Dernière révision" type="date" value={d.last_revision_on ?? ''} onChange={(v) => set('last_revision_on', v || null)} hint="Si le loyer a déjà été révisé avant l’utilisation d’Immo-Zen." />
           </div>
         )}
-      </Section>
+      </Section>}
 
-      <Section title="Quittances" collapsible defaultOpen={!existing || !d.landlord_name} summary={d.landlord_name ? `Bailleur : ${d.landlord_name}` : 'Bailleur à renseigner'}>
+      {show(3) && <><Section title="Quittances" collapsible defaultOpen={!existing || !d.landlord_name} summary={d.landlord_name ? `Bailleur : ${d.landlord_name}` : 'Bailleur à renseigner'}>
         <div className="grid">
           <TextInput label="Nom du bailleur" value={d.landlord_name} onChange={(v) => set('landlord_name', v)} maxLength={200} hint="Tel qu’il doit figurer sur les quittances." />
           <TextInput label="Adresse du bailleur" wide value={d.landlord_address} onChange={(v) => set('landlord_address', v)} maxLength={500} />
@@ -367,11 +403,13 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
 
       <Section title="Notes" collapsible defaultOpen={!!d.notes} summary={d.notes ? 'Note saisie' : 'Aucune note'}>
         <div className="grid"><TextArea label="Notes" value={d.notes} onChange={(v) => set('notes', v)} rows={3} /></div>
-      </Section>
+      </Section></>}
 
       <div className="form-foot">
         <Button onClick={() => history.back()}>Annuler</Button>
-        <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button>
+        {wizard && step > 0 && <Button onClick={() => { setErrors({}); setStep(step - 1); }}>Précédent</Button>}
+        {wizard && step < LEASE_STEPS.length - 1 ? <Button type="submit" variant="primary">Suivant</Button>
+          : <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Enregistrement…' : wizard ? 'Créer le bail' : 'Enregistrer'}</Button>}
       </div>
       <TenantDialog tenant={newTenant ? 'new' : null} onClose={() => setNewTenant(false)} onCreated={(t) => setTenantIds((x) => [...x, t.id])} />
       {dialog}

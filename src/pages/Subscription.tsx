@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { usePlan, useStore } from '../data/store.tsx';
 import { ACCESS_REASONS, STATUS_LABELS, type Plan } from '../data/platform.ts';
@@ -144,6 +145,10 @@ export function SubscriptionPage() {
               : rank(t.code) > rank(paidTier) ? `Passer à ${t.label}` : `Changer pour ${t.label}`;
             return (
               <div key={t.code} className={`plan${t.code === 'patrimoine' ? ' plan-featured' : ''}${isCurrent || (!running && t.code === plan.tier && plan.enforce) ? ' plan-current' : ''}`}>
+                <p className="plan-badges">
+                  {(isCurrent || (!running && t.code === plan.tier && plan.enforce)) && <span className="pill pill-ok">Votre formule</span>}
+                  {t.code === 'patrimoine' && !isCurrent && <span className="pill pill-info">Recommandée</span>}
+                </p>
                 <h3>{t.label}</h3>
                 <p className="plan-price">{money2(euros)} <span className="muted small">TTC / {period === 'year' ? 'an' : 'mois'}</span></p>
                 {period === 'year' && <p className="muted small">soit {money2(euros / 12)} par mois</p>}
@@ -158,6 +163,7 @@ export function SubscriptionPage() {
             );
           })}
         </div>
+        <TierCompare />
         {!plans.some((p) => p.tier && p.active && p.stripe_price_id) && (
           <NotAvailable>Le paiement en ligne n’est pas encore ouvert.{config?.support_email ? <> Contact : <a href={`mailto:${config.support_email}`}>{config.support_email}</a>.</> : null}</NotAvailable>
         )}
@@ -199,5 +205,33 @@ export function SubscriptionPage() {
         </Section>
       )}
     </>
+  );
+}
+
+/** Tableau comparatif des formules, replié par défaut. */
+function TierCompare() {
+  const tiers = TIERS;
+  const lim = (v: number | null, unit = '') => (v == null ? 'Illimité' : `${v.toLocaleString('fr-FR')}${unit}`);
+  const yes = (b: boolean) => (b ? <span aria-label="inclus">✓</span> : <span className="muted" aria-label="non inclus">—</span>);
+  const rows: [string, (t: (typeof TIERS)[number]) => ReactNode][] = [
+    ['Prix TTC', (t) => (t.monthly ? `${money2(t.monthly)} / mois ou ${money2(t.annual)} / an` : 'Gratuit 30 jours')],
+    ['Biens détenus', (t) => lim(t.limits.owned)],
+    ['Biens en prospection', (t) => lim(t.limits.prospects)],
+    ['Simulations par bien', (t) => lim(t.limits.scenarios)],
+    ['Documents', (t) => (t.limits.storage_mb == null ? 'Illimité' : t.limits.storage_mb >= 1024 ? `${t.limits.storage_mb / 1024} Go` : `${t.limits.storage_mb} Mo`)],
+    ['Contacts et comparaison de biens', (t) => yes(t.features.contacts)],
+    ['Quittances et relances automatiques', (t) => yes(t.features.automations)],
+    ['Cash-flow consolidé', (t) => yes(t.features.consolidated)],
+    ['Déclaration fiscale', (t) => (t.features.fiscal ? yes(true) : <span className="muted small">pack fiscal en option</span>)],
+    ['Partage', (t) => yes(t.features.sharing)],
+  ];
+  return (
+    <details className="tier-compare">
+      <summary>Comparer les formules en détail</summary>
+      <div className="dt-scroll"><table className="dt-table compact">
+        <thead><tr><th>Fonction</th>{tiers.map((t) => <th key={t.code} className="num">{t.label}</th>)}</tr></thead>
+        <tbody>{rows.map(([l, f]) => <tr key={l}><td>{l}</td>{tiers.map((t) => <td key={t.code} className="num">{f(t)}</td>)}</tr>)}</tbody>
+      </table></div>
+    </details>
   );
 }
