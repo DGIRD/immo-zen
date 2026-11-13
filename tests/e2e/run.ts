@@ -517,7 +517,6 @@ async function main() {
     await page.getByLabel('Assurance emprunteur').fill('20');
     await page.getByLabel('Mensualité hors assurance').fill('500');
     assert.match((await page.locator('output[aria-labelledby="loan-total"]').innerText()).replace(/[\u202f\u00a0]/g, ' '), /520,00 €/, 'mensualité assurance comprise');
-    await page.locator('details.section-collapsible', { hasText: 'Détention' }).locator('summary').click();
     await page.getByLabel('Mode de détention').selectOption('nom_propre');
     await page.getByRole('button', { name: 'Enregistrer' }).first().click();
     await page.getByRole('heading', { name: 'Parking détenu' }).waitFor();
