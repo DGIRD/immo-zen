@@ -62,7 +62,7 @@ export function AuthPage() {
         {mode === 'signup' && !invited && (
           <>
             <Checkbox label={MARKETING_CONSENT} checked={marketing} onChange={setMarketing} />
-            <p className="muted small">Facultatif : sans cette case, vous ne recevez que les e-mails liés à votre compte. Si vous la cochez, un lien de confirmation vous est envoyé.</p>
+            <p className="muted small">Facultatif : sans cette case, vous ne recevez que les e-mails liés à votre compte. Désinscription en un clic dans chaque e-mail.</p>
           </>
         )}
         {message && <p className={message.tone === 'error' ? 'form-error' : 'form-ok'} role={message.tone === 'error' ? 'alert' : 'status'}>{message.text}</p>}

@@ -260,10 +260,10 @@
           console.error('Inscription :', res.status, j);
           return say(j.message && !/function|schema|jwt|permission|key/i.test(j.message) ? j.message : `Envoi impossible pour le moment (erreur ${res.status}).${download}`, false);
         }
-        const confirm = marketing || irl || paris;
+        const active = marketing || irl || paris;
         form.reset();
         syncMonth();
-        say(`C’est envoyé à ${email.replace(/[<>&"]/g, '')} : regardez votre boîte de réception (et les indésirables).${confirm ? ' Cliquez sur le lien de confirmation du message pour activer votre inscription.' : ''}${download}`, true);
+        say(`C’est envoyé à ${email.replace(/[<>&"]/g, '')} : regardez votre boîte de réception (et les indésirables).${active ? ' Votre inscription est active : rien d’autre à faire.' : ''}${download}`, true);
       } catch {
         say(`Connexion impossible. Vérifiez votre réseau et réessayez.${download}`, false);
       } finally {
@@ -288,7 +288,7 @@
         const r = res.ok ? await res.json() : 'erreur';
         if (confirming) {
           if (r === 'confirme') show('Inscription confirmée', 'Merci ! Votre inscription est active. Vous pouvez vous désinscrire à tout moment par le lien présent dans chaque e-mail.', 'ok');
-          else if (r === 'deja') show('Déjà confirmée', 'Votre inscription était déjà confirmée. Rien d’autre à faire.', 'ok');
+          else if (r === 'deja') show('Inscription active', 'Votre inscription est active : rien d’autre à faire. Vous pouvez vous désinscrire à tout moment par le lien présent dans chaque e-mail.', 'ok');
           else show('Lien expiré ou inconnu', 'Ce lien n’est plus valable (inscription annulée entre-temps ?). Vous pouvez vous réinscrire depuis le site.', 'erreur');
         } else if (r === 'desinscrit') show('Désinscription faite', 'Vous ne recevrez plus de conseils, d’offres ni d’alertes d’Immo-Zen à cette adresse.', 'ok');
         else show('Lien inconnu', 'Ce lien de désinscription n’est pas reconnu. Écrivez-nous à contact@immo-zen.fr : nous supprimerons votre adresse.', 'erreur');

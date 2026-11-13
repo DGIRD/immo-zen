@@ -39,6 +39,6 @@ export function optinForm({ source, prefix = '', compact = false, heading = 'h3'
           <label class="optin-check optin-consent"><input type="checkbox" name="marketing"${isLetter ? ' data-required' : ''}> <span>${isLetter ? LETTER_CONSENT : CONSENT_TEXT}</span></label>
           <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
           <p class="form-msg" role="status" aria-live="polite"></p>
-          <p class="optin-legal">${isLetter ? 'Un lien de confirmation vous est envoyé.' : 'Votre adresse sert à vous envoyer ce que vous demandez ; la case est facultative.'} <a href="${prefix}mentions-legales.html#confidentialite">Confidentialité</a></p>
+          <p class="optin-legal">${isLetter ? 'Désinscription en un clic dans chaque e-mail.' : 'Votre adresse sert à vous envoyer ce que vous demandez ; la case est facultative.'} <a href="${prefix}mentions-legales.html#confidentialite">Confidentialité</a></p>
         </form>`;
 }
