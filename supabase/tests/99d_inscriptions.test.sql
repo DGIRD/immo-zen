@@ -1,4 +1,4 @@
--- Tests SQL : inscriptions du site (consentement, double opt-in, désinscription, alertes IRL).
+-- Tests SQL : inscriptions du site (consentement, inscription directe, désinscription, alertes IRL).
 \set ON_ERROR_STOP on
 \set QUIET on
 \pset tuples_only on
@@ -19,13 +19,20 @@ select public.iz_subscribe('piege@example.test', 'calcul-irl', false, null, null
 commit;
 select tests.ok((select body_text from public.email_outbox where to_emails[1] = 'piege@example.test') not like '%evil%', 'inscriptions : paramètres non conformes écartés');
 
--- guide avec case cochée : conservée, en attente de confirmation, preuve enregistrée
+-- guide avec case cochée : conservée, active tout de suite, preuve enregistrée
 begin;
 set local role anon;
 select public.iz_subscribe('lecteur@example.test', 'guide', true, 'J’accepte de recevoir les conseils et offres d’Immo-Zen.', '/', null, null, false, null);
 commit;
-select tests.ok((select marketing_consent and confirmed_at is null and consent_at is not null and consent_page = '/' from public.site_subscribers where email = 'lecteur@example.test'), 'inscriptions : accord enregistré, à confirmer');
-select tests.ok((select body_text from public.email_outbox where to_emails[1] = 'lecteur@example.test') like '%guide-10-verifications-avant-achat.pdf%confirmer=%desinscrire=%', 'inscriptions : guide, lien de confirmation et de désinscription');
+select tests.ok((select marketing_consent and confirmed_at is not null and welcome_step = 1 and consent_at is not null and consent_page = '/' from public.site_subscribers where email = 'lecteur@example.test'), 'inscriptions : accord enregistré, actif sans confirmation');
+select tests.ok((select body_text from public.email_outbox where to_emails[1] = 'lecteur@example.test') like '%guide-10-verifications-avant-achat.pdf%inscrit à la lettre%simulateur-cash-flow%desinscrire=%', 'inscriptions : guide, bienvenue et lien de désinscription');
+select tests.ok((select body_text from public.email_outbox where to_emails[1] = 'lecteur@example.test') not like '%confirmer=%', 'inscriptions : aucun lien de confirmation');
+-- deuxième demande (checklist) : document seul, pas de second message de bienvenue
+begin;
+set local role anon;
+select public.iz_subscribe('lecteur@example.test', 'checklist', true, 'J’accepte.', '/', null, null, false, null);
+commit;
+select tests.ok((select count(*) from public.email_outbox where to_emails[1] = 'lecteur@example.test' and body_text like '%simulateur-cash-flow%') = 1, 'inscriptions : bienvenue une seule fois');
 
 -- anonyme : aucune lecture directe de la table
 begin;
@@ -33,20 +40,17 @@ set local role anon;
 select tests.ok(not has_table_privilege('anon', 'public.site_subscribers', 'SELECT'), 'inscriptions : table illisible sans droit');
 commit;
 
--- confirmation puis désinscription
-select tests.ok(public.iz_confirm_subscription((select confirm_token from public.site_subscribers where email = 'lecteur@example.test')) = 'confirme', 'inscriptions : confirmation');
-select tests.ok(public.iz_confirm_subscription((select confirm_token from public.site_subscribers where email = 'lecteur@example.test')) = 'deja', 'inscriptions : confirmation déjà faite');
+-- anciens liens de confirmation : toujours reconnus
+select tests.ok(public.iz_confirm_subscription((select confirm_token from public.site_subscribers where email = 'lecteur@example.test')) = 'deja', 'inscriptions : ancien lien, déjà active');
 select tests.ok(public.iz_confirm_subscription(gen_random_uuid()) = 'inconnu', 'inscriptions : lien inconnu');
 
--- alerte IRL : envoyée le mois choisi, une seule fois par an, adresses confirmées seulement
+-- alerte IRL : active tout de suite, envoyée le mois choisi, une seule fois par an
 begin;
 set local role anon;
 select public.iz_subscribe('bailleur@example.test', 'calcul-irl', false, null, null, null, 3, false, null);
-select public.iz_subscribe('nonconfirme@example.test', 'calcul-irl', false, null, null, null, 3, false, null);
 commit;
-update public.site_subscribers set confirmed_at = now() where email = 'bailleur@example.test';
 select tests.ok(public.iz_site_alerts('2027-02-10') = 0, 'alertes IRL : rien hors du mois choisi');
-select tests.ok(public.iz_site_alerts('2027-03-01') = 1, 'alertes IRL : rappel le mois de révision, adresse confirmée seulement');
+select tests.ok(public.iz_site_alerts('2027-03-01') = 1, 'alertes IRL : rappel le mois de révision, sans confirmation');
 select tests.ok(public.iz_site_alerts('2027-03-15') = 0, 'alertes IRL : une seule fois par an');
 select tests.ok(not has_function_privilege('anon', 'public.iz_site_alerts(date)', 'EXECUTE'), 'alertes IRL : réservées au serveur');
 
