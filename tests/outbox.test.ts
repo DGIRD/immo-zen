@@ -144,3 +144,33 @@ test('e-mails : version HTML avec le logo Immo-Zen, liens cliquables, texte éch
   await resendSender('k', 'Immo-Zen <a@b.fr>', undefined, fakeFetch)(sent[0]!);
   assert.ok(String(posted.html).includes('Immo-Zen') && posted.text === sent[0]!.text, 'HTML et texte transmis à Resend');
 });
+
+test('file d’e-mails : séquence de bienvenue en HTML illustré, version texte conservée', async () => {
+  const unsub = 'https://immo-zen.fr/inscription.html?desinscrire=11111111-1111-1111-1111-111111111111';
+  const rows = [
+    row({ id: 'w1', kind: 'inscription_site', subject: 'Votre guide est prêt', body_text: 'Bonjour, guide', template: 'bienvenue',
+      template_data: { step: 1, source: 'guide', doc_url: 'https://immo-zen.fr/ressources/guide-10-verifications-avant-achat.pdf', alerts: ['Un rappel en <mars>'], unsub } }),
+    row({ id: 'w2', kind: 'bienvenue', subject: 'Agence', body_text: 'Bonjour, agence', template: 'bienvenue', template_data: { step: 2, unsub } }),
+    row({ id: 'w3', kind: 'bienvenue', subject: 'Essai', body_text: 'Bonjour, essai', template: 'bienvenue', template_data: { step: 3, unsub } }),
+    row({ id: 'w4', kind: 'bienvenue', subject: 'Cassé', body_text: 'Bonjour, texte seul', template: 'bienvenue', template_data: { step: 2 } }),
+  ];
+  const { d, sent, logs } = deps(rows);
+  const r = await processOutbox(d);
+  assert.equal(r.sent, 4);
+  const [m1, m2, m3, m4] = sent.map((m) => m.html ?? '');
+  assert.match(m1!, /Télécharger le guide \(PDF\)/);
+  assert.match(m1!, /href="https:\/\/immo-zen\.fr\/ressources\/guide-10-verifications-avant-achat\.pdf"/);
+  assert.match(m1!, /Un rappel en &lt;mars&gt;/, 'alertes échappées');
+  assert.match(m1!, /img\/email\/simulation\.jpg/);
+  assert.match(m2!, /1&nbsp;070&nbsp;€/);
+  assert.match(m2!, /#economies/);
+  assert.match(m3!, /Démarrer mon essai gratuit/);
+  assert.match(m3!, /img\/email\/quittance\.jpg/);
+  for (const h of [m1!, m2!, m3!]) {
+    assert.ok(h.includes(unsub), 'désinscription');
+    assert.match(h, /linkedin\.com\/company\/immo-zen-investissement/);
+  }
+  assert.equal(sent[0]!.text.startsWith('Bonjour, guide'), true, 'texte inchangé');
+  assert.match(m4!, /Bonjour, texte seul/, 'données incomplètes : version simple');
+  assert.ok(logs.some((l) => l.startsWith('Gabarit de bienvenue inutilisable')));
+});
