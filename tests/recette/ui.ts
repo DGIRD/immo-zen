@@ -45,6 +45,11 @@ async function main() {
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('console', (m) => { if (m.type() === 'error' && !/favicon|ERR_FILE_NOT_FOUND|Failed to load resource/.test(m.text())) errors.push(m.text()); });
   const confirm = async (name: RegExp | string) => page.locator('dialog[open]').getByRole('button', { name }).click();
+  /** Rubriques repliables (depuis l'évolution ergonomie du 13/11) : tout déplier pour les contrôles. */
+  const openAll = () => page.evaluate(() => document.querySelectorAll('details.section-collapsible').forEach((d) => { (d as HTMLDetailsElement).open = true; }));
+  /** Assistant de création du bail : étape suivante, puis « Créer le bail ». */
+  const leaseNext = () => page.getByRole('button', { name: 'Suivant' }).click();
+  const leaseFinish = async () => { while (await page.getByRole('button', { name: 'Suivant' }).count()) await leaseNext(); await page.getByRole('button', { name: 'Créer le bail' }).click(); };
 
   await c('TDB-01', async () => {
     await page.goto(url);
@@ -58,6 +63,8 @@ async function main() {
     await page.getByText('Données d’exemple ajoutées.').waitFor();
     const d = await db(page);
     assert.ok(d.properties.length >= 3, `${d.properties.length} biens d'exemple`);
+    // vue « tableau » pour les contrôles de tableau (vue « cartes » contrôlée en ERG-02)
+    await page.evaluate(() => { localStorage.setItem('immozen:vue:prospection', 'tableau'); localStorage.setItem('immozen:vue:mes-biens', 'tableau'); });
     return `${d.properties.length} biens, ${d.pro_contacts?.length ?? 0} contacts d'exemple ajoutés`;
   });
 
@@ -221,7 +228,8 @@ async function main() {
 
   await c('SIM-06', async () => {
     await page.goto(url + '#/parametres');
-    const sec = page.locator('section', { has: page.getByRole('heading', { name: 'Valeurs par défaut des simulations' }) });
+    await page.locator('main h1').waitFor(); await openAll();
+    const sec = page.locator('section, details.section', { has: page.getByText('Valeurs par défaut des simulations', { exact: true }) }).last();
     await sec.getByLabel(/Frais de notaire/).fill('8');
     await sec.getByRole('button', { name: 'Enregistrer' }).click();
     await page.getByText(/enregistr/i).first().waitFor();
@@ -229,6 +237,7 @@ async function main() {
     const v = await page.getByLabel('Taux frais de notaire').inputValue();
     assert.equal(v.replace(',', '.'), '8', `taux repris : ${v}`);
     await page.goto(url + '#/parametres');
+    await page.locator('main h1').waitFor(); await openAll();
     await sec.getByLabel(/Frais de notaire/).fill('7,5');
     await sec.getByRole('button', { name: 'Enregistrer' }).click();
     return 'taux de notaire 8 % repris dans une nouvelle simulation';
@@ -251,6 +260,7 @@ async function main() {
     await page.getByLabel('Mode de détention').selectOption('nom_propre');
     await page.getByRole('button', { name: 'Enregistrer' }).first().click();
     await page.getByRole('heading', { name: 'T2 recette' }).waitFor();
+    await page.getByRole('tab', { name: 'Finances' }).click();
     const txt = T(await page.locator('main').innerText());
     assert.match(txt, /927,9[34]/, 'mensualité calculée absente');
     assert.match(txt, /[Cc]apital restant/, 'capital restant dû absent');
@@ -266,19 +276,20 @@ async function main() {
     await dlg.getByLabel('Prénom').fill('Paul'); await dlg.getByLabel('Nom *').fill('Recette'); await dlg.getByLabel('E-mail').fill('paul@example.test');
     await dlg.getByRole('button', { name: 'Enregistrer' }).click();
     await page.locator('.chip.on', { hasText: 'Paul Recette' }).waitFor();
+    await leaseNext();
     const now = new Date(); const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 15)).toISOString().slice(0, 10);
     await page.getByLabel('Début du bail *').fill(start);
     await page.getByLabel('Dépôt de garantie').fill('1500');
-    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    await leaseNext();
     await page.getByText(/Dépôt de garantie trop élevé : 750,00 € maximum/).waitFor();
     bai03 = 'dépôt de 1 500 € refusé à la saisie : « Dépôt de garantie trop élevé : 750,00 € maximum (un mois de loyer hors charges en location vide) »';
     await page.getByLabel('Charges', { exact: true }).selectOption('forfait');
     await page.getByLabel('Dépôt de garantie').fill('750');
-    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    await leaseNext();
     await page.getByText(/le forfait est réservé à la colocation/).waitFor();
     bai03 += ' ; forfait de charges refusé en location vide';
     await page.getByLabel('Charges', { exact: true }).selectOption('provision');
-    await page.getByRole('button', { name: 'Enregistrer' }).first().click();
+    await leaseFinish();
     await page.getByRole('tab', { name: /^Loyers et paiements \(3 mois/ }).waitFor();
     leaseUrl = page.url();
     const d = await db(page);
@@ -344,6 +355,7 @@ async function main() {
   await c('BAI-06', async () => {
     await page.goto(leaseUrl);
     await page.getByRole('button', { name: 'Modifier' }).first().click();
+    await page.getByRole('heading', { name: 'Modifier le bail' }).waitFor(); await openAll();
     const end = new Date(); end.setUTCDate(1); end.setUTCDate(0); // dernier jour du mois précédent
     await page.getByLabel('Fin du bail (facultatif)').fill(end.toISOString().slice(0, 10));
     await page.getByRole('button', { name: 'Enregistrer' }).first().click();
@@ -428,6 +440,7 @@ async function main() {
 
   await c('PAR-01', async () => {
     await page.goto(url + '#/parametres');
+    await page.locator('main h1').waitFor(); await openAll();
     const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Télécharger une sauvegarde (.json)' }).click()]);
     const j = JSON.parse(await readFile((await dl.path())!, 'utf8'));
     const keys = Object.keys(j.data ?? j);
@@ -466,7 +479,7 @@ async function main() {
       if (sw > iw + 1) res.push(`${p} : ${sw}px`);
     }
     await mp.goto(url + '#/prospection'); await mp.reload();
-    const cards = await mp.locator('.dt-card').count();
+    const cards = await mp.locator('.dt-card, .prop-card').count();
     await mp.screenshot({ path: join(shots, 'mobile-prospection.png'), fullPage: true });
     await m.close();
     assert.deepEqual(res, [], `défilement horizontal : ${res.join(', ')}`);
