@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { bankDossierDoc, debtRatio } from '../src/domain/bankDossier.ts';
-import { buildDocPdf } from '../src/domain/docPdf.ts';
+import { buildBankDossierPdf } from '../src/domain/bankDossierPdf.ts';
 import { DEFAULT_INPUTS, simulate } from '../src/domain/simulator.ts';
 
 const inputs = { ...DEFAULT_INPUTS, askingPrice: 250000, price: 240000, surface: 60, monthlyRent: 1200, rentMode: 'manuel' as const, downPayment: 30000, interestRate: 3.5, loanYears: 20, insuranceRate: 0.3 };
@@ -23,13 +23,17 @@ test('dossier de financement : sections, plan de financement équilibré, PDF g�
   const doc = bankDossierDoc({ property: { title: 'T3 Vincennes', city: 'Vincennes', zip: '94300', property_type: 'appartement', rooms: 3, dpe: 'C', furnished: true },
     inputs, result: r, borrower: { names: 'David Girardeau', income: 5000, currentLoans: 900 }, editedOn: '2026-11-13' });
   const titles = doc.sections.map((s) => s.title);
-  assert.deepEqual(titles, ['Synthèse du projet', 'Emprunteur', 'Le bien', 'Plan de financement', 'Prêt demandé', 'Rentabilité locative (année pleine, avant impôt)', 'Tableau d’amortissement annuel', 'Avertissement']);
+  assert.deepEqual(titles, ['Emprunteur', 'Le bien', 'Plan de financement', 'Prêt demandé', 'Rentabilité locative (année pleine, avant impôt)', 'Tableau d’amortissement annuel', 'Avertissement']);
   const plan = doc.sections.find((s) => s.title === 'Plan de financement')!;
   const tables = plan.blocks.filter((b) => b.t === 'table') as { rows: string[][] }[];
   assert.equal(tables[0]!.rows.at(-1)![1], tables[1]!.rows.at(-1)![1], 'emplois = ressources');
   const sans = bankDossierDoc({ property: { title: 'T3' }, inputs, result: r, editedOn: '2026-11-13', withSchedule: false });
   assert.ok(!sans.sections.some((s) => s.title === 'Emprunteur' || s.title.startsWith('Tableau')));
-  const bytes = await buildDocPdf({ PDFDocument, StandardFonts, rgb } as never, doc);
+  // page de garde : chiffres clés et financement
+  assert.equal(doc.cover.kpis.length, 9);
+  assert.equal(doc.cover.kpis.find((k) => k.label === 'Endettement après projet')?.tone, doc.cover.debt!.after > 35 ? 'neg' : 'pos');
+  assert.equal(doc.cover.financing.equity + doc.cover.financing.loan, r.equity + r.loanAmount);
+  const bytes = await buildBankDossierPdf({ PDFDocument, StandardFonts, rgb } as never, doc);
   const pdf = await PDFDocument.load(bytes);
   assert.ok(pdf.getPageCount() >= 2);
 });

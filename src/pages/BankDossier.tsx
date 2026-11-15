@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { bankDossierDoc, debtRatio, HCSF_MAX, type Borrower, type DossierProperty } from '../domain/bankDossier.ts';
-import { buildDocPdf } from '../domain/docPdf.ts';
+import { buildBankDossierPdf } from '../domain/bankDossierPdf.ts';
 import { downloadBlob } from '../domain/exporting.ts';
 import { pct, todayParis } from '../domain/format.ts';
 import type { SimulationInputs, SimulationResult } from '../domain/simulator.ts';
@@ -26,7 +26,7 @@ export function BankDossierButton({ property, inputs, result, notify }: {
     try {
       const lib = await import('pdf-lib');
       const doc = bankDossierDoc({ property, inputs, result, borrower: b, editedOn: todayParis(), withSchedule: schedule });
-      const bytes = await buildDocPdf(lib as never, doc);
+      const bytes = await buildBankDossierPdf(lib as never, doc);
       const slug = (property.title || 'projet').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
       downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), `dossier-financement-${slug || 'projet'}.pdf`);
       notify('Dossier de financement téléchargé.');
