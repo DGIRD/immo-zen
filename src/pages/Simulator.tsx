@@ -4,6 +4,7 @@ import type { Property, PropertyStatus, PropertyType, Scenario } from '../data/t
 import { DPE_VALUES, STATUS_LABELS, STATUS_ORDER, TYPE_LABELS } from '../domain/labels.ts';
 import { AddressFields } from '../ui/AddressFields.tsx';
 import { downloadBlob, stamp, toXlsx } from '../domain/exporting.ts';
+import { BankDossierButton } from './BankDossier.tsx';
 import { money, money2, pct, todayParis } from '../domain/format.ts';
 import { inputsFromProperty, isProspect, primaryScenario, prospectFieldsFromSimulation } from '../domain/property.ts';
 import { autoProvisionMonthly, autoRecoverableAnnual, ENGINE_VERSION, normalizeInputs, simulate, simulatedCashflow, summarize, type FieldError, type SimulationInputs } from '../domain/simulator.ts';
@@ -226,6 +227,8 @@ export function SimulatorPage({ propertyId }: { propertyId?: string }) {
           : isProspect(linkedProperty) ? 'Fiche du bien et sa simulation : une seule simulation par bien, modifiable à tout moment.' : 'Hypothèses d’achat du bien. Sa fiche se modifie dans Mes biens.'}
         actions={<>
           {linkedProperty && <Button onClick={() => navigate(`/bien/${linkedProperty.id}`)}>Voir la fiche</Button>}
+          <BankDossierButton property={{ ...bien, title: bien.title || linkedProperty?.title || 'Projet', property_type: bien.property_type, furnished: bien.furnished ?? linkedProperty?.furnished ?? null }}
+            inputs={inputs} result={r} notify={notify} />
           <Button variant="primary" onClick={() => void save()} disabled={busy || !outcome.ok}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button>
         </>} />
       {dirty && <p className="unsaved" role="status">Modifications non enregistrées.</p>}
