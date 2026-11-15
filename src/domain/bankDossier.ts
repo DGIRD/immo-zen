@@ -57,7 +57,15 @@ export function debtRatio(b: Borrower, newPayment: number, newRent: number): Deb
 const kv = (rows: [string, string][]): PdfBlock => ({ t: 'kv', rows: rows.filter(([, v]) => v && v !== '—') });
 const TYPE: Record<string, string> = { appartement: 'Appartement', maison: 'Maison', immeuble: 'Immeuble', local: 'Local', parking: 'Parking', terrain: 'Terrain' };
 
-export function bankDossierDoc(o: { property: DossierProperty; inputs: SimulationInputs; result: SimulationResult; borrower?: Borrower; editedOn: string; withSchedule?: boolean }): PdfDoc {
+export interface Kpi { label: string; value: string; sub?: string; tone?: 'pos' | 'neg' }
+export interface DossierCover {
+  label: string; title: string; subtitle: string; pitch: string[]; kpis: Kpi[];
+  financing: { equity: number; loan: number };
+  debt: { before: number | null; after: number; max: number } | null;
+}
+export interface BankDossier extends PdfDoc { cover: DossierCover }
+
+export function bankDossierDoc(o: { property: DossierProperty; inputs: SimulationInputs; result: SimulationResult; borrower?: Borrower; editedOn: string; withSchedule?: boolean }): BankDossier {
   const { property: p, inputs: i, result: r, borrower: b = {} } = o;
   const where = [p.address, [p.zip, p.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
   const fees = r.financingFees;
@@ -65,25 +73,31 @@ export function bankDossierDoc(o: { property: DossierProperty; inputs: Simulatio
   const ratio = debtRatio(b, r.monthlyPaymentWithInsurance, r.monthlyRent);
   const sections: PdfSection[] = [];
 
-  // 1. synthèse
+  // 1. page de garde : le projet en bref et les chiffres clés
   const pitch = [
-    `Acquisition ${p.property_type ? `d’un ${(TYPE[p.property_type] ?? p.property_type).toLowerCase()}` : 'd’un bien'}${p.rooms ? ` de ${p.rooms} pièce${p.rooms > 1 ? 's' : ''}` : ''}${i.surface ? ` (${String(i.surface).replace('.', ',')} m2)` : ''}${p.city ? ` à ${p.city}` : ''}, destiné à la location ${p.furnished ? 'meublée' : p.furnished === false ? 'nue' : ''}`.trim() + '.',
+    `Acquisition ${p.property_type ? `d’un ${(TYPE[p.property_type] ?? p.property_type).toLowerCase()}` : 'd’un bien'}${p.rooms ? ` de ${p.rooms} pièce${p.rooms > 1 ? 's' : ''}` : ''}${i.surface ? ` (${String(i.surface).replace('.', ',')} m2)` : ''}${p.city ? ` à ${p.city}` : ''}${p.furnished ? ', destiné à la location meublée' : p.furnished === false ? ', destiné à la location nue' : ', destiné à la location'}.`,
     `Coût total du projet ${money(r.totalCost)}, financé par ${r.equity > 0 ? `un apport de ${money(r.equity)} et ` : ''}un prêt de ${money(r.loanAmount)} sur ${i.loanYears} ans.`,
-    `Loyer attendu ${money(r.monthlyRent)} hors charges par mois, soit un rendement brut de ${pct(r.grossYield)} et un cash-flow de ${money(r.cashflowMonthlySteady)} par mois avant impôt.`,
+    ...(b.presentation?.trim() ? [b.presentation.trim()] : []),
   ];
-  sections.push({ title: 'Synthèse du projet', blocks: [
-    ...pitch.map((text) => ({ t: 'p', text }) as PdfBlock),
-    ...(b.presentation?.trim() ? [{ t: 'p', text: b.presentation.trim() } as PdfBlock] : []),
-    kv([
-      ['Coût total du projet', money(r.totalCost)],
-      ['Apport personnel', money(r.equity)],
-      ['Montant emprunté', money(r.loanAmount)],
-      ['Mensualité, assurance comprise', money2(r.monthlyPaymentWithInsurance)],
-      ['Loyer mensuel hors charges', money2(r.monthlyRent)],
-      ['Cash-flow mensuel avant impôt', money2(r.cashflowMonthlySteady)],
-      ...(ratio ? [['Taux d’endettement après le projet', pct(ratio.after)] as [string, string]] : []),
-    ]),
-  ] });
+  const cf = r.cashflowMonthlySteady;
+  const kpis: Kpi[] = [
+    { label: 'Coût total du projet', value: money(r.totalCost), sub: 'frais et travaux compris' },
+    { label: 'Montant emprunté', value: money(r.loanAmount), sub: `sur ${i.loanYears} ans à ${pct(i.interestRate)}` },
+    { label: 'Apport personnel', value: money(r.equity), sub: r.totalCost > 0 ? `${pct(round2((r.equity / r.totalCost) * 100))} du projet` : undefined },
+    { label: 'Mensualité', value: money2(r.monthlyPaymentWithInsurance), sub: 'assurance comprise' },
+    { label: 'Loyer mensuel', value: money2(r.monthlyRent), sub: 'hors charges' },
+    { label: 'Cash-flow mensuel', value: money2(cf), sub: 'avant impôt', tone: cf >= 0 ? 'pos' : 'neg' },
+    { label: 'Rendement brut', value: pct(r.grossYield) },
+    { label: 'Rendement net de charges', value: pct(r.netYield) },
+    ratio ? { label: 'Endettement après projet', value: pct(ratio.after), sub: `plafond recommandé ${HCSF_MAX} %`, tone: ratio.after > HCSF_MAX ? 'neg' : 'pos' }
+      : { label: 'Coût total du crédit', value: money(r.financingCost), sub: 'intérêts, assurance, frais' },
+  ];
+  const cover: DossierCover = {
+    label: 'Dossier de financement', title: p.title,
+    subtitle: [where, `Projet d’investissement locatif · établi le ${date(o.editedOn)}`].filter(Boolean).join('\n'),
+    pitch, kpis, financing: { equity: r.equity, loan: r.loanAmount },
+    debt: ratio ? { before: ratio.before, after: ratio.after, max: HCSF_MAX } : null,
+  };
 
   // 2. emprunteur
   if (b.names || b.situation || ratio) {
@@ -187,6 +201,7 @@ export function bankDossierDoc(o: { property: DossierProperty; inputs: Simulatio
   sections.push({ title: 'Avertissement', blocks: [{ t: 'p', text: 'Simulation indicative établie avec Immo-Zen à partir des hypothèses saisies par l’emprunteur, hors fiscalité. Ce document n’est ni une offre de prêt ni un conseil en financement : seules l’offre de prêt et la fiche d’information standardisée de la banque font foi.' }] });
 
   return {
+    cover,
     title: `Dossier de financement — ${p.title}`,
     subtitle: `Projet d’investissement locatif${where ? ` · ${where}` : ''} · établi le ${date(o.editedOn)}`,
     sections,
