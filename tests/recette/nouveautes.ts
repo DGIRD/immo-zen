@@ -245,7 +245,7 @@ async function main() {
   });
 
   // ---------- assistant de bail
-  await c('BAI-07', async () => {
+  await c('BAI-11', async () => {
     await page.goto(url + '#/locataires');
     await page.getByRole('button', { name: 'Nouveau bail' }).click();
     await page.getByRole('list', { name: 'Étapes de création du bail' }).locator('li').first().waitFor();
@@ -273,7 +273,7 @@ async function main() {
   });
 
   // ---------- filtre de période des loyers
-  await c('LOY-10', async () => {
+  await c('LOY-19', async () => {
     await page.goto(url + '#/loyers');
     const table = page.locator('table.dt-table').first();
     await table.waitFor();
@@ -294,7 +294,7 @@ async function main() {
   });
 
   // ---------- documents en dossiers, glisser-déposer
-  await c('DOC-02', async () => {
+  await c('DOC-03', async () => {
     await page.goto(url + '#/documents');
     const folders = page.getByRole('group', { name: 'Dossiers' }).getByRole('button');
     await folders.first().waitFor();
@@ -326,7 +326,7 @@ async function main() {
   });
 
   // ---------- comparatif des formules
-  await c('ABO-03', async () => {
+  await c('ABO-07', async () => {
     await page.goto(url + '#/abonnement');
     const det = page.locator('details.tier-compare');
     await det.locator('summary').click();
@@ -339,7 +339,7 @@ async function main() {
   });
 
   // ---------- dossier banque
-  await c('SIM-08', async () => {
+  await c('SIM-10', async () => {
     await page.goto(url + '#/bien/nouveau');
     await page.getByLabel('Prix de présentation FAI').fill('250000');
     await page.getByLabel('Surface du logement').fill('40');
