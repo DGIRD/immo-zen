@@ -6,7 +6,7 @@
 //  * invite   : invitation d'un utilisateur par e-mail (administrateurs) — l'invité choisit lui-même son mot de passe.
 // Secrets : STRIPE_SECRET_KEY, APP_URL (+ SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY fournis par Supabase).
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { stripeRequest } from '../_shared/stripe.ts';
+import { FOUNDER_CODE, stripeRequest, usableFounderPromotion, type StripePromotionCode } from '../_shared/stripe.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const cors = {
@@ -91,10 +91,22 @@ Deno.serve(async (req) => {
         customer = c.id;
         await admin.from('subscriptions').upsert({ user_id: user.id, stripe_customer_id: customer, source: 'stripe' }, { onConflict: 'user_id' });
       }
+      // offre fondateurs : appliquée d'office aux formules annuelles tant qu'il reste des places ;
+      // sinon (mensuel, places épuisées, code absent ou Stripe indisponible), saisie libre d'un code
+      let discount: Record<string, string | boolean> = { allow_promotion_codes: true };
+      if (plan.billing_interval === 'year') {
+        try {
+          const promos = await stripeRequest<{ data: StripePromotionCode[] }>(secret, 'GET', 'promotion_codes', { code: FOUNDER_CODE, active: true, limit: 10 });
+          const founder = usableFounderPromotion(promos.data ?? []);
+          if (founder) discount = { 'discounts[0][promotion_code]': founder.id };
+        } catch (e) {
+          console.error('offre fondateurs', e instanceof Error ? e.message : e);
+        }
+      }
       const s = await stripeRequest<{ url: string }>(secret, 'POST', 'checkout/sessions', {
         mode: 'subscription', customer, client_reference_id: user.id,
         'line_items[0][price]': plan.stripe_price_id, 'line_items[0][quantity]': 1,
-        'subscription_data[metadata][user_id]': user.id, allow_promotion_codes: true, locale: 'fr',
+        'subscription_data[metadata][user_id]': user.id, ...discount, locale: 'fr',
         success_url: `${appUrl}#/abonnement?retour=ok`, cancel_url: `${appUrl}#/abonnement?retour=annule`,
       });
       return reply(200, { url: s.url });

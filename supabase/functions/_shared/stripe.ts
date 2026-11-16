@@ -230,3 +230,41 @@ export function paymentFailedEmail(inv: InvoiceInfo, label: string | null, nextA
     ].join('\n'),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Offre fondateurs : code promotionnel appliqué d'office aux formules annuelles
+// ---------------------------------------------------------------------------
+
+/** Code promotionnel Stripe de l'offre fondateurs (−30 % à vie, 300 utilisations). */
+export const FOUNDER_CODE = 'FONDATEUR';
+
+export interface StripePromotionCode {
+  id: string;
+  code: string;
+  active: boolean;
+  max_redemptions?: number | null;
+  times_redeemed?: number;
+  expires_at?: number | null;
+  coupon?: { valid?: boolean; max_redemptions?: number | null; times_redeemed?: number; redeem_by?: number | null; duration?: string } | null;
+  promotion?: { coupon?: StripePromotionCode['coupon'] | string | null } | null;
+}
+
+/**
+ * Code fondateurs encore utilisable (actif, non expiré, places restantes sur le code et sur le coupon),
+ * ou null : la page de paiement propose alors la saisie libre d'un code.
+ */
+export function usableFounderPromotion(list: StripePromotionCode[], nowSec = Math.floor(Date.now() / 1000)): StripePromotionCode | null {
+  for (const p of list) {
+    if (!p.active || p.code.toUpperCase() !== FOUNDER_CODE) continue;
+    if (p.expires_at && p.expires_at <= nowSec) continue;
+    if (p.max_redemptions != null && (p.times_redeemed ?? 0) >= p.max_redemptions) continue;
+    const c = p.coupon ?? (typeof p.promotion?.coupon === 'object' ? p.promotion?.coupon : null);
+    if (c) {
+      if (c.valid === false) continue;
+      if (c.redeem_by && c.redeem_by <= nowSec) continue;
+      if (c.max_redemptions != null && (c.times_redeemed ?? 0) >= c.max_redemptions) continue;
+    }
+    return p;
+  }
+  return null;
+}

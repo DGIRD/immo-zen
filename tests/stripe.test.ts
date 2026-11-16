@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fiscalPackFromSession, invoiceEmail, invoiceInfo, paymentFailedEmail, signStripePayload, subscriptionFields, subscriptionIdOf, verifyStripeSignature } from '../supabase/functions/_shared/stripe.ts';
+import { FOUNDER_CODE, usableFounderPromotion, fiscalPackFromSession, invoiceEmail, invoiceInfo, paymentFailedEmail, signStripePayload, subscriptionFields, subscriptionIdOf, verifyStripeSignature } from '../supabase/functions/_shared/stripe.ts';
 
 const SECRET = 'whsec_test';
 const body = JSON.stringify({ id: 'evt_1', type: 'customer.subscription.updated', created: 1760000000, data: { object: { id: 'sub_1' } } });
@@ -105,4 +105,19 @@ test('paiement échoué : e-mail avec montant dû et date de la prochaine tentat
   assert.match(m.body, /Essentiel \(annuel\)/);
   assert.match(m.body, /nouvelle tentative aura lieu automatiquement le \d{2}\/\d{2}\/\d{4}/);
   assert.match(paymentFailedEmail(inv, null, null).body, /suspendu/);
+});
+
+test('offre fondateurs : code actif avec des places restantes, sinon saisie libre', () => {
+  const now = 1800000000;
+  const ok = { id: 'promo_ok', code: FOUNDER_CODE, active: true, max_redemptions: null, times_redeemed: 12, coupon: { valid: true, max_redemptions: 300, times_redeemed: 12 } };
+  assert.equal(usableFounderPromotion([ok], now)?.id, 'promo_ok');
+  assert.equal(usableFounderPromotion([{ ...ok, code: 'fondateur' }], now)?.id, 'promo_ok', 'casse indifférente');
+  assert.equal(usableFounderPromotion([{ ...ok, active: false }], now), null, 'code désactivé');
+  assert.equal(usableFounderPromotion([{ ...ok, coupon: { valid: false } }], now), null, 'coupon épuisé ou supprimé');
+  assert.equal(usableFounderPromotion([{ ...ok, coupon: { valid: true, max_redemptions: 300, times_redeemed: 300 } }], now), null, '300 places prises');
+  assert.equal(usableFounderPromotion([{ ...ok, max_redemptions: 5, times_redeemed: 5 }], now), null, 'limite du code atteinte');
+  assert.equal(usableFounderPromotion([{ ...ok, expires_at: now - 1 }], now), null, 'code expiré');
+  assert.equal(usableFounderPromotion([{ ...ok, code: 'AUTRE' }], now), null, 'autre code');
+  assert.equal(usableFounderPromotion([{ ...ok, coupon: undefined, promotion: { coupon: { valid: true, max_redemptions: 300, times_redeemed: 1 } } }], now)?.id, 'promo_ok', 'forme récente de l’API');
+  assert.equal(usableFounderPromotion([], now), null);
 });
