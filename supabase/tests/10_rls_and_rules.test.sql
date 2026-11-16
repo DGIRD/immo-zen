@@ -141,6 +141,12 @@ select tests.ok((select acquisition_snapshot->'inputs'->>'price' = '215000' from
 insert into public.properties (title, status, ownership_mode) values ('Parking détenu', 'acquis', 'nom_propre');
 select tests.ok((select occupation_status = 'vacant' and acquired_at is not null from public.properties where title = 'Parking détenu'),
   'ajout direct dans Mes biens');
+insert into public.properties (title, status, ownership_mode, loan_start_date) values ('Crédit ancien', 'acquis', 'nom_propre', current_date - 400);
+select tests.ok((select acquired_at = current_date - 400 from public.properties where title = 'Crédit ancien'),
+  'ajout direct sans date : date d''acquisition = 1re échéance passée du crédit (ANO-014)');
+insert into public.properties (title, status, ownership_mode, loan_start_date) values ('Crédit futur', 'acquis', 'nom_propre', current_date + 30);
+select tests.ok((select acquired_at = current_date from public.properties where title = 'Crédit futur'),
+  'ajout direct sans date, 1re échéance à venir : date du jour');
 
 -- archivage / désarchivage
 update public.properties set status = 'archive' where title = 'Maison Melun';

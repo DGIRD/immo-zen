@@ -39,6 +39,15 @@ export function collectChecks(f: FiscalSummary, properties: Property[], go: { pr
   for (const p of properties.filter((x) => x.status === 'acquis' && !x.tax_regime && f.amounts.has(x.id))) {
     out.push({ level: 'corriger', property: p.title, text: 'Régime fiscal à choisir : sans lui, le bien n’est dans aucune déclaration.' });
   }
+  // crédit commencé avant la date d'acquisition, une autre année : le bien manque dans cette déclaration (ANO-014)
+  for (const p of properties.filter((x) => x.status === 'acquis' && x.acquired_at && x.loan_start_date && x.loan_start_date < x.acquired_at!)) {
+    const loanY = Number(p.loan_start_date!.slice(0, 4)); const acqY = Number(p.acquired_at!.slice(0, 4));
+    if (f.year >= loanY && f.year < acqY) {
+      const fr = (d: string) => d.split('-').reverse().join('/');
+      out.push({ level: 'corriger', property: p.title, text: `Crédit commencé le ${fr(p.loan_start_date!)}, avant la date d’acquisition enregistrée (${fr(p.acquired_at!)}) : le bien et ses intérêts sont exclus de la déclaration ${f.year}. Corrigez la date d’acquisition si elle est fausse.`,
+        action: { label: 'Corriger la date d’acquisition', go: () => go.property(p.id) } });
+    }
+  }
   for (const [pid, a] of f.amounts) {
     for (const w of a.warnings) out.push({ level: 'corriger', property: title(pid), text: w, action: { label: 'Voir les dépenses', go: () => go.expenses(pid) } });
     if (a.interestSource === 'credit' && a.interest > 0) {

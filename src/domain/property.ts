@@ -193,7 +193,9 @@ export function applyStatusRules(prev: Property | null, next: Property, scenario
     p.status_before_archive = null;
   }
   if (p.status === 'acquis' && (!prev || prev.status !== 'acquis')) {
-    p.acquired_at = p.acquired_at ?? todayParis(now);
+    // sans date saisie : la 1re échéance du crédit si elle est passée (le bien était déjà acquis), sinon aujourd'hui
+    const today = todayParis(now);
+    p.acquired_at = p.acquired_at ?? (p.loan_start_date && p.loan_start_date < today ? p.loan_start_date : today);
     p.occupation_status = p.occupation_status ?? 'vacant';
     if (!p.acquisition_snapshot && p.primary_scenario_id) {
       const s = scenarios.find((x) => x.id === p.primary_scenario_id && x.user_id === p.user_id);
