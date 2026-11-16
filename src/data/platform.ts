@@ -176,13 +176,17 @@ export function createSupabasePlatform(sb: SupabaseClient): PlatformApi {
       const acc = await sb.rpc('iz_my_access').maybeSingle();
       if (missing(acc.error)) return null;
       const access = check(acc) as AccessState;
+      // filtre sur l'utilisateur : un administrateur lit tous les abonnements (RLS), et maybeSingle() échouait
+      // dès qu'un autre compte en avait un (menu Administration disparu le 15/11)
+      const { data: s } = await sb.auth.getSession();
+      const uid = s.session?.user.id ?? '';
       const [config, plans, sub, support, plan, invoices] = await Promise.all([
         sb.from('app_config').select('*').maybeSingle(),
         sb.from('plans').select('*').order('billing_interval'),
-        sb.from('subscriptions').select('*').maybeSingle(),
-        sb.from('support_access').select('granted_until').maybeSingle(),
+        sb.from('subscriptions').select('*').eq('user_id', uid).maybeSingle(),
+        sb.from('support_access').select('granted_until').eq('user_id', uid).maybeSingle(),
         sb.rpc('iz_my_plan'),
-        sb.from('billing_invoices').select('id, number, invoice_date, amount_paid_cents, currency, status, billing_reason, description, plan_code, period_start, period_end').order('invoice_date', { ascending: false }).limit(100),
+        sb.from('billing_invoices').select('id, number, invoice_date, amount_paid_cents, currency, status, billing_reason, description, plan_code, period_start, period_end').eq('user_id', uid).order('invoice_date', { ascending: false }).limit(100),
       ]);
       const list = (check(plans) as Plan[]).sort((a, b) => (a.sort ?? 100) - (b.sort ?? 100));
       return {
