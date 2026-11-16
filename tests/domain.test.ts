@@ -161,3 +161,11 @@ test('le simulateur alimente la fiche du bien en prospection', async () => {
   if (!out.ok) return;
   assert.deepEqual(prospectFieldsFromSimulation(i, out.result), { asking_price: 250000, offer_price: 230000, surface: 40, estimated_rent: 1000 });
 });
+
+test('statut « acquis » sans date : 1re échéance du crédit si elle est passée (ANO-014)', () => {
+  const now = new Date('2026-11-16T08:00:00Z');
+  const prev = prop({});
+  assert.equal(applyStatusRules(prev, { ...prev, status: 'acquis', loan_start_date: '2025-01-05' }, [], now).acquired_at, '2025-01-05');
+  assert.equal(applyStatusRules(prev, { ...prev, status: 'acquis', loan_start_date: '2027-01-05' }, [], now).acquired_at, '2026-11-16');
+  assert.equal(applyStatusRules(prev, { ...prev, status: 'acquis', loan_start_date: '2025-01-05', acquired_at: '2024-12-01' }, [], now).acquired_at, '2024-12-01');
+});
