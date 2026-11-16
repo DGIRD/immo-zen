@@ -117,7 +117,7 @@ Si vous êtes en franchise de TVA, saisissez ces montants tels quels. Si vous fa
 Enregistrez. L'application relit l'abonnement à chaque changement : la nouvelle formule s'applique dès que Stripe l'envoie.
 
 ### 4.5 Offre fondateurs (facultatif)
-**Catalogue de produits → Coupons → Créer** : −30 %, durée « Pour toujours », limité aux trois prix **annuels**, 300 utilisations au plus. Puis **Codes promotionnels** : code `FONDATEUR`. La page de paiement d'Immo-Zen accepte déjà les codes promotionnels.
+**Catalogue de produits → Coupons → Créer** : −30 %, durée « Pour toujours », limité aux trois prix **annuels**, 300 utilisations au plus. Puis **Codes promotionnels** : code `FONDATEUR`. Immo-Zen applique ce code d'office à toute souscription d'une formule annuelle tant qu'il est actif et qu'il reste des places (aucune saisie pour l'abonné) ; ensuite, ou pour une formule mensuelle, la page de paiement propose la saisie libre d'un code. Pour arrêter l'offre : désactivez le code dans Stripe.
 
 ### 4.6 E-mails et relances de paiement
 - **Paramètres → E-mails clients** : reçus de paiement, factures payées, échec de paiement, notification de prélèvement SEPA : activés.
