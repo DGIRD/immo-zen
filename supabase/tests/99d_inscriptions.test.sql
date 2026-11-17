@@ -27,6 +27,7 @@ commit;
 select tests.ok((select marketing_consent and confirmed_at is not null and welcome_step = 1 and consent_at is not null and consent_page = '/' from public.site_subscribers where email = 'lecteur@example.test'), 'inscriptions : accord enregistré, actif sans confirmation');
 select tests.ok((select body_text from public.email_outbox where to_emails[1] = 'lecteur@example.test') like '%guide-10-verifications-avant-achat.pdf%inscrit à notre lettre%simulateur-cash-flow%linkedin.com/company/immo-zen%desinscrire=%', 'inscriptions : guide, bienvenue et lien de désinscription');
 select tests.ok((select body_text from public.email_outbox where to_emails[1] = 'lecteur@example.test') not like '%confirmer=%', 'inscriptions : aucun lien de confirmation');
+select tests.ok((select body_text from public.email_outbox where to_emails[1] = 'lecteur@example.test') like '%L’équipe Immo-Zen%' and (select body_text from public.email_outbox where to_emails[1] = 'lecteur@example.test') not like '%David%', 'inscriptions : signé de l’équipe');
 select tests.ok((select template = 'bienvenue' and (template_data->>'step')::int = 1 and template_data->>'source' = 'guide'
   and template_data->>'doc_url' like '%guide-10-verifications-avant-achat.pdf' from public.email_outbox where to_emails[1] = 'lecteur@example.test'), 'inscriptions : gabarit illustré de bienvenue');
 select tests.ok((select template is null from public.email_outbox where to_emails[1] = 'calcul@example.test'), 'inscriptions : calcul seul, e-mail simple');
