@@ -169,6 +169,8 @@ test('file d’e-mails : séquence de bienvenue en HTML illustré, version texte
   for (const h of [m1!, m2!, m3!]) {
     assert.ok(h.includes(unsub), 'désinscription');
     assert.match(h, /linkedin\.com\/company\/immo-zen-investissement/);
+    assert.match(h, /L’équipe Immo-Zen/);
+    assert.doesNotMatch(h, /David|Fondateur d’Immo-Zen/, 'signature de l’équipe');
   }
   assert.equal(sent[0]!.text.startsWith('Bonjour, guide'), true, 'texte inchangé');
   assert.match(m4!, /Bonjour, texte seul/, 'données incomplètes : version simple');

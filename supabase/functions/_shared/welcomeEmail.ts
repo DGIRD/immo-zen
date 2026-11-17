@@ -62,7 +62,7 @@ function hero(kicker: string, title: string, subtitle: string): string {
 
 function signature(ps?: string): string {
   return section(
-    p('À très vite,<br><strong>David</strong><br><span style="color:' + C.muted + ';">Fondateur d’Immo-Zen</span>', 'margin:0;') +
+    p('À très vite,<br><strong>L’équipe Immo-Zen</strong>', 'margin:0;') +
       (ps ? p(`<em>P.-S. ${ps}</em>`, `margin:14px 0 0;color:${C.muted};font-size:14px;`) : ''),
     '6px 28px 24px',
   );
@@ -137,7 +137,7 @@ ${docKey === 'calcul' ? `<div style="font-family:${SANS};font-size:12px;color:${
   rows += section(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.goldBg};border-radius:10px;"><tr><td style="padding:16px 20px;font-family:${SANS};font-size:14px;line-height:1.55;color:${C.ink};">
 <strong>Et quand vous voulez aller plus loin :</strong> Immo-Zen gère vos loyers, vos quittances et prépare votre déclaration. ${link('Essayez 30 jours gratuitement, sans carte bancaire', `${SITE}/app/`)}.
 </td></tr></table>`, '0 28px 18px');
-  rows += signature('Une question sur votre projet ? Répondez simplement à cet e-mail, je lis tout.');
+  rows += signature('Une question sur votre projet ? Répondez simplement à cet e-mail : nous lisons tout.');
   return { rows, preheader: doc ? `${doc.card} : votre lien est à l’intérieur.` : 'Votre inscription est faite : voici ce qui vous attend.' };
 }
 
@@ -211,7 +211,7 @@ ${check('À la fin de l’essai, rien n’est supprimé')}
 </table>`,
     '4px 28px 16px',
   );
-  rows += signature('Besoin d’un coup de main pour démarrer ? Répondez à cet e-mail : je vous aide à saisir votre premier bien.');
+  rows += signature('Besoin d’un coup de main pour démarrer ? Répondez à cet e-mail : nous vous aidons à saisir votre premier bien.');
   return { rows, preheader: '30 jours gratuits, sans carte bancaire. Et −30 % à vie pour les 300 premiers abonnés.' };
 }
 
