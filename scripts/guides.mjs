@@ -16,7 +16,7 @@ const SITE = 'https://immo-zen.fr';
 const DATE = '2026-10-20';
 const DATE_FR = '20 octobre 2026';
 /** Dernière modification des pages pour le plan du site. */
-const SITEMAP_LASTMOD = '2026-11-04';
+const SITEMAP_LASTMOD = '2026-11-18';
 const CATEGORIES = ['Investir', 'Financer et déclarer', 'Gérer'];
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -162,7 +162,7 @@ function indexPage(all) {
   const body = `    <div class="wrap">
       <nav class="breadcrumb" aria-label="Fil d'Ariane"><a href="../">Accueil</a> › <span>Guides</span></nav>
       <h1>Guides de l'investissement locatif</h1>
-      <p class="lead">Onze guides complets pour investir, financer, déclarer et gérer un bien locatif : méthodes, exemples chiffrés sur un même bien, règles en vigueur en 2026 et modèles à réutiliser.</p>${groups}
+      <p class="lead">Douze guides complets pour investir, financer, déclarer et gérer un bien locatif : méthodes, exemples chiffrés sur un même bien, règles en vigueur en 2026 et modèles à réutiliser.</p>${groups}
       <div class="optin-pair">
         ${optinForm({ source: 'guide', prefix: '../' })}
         ${optinForm({ source: 'checklist', prefix: '../' })}
@@ -172,7 +172,7 @@ function indexPage(all) {
     </div>`;
   const jsonld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: "Guides de l'investissement locatif", inLanguage: 'fr-FR', url: `${SITE}/guides/`,
     hasPart: all.map((a) => ({ '@type': 'Article', headline: a.title, url: `${SITE}/guides/${a.slug}.html` })) };
-  return shell({ title: "Guides de l'investissement locatif — Immo-Zen", description: 'Onze guides complets et chiffrés : premier investissement, rentabilité, cash-flow, crédit, fiscalité nue ou meublée, déclaration 2044, quittance, révision IRL, charges, gestion.', canonical: `${SITE}/guides/`, body, jsonld, prefix: '../' });
+  return shell({ title: "Guides de l'investissement locatif — Immo-Zen", description: 'Douze guides complets et chiffrés : premier investissement, rentabilité, cash-flow, crédit, fiscalité nue ou meublée, déclaration 2044, liasse LMNP, quittance, révision IRL, charges, gestion.', canonical: `${SITE}/guides/`, body, jsonld, prefix: '../' });
 }
 
 const all = readdirSync(srcDir).filter((f) => f.endsWith('.html')).sort().map(parse);
