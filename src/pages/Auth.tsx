@@ -4,7 +4,7 @@ import { useStore } from '../data/store.tsx';
 import { Button, Checkbox, Help, TextInput } from '../ui/components.tsx';
 import { navigate } from '../ui/router.ts';
 import { readInviteCode } from '../domain/tenantPortal.ts';
-import { editeurLine, MENTIONS_URL } from '../domain/legal.ts';
+import { editeurLine, MENTIONS_URL, CGU_URL } from '../domain/legal.ts';
 
 type Mode = 'login' | 'signup' | 'reset';
 
@@ -64,6 +64,7 @@ export function AuthPage() {
           <>
             <Checkbox label={MARKETING_CONSENT} checked={marketing} onChange={setMarketing} />
             <p className="muted small">Facultatif : sans cette case, vous ne recevez que les e-mails liés à votre compte. Désinscription en un clic dans chaque e-mail.</p>
+            <p className="muted small">En créant votre compte, vous acceptez les <a href={CGU_URL} target="_blank" rel="noopener">conditions générales</a>.</p>
           </>
         )}
         {message && <p className={message.tone === 'error' ? 'form-error' : 'form-ok'} role={message.tone === 'error' ? 'alert' : 'status'}>{message.text}</p>}
@@ -76,7 +77,7 @@ export function AuthPage() {
           {mode === 'login' && <button type="button" className="link" onClick={() => setMode('signup')}>Créer un compte</button>}
         </div>
         <p className="muted small">Les offres d’abonnement se consultent dans « Mon abonnement », une fois connecté.</p>
-        <p className="muted small auth-legal">{editeurLine()} · <a href={MENTIONS_URL}>Mentions légales</a> · <a href={`${MENTIONS_URL}#confidentialite`}>Confidentialité</a></p>
+        <p className="muted small auth-legal">{editeurLine()} · <a href={MENTIONS_URL}>Mentions légales</a> · <a href={CGU_URL}>Conditions générales</a> · <a href={`${MENTIONS_URL}#confidentialite`}>Confidentialité</a></p>
       </form>
     </div>
   );
