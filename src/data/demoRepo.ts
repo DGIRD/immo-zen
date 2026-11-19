@@ -258,6 +258,7 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
     async signIn() { signedIn = true; listeners.forEach((l) => l(SESSION, 'SIGNED_IN')); },
     async signUp() { signedIn = true; listeners.forEach((l) => l(SESSION, 'SIGNED_IN')); return 'session'; },
     async signOut() { signedIn = false; listeners.forEach((l) => l(null, 'SIGNED_OUT')); },
+    async subscribeNewsletter() { /* mode démonstration : aucun e-mail */ },
     async signInWithGoogle() { throw new RepoError('Indisponible en mode démonstration.'); },
     async requestPasswordReset() { throw new RepoError('Indisponible en mode démonstration (aucun e-mail n’est envoyé).'); },
     async updatePassword() { throw new RepoError('Indisponible en mode démonstration.'); },

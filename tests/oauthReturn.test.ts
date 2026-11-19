@@ -26,3 +26,16 @@ test('fournisseur non activé : message clair', () => {
   const r = stripOAuthParams('https://immo-zen.fr/app/?error=validation_failed&error_description=Unsupported+provider%3A+provider+is+not+enabled');
   assert.equal(r.error, 'La connexion avec Google n’est pas encore activée.');
 });
+
+import { shouldProposeNewsletter } from '../src/ui/NewsletterPrompt.tsx';
+
+test('proposition newsletter : compte Google récent, sans réponse, case non vue à l’inscription', () => {
+  const now = Date.parse('2026-11-19T15:00:00Z');
+  const base = { mode: 'supabase', providers: ['google'], createdAt: '2026-11-19T14:59:00Z', answer: undefined, askedOnSignup: false, now };
+  assert.equal(shouldProposeNewsletter(base), true);
+  assert.equal(shouldProposeNewsletter({ ...base, answer: 'non' }), false);
+  assert.equal(shouldProposeNewsletter({ ...base, askedOnSignup: true }), false);
+  assert.equal(shouldProposeNewsletter({ ...base, providers: ['email'] }), false);
+  assert.equal(shouldProposeNewsletter({ ...base, createdAt: '2026-09-01T00:00:00Z' }), false);
+  assert.equal(shouldProposeNewsletter({ ...base, mode: 'demo' }), false);
+});

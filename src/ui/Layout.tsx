@@ -1,3 +1,4 @@
+import { NewsletterPrompt } from './NewsletterPrompt.tsx';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useStore } from '../data/store.tsx';
 import { dateTime } from '../domain/format.ts';
@@ -107,7 +108,7 @@ export function Layout({ active, children }: { active: string; children: ReactNo
           </ul>
           <p className="tagline">Prospectez, investissez et gérez vos locations sereinement.</p>
         </nav>
-        <main className="content" id="contenu">{children}</main>
+        <main className="content" id="contenu"><NewsletterPrompt />{children}</main>
       </div>
 
       <div className="toasts" aria-live="polite">
