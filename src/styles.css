@@ -365,6 +365,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .auth-title { font-size: clamp(1.9rem, 3.6vw, 3rem); font-weight: 500; max-width: 18ch; margin-bottom: 1rem; }
 .auth-form { align-self: center; justify-self: center; width: min(400px, calc(100% - 2rem)); display: flex; flex-direction: column; gap: .9rem; padding: 2rem 0; }
 .auth-form.standalone { min-height: 100vh; justify-content: center; margin: 0 auto; }
+.auth-sep { display: flex; align-items: center; gap: .7rem; margin: 0; color: var(--ink-soft); font-size: .88rem; }
+.auth-sep::before, .auth-sep::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
 .auth-links { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .92rem; }
 @media (prefers-color-scheme: dark) { .auth-panel { background: #183a35; } }
 
