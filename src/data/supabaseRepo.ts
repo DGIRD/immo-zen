@@ -20,6 +20,21 @@ export function createSupabaseRepo(url: string, anonKey: string): Repo {
     history.replaceState(history.state, '', r.url);
   });
 
+  // accord newsletter coché avant une inscription avec Google : enregistré au retour, avec l'adresse du compte Google
+  const GOOGLE_OPTIN_KEY = 'immozen:google-optin';
+  sb.auth.onAuthStateChange((event, session) => {
+    if (event !== 'SIGNED_IN' || !session?.user.email) return;
+    let consent: string | null = null;
+    try { consent = localStorage.getItem(GOOGLE_OPTIN_KEY); localStorage.removeItem(GOOGLE_OPTIN_KEY); } catch { /* stockage indisponible */ }
+    if (!consent) return;
+    const email = session.user.email;
+    // hors du rappel d'authentification (pas d'appel Supabase bloquant à l'intérieur)
+    setTimeout(() => {
+      void sb.rpc('iz_subscribe', { p_email: email, p_source: 'essai', p_marketing: true, p_consent_text: consent, p_page: '/app/ (création de compte avec Google)' })
+        .then(({ error }) => { if (error) console.warn('Accord de communication non enregistré :', error.message); });
+    }, 0);
+  });
+
   const toSession = (s: { user: { id: string; email?: string } } | null): SessionInfo | null =>
     s ? { userId: s.user.id, email: s.user.email ?? '' } : null;
 
@@ -71,7 +86,11 @@ export function createSupabaseRepo(url: string, anonKey: string): Repo {
       }
       return data?.session ? 'session' : 'confirm_email';
     },
-    async signInWithGoogle() {
+    async signInWithGoogle(marketing) {
+      try {
+        if (marketing) localStorage.setItem(GOOGLE_OPTIN_KEY, marketing.consentText);
+        else localStorage.removeItem(GOOGLE_OPTIN_KEY);
+      } catch { /* stockage indisponible : l'accord ne sera pas enregistré */ }
       check(await sb.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: location.origin + location.pathname, queryParams: { prompt: 'select_account' } },
