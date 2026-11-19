@@ -54,7 +54,7 @@ jobs:
             v="${!k}"
             if [ -n "$v" ]; then args+=("$k=$v"); echo "→ $k transmis"; fi
           done
-          supabase secrets set --project-ref "$PROJECT_REF" "${args[@]}"
+          supabase secrets set --yes --project-ref "$PROJECT_REF" "${args[@]}"
       - name: E-mails du compte en français (confirmation, mot de passe, invitation…)
         continue-on-error: true
         run: |
@@ -80,19 +80,19 @@ jobs:
           if [ "$code" != "200" ]; then echo "::error::Modèles d'e-mails non appliqués (HTTP $code) : $(head -c 300 /tmp/auth.json)"; exit 1; fi
           echo "Modèles d'e-mails en français appliqués."
       - name: Fonction daily (tâches quotidiennes, e-mails)
-        run: supabase functions deploy daily --project-ref "$PROJECT_REF" --no-verify-jwt
+        run: supabase functions deploy daily --yes --project-ref "$PROJECT_REF" --no-verify-jwt
       - name: Fonction marche (données de marché, chaque nuit)
-        run: supabase functions deploy marche --project-ref "$PROJECT_REF" --no-verify-jwt
+        run: supabase functions deploy marche --yes --project-ref "$PROJECT_REF" --no-verify-jwt
       - name: Fonction stripe-webhook
-        run: supabase functions deploy stripe-webhook --project-ref "$PROJECT_REF" --no-verify-jwt
+        run: supabase functions deploy stripe-webhook --yes --project-ref "$PROJECT_REF" --no-verify-jwt
       - name: Fonction platform (paiement, espace client, invitations)
-        run: supabase functions deploy platform --project-ref "$PROJECT_REF"
+        run: supabase functions deploy platform --yes --project-ref "$PROJECT_REF"
       - name: Fonction assistant (aide conversationnelle)
-        run: supabase functions deploy assistant --project-ref "$PROJECT_REF"
+        run: supabase functions deploy assistant --yes --project-ref "$PROJECT_REF"
       - name: Fonction dvf (estimation, repli serveur)
-        run: supabase functions deploy dvf --project-ref "$PROJECT_REF"
+        run: supabase functions deploy dvf --yes --project-ref "$PROJECT_REF"
       - name: Fonction annonce (lecture d'une annonce à partir de son lien)
-        run: supabase functions deploy annonce --project-ref "$PROJECT_REF"
+        run: supabase functions deploy annonce --yes --project-ref "$PROJECT_REF"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -102,7 +102,7 @@ jobs:
           npm ci --no-audit --no-fund
           node scripts/build-functions.mjs
       - name: Fonction tdfc (télétransmission EDI-TDFC de la liasse LMNP)
-        run: supabase functions deploy tdfc --project-ref "$PROJECT_REF"
+        run: supabase functions deploy tdfc --yes --project-ref "$PROJECT_REF"
       - name: Adresses à utiliser
         run: |
           echo "Webhook Stripe : https://${PROJECT_REF}.supabase.co/functions/v1/stripe-webhook" >> "$GITHUB_STEP_SUMMARY"
