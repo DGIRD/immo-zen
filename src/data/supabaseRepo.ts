@@ -1,6 +1,7 @@
 import { createSupabasePlatform } from './platform.ts';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { EMPTY_SNAPSHOT, RepoError, type Repo, type SessionInfo, type Snapshot, type TenantPortal, type UpdateResult } from './repo.ts';
+import { OAUTH_ERROR_KEY, stripOAuthParams } from '../domain/oauthReturn.ts';
 import type { Insert, Patch, Receipt, Reminder, Tables, TableName, UserSettings, VersionedTable } from './types.ts';
 
 const PAGE = 1000;
@@ -9,6 +10,14 @@ const BUCKET = 'documents';
 export function createSupabaseRepo(url: string, anonKey: string): Repo {
   const sb: SupabaseClient = createClient(url, anonKey, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
+  });
+
+  // retour de Google : une fois l'échange du code terminé (getSession attend l'initialisation), nettoyer l'adresse
+  void sb.auth.getSession().finally(() => {
+    const r = stripOAuthParams(location.href);
+    if (!r.changed) return;
+    if (r.error) { try { sessionStorage.setItem(OAUTH_ERROR_KEY, r.error); } catch { /* stockage indisponible */ } }
+    history.replaceState(history.state, '', r.url);
   });
 
   const toSession = (s: { user: { id: string; email?: string } } | null): SessionInfo | null =>
@@ -61,6 +70,12 @@ export function createSupabaseRepo(url: string, anonKey: string): Repo {
         if (error) console.warn('Accord de communication non enregistré :', error.message);
       }
       return data?.session ? 'session' : 'confirm_email';
+    },
+    async signInWithGoogle() {
+      check(await sb.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: location.origin + location.pathname, queryParams: { prompt: 'select_account' } },
+      }));
     },
     async signOut() {
       await sb.auth.signOut({ scope: 'local' });

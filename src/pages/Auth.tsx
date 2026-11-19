@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { describeError } from '../data/repo.ts';
 import { useStore } from '../data/store.tsx';
 import { Button, Checkbox, Help, TextInput } from '../ui/components.tsx';
 import { navigate } from '../ui/router.ts';
-import { readInviteCode } from '../domain/tenantPortal.ts';
+import { readInviteCode, rememberInviteCode } from '../domain/tenantPortal.ts';
+import { takeOAuthError } from '../domain/oauthReturn.ts';
 import { editeurLine, MENTIONS_URL, CGU_URL } from '../domain/legal.ts';
 
 type Mode = 'login' | 'signup' | 'reset';
@@ -20,6 +21,26 @@ export function AuthPage() {
   const [message, setMessage] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null);
   const [busy, setBusy] = useState(false);
   const [marketing, setMarketing] = useState(false);
+
+  // refus ou erreur au retour de Google (l'adresse est nettoyée juste après l'échange du code)
+  useEffect(() => {
+    const show = () => { const m = takeOAuthError(); if (m) setMessage({ text: m, tone: 'error' }); };
+    show();
+    const id = setTimeout(show, 800);
+    return () => clearTimeout(id);
+  }, []);
+
+  async function google() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      rememberInviteCode(readInviteCode()); // l'invitation locataire survit à l'aller-retour chez Google
+      await repo.signInWithGoogle();
+    } catch (err) {
+      setMessage({ text: describeError(err), tone: 'error' });
+      setBusy(false);
+    }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -54,6 +75,15 @@ export function AuthPage() {
       <form className="auth-form" onSubmit={submit} noValidate={false}>
         <h2>{mode === 'login' ? 'Connexion' : mode === 'signup' ? 'Créer un compte' : 'Mot de passe oublié'}</h2>
         {invited && <p className="note" role="status">Invitation à votre espace locataire : créez votre compte (ou connectez-vous) avec l’adresse e-mail qui a reçu l’invitation. Votre espace s’ouvrira ensuite.</p>}
+        {mode !== 'reset' && repo.mode === 'supabase' && (
+          <>
+            <Button type="button" className="btn-google" disabled={busy} onClick={() => void google()}>
+              {busy ? 'Patientez…' : 'Continuer avec Google'}
+            </Button>
+            <p className="muted small">En continuant, vous acceptez les <a href={CGU_URL} target="_blank" rel="noopener">conditions générales</a>.</p>
+            <p className="auth-sep" aria-hidden="true"><span>ou avec votre e-mail</span></p>
+          </>
+        )}
         <TextInput label="Adresse e-mail" type="email" required autoComplete="email" value={email} onChange={setEmail} />
         {mode !== 'reset' && (
           <TextInput label="Mot de passe" type="password" required value={password} onChange={setPassword}

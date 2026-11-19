@@ -82,6 +82,8 @@ export interface Repo {
   signIn(email: string, password: string): Promise<void>;
   /** `marketing` : case d'accord cochée (conseils et offres), enregistrée avec son texte puis confirmée par e-mail. */
   signUp(email: string, password: string, marketing?: { consentText: string } | null): Promise<'session' | 'confirm_email'>;
+  /** Connexion (ou création de compte) avec Google : redirige vers Google puis revient sur l'application. */
+  signInWithGoogle(): Promise<void>;
   signOut(): Promise<void>;
   requestPasswordReset(email: string): Promise<void>;
   updatePassword(password: string): Promise<void>;
