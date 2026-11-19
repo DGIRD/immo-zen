@@ -121,3 +121,12 @@ test('offre fondateurs : code actif avec des places restantes, sinon saisie libr
   assert.equal(usableFounderPromotion([{ ...ok, coupon: undefined, promotion: { coupon: { valid: true, max_redemptions: 300, times_redeemed: 1 } } }], now)?.id, 'promo_ok', 'forme récente de l’API');
   assert.equal(usableFounderPromotion([], now), null);
 });
+
+test('TVA : taux fixe Stripe ajouté à la ligne de la page de paiement', async () => {
+  const { taxRateParams } = await import('../supabase/functions/_shared/stripe.ts');
+  assert.deepEqual(taxRateParams('txr_1UdYY3PxQxI3D6MvUmYFFSsJ'), { 'line_items[0][tax_rates][0]': 'txr_1UdYY3PxQxI3D6MvUmYFFSsJ' });
+  assert.deepEqual(taxRateParams(' txr_abc '), { 'line_items[0][tax_rates][0]': 'txr_abc' });
+  assert.deepEqual(taxRateParams(''), {}, 'variable absente : aucun paramètre');
+  assert.deepEqual(taxRateParams(undefined), {});
+  assert.deepEqual(taxRateParams('pk_live_x'), {}, 'identifiant qui n’est pas un taux');
+});

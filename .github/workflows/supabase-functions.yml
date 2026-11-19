@@ -6,7 +6,7 @@
 #   Secret obligatoire : SUPABASE_ACCESS_TOKEN (supabase.com → Account → Access Tokens)
 #   Secrets facultatifs (transmis tels quels aux fonctions s'ils existent) :
 #     CRON_SECRET, RESEND_API_KEY, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, ANTHROPIC_API_KEY (assistant)
-#   Variables facultatives (onglet Variables, ou Secrets : les deux sont lus) : SUPABASE_PROJECT_REF, APP_URL, EMAIL_FROM, EMAIL_REPLY_TO, EMAIL_ENABLED, ASSISTANT_MODEL, ASSISTANT_DAILY_LIMIT
+#   Variables facultatives (onglet Variables, ou Secrets : les deux sont lus) : SUPABASE_PROJECT_REF, STRIPE_TAX_RATE_ID (taux de TVA txr_…), APP_URL, EMAIL_FROM, EMAIL_REPLY_TO, EMAIL_ENABLED, ASSISTANT_MODEL, ASSISTANT_DAILY_LIMIT
 name: Fonctions serveur Supabase
 
 on:
@@ -25,6 +25,7 @@ jobs:
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+      STRIPE_TAX_RATE_ID: ${{ vars.STRIPE_TAX_RATE_ID || secrets.STRIPE_TAX_RATE_ID }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       ASSISTANT_MODEL: ${{ vars.ASSISTANT_MODEL || secrets.ASSISTANT_MODEL }}
       ASSISTANT_DAILY_LIMIT: ${{ vars.ASSISTANT_DAILY_LIMIT || secrets.ASSISTANT_DAILY_LIMIT }}
@@ -49,7 +50,7 @@ jobs:
       - name: Secrets des fonctions
         run: |
           args=()
-          for k in CRON_SECRET RESEND_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET ANTHROPIC_API_KEY ASSISTANT_MODEL ASSISTANT_DAILY_LIMIT APP_URL EMAIL_FROM EMAIL_REPLY_TO EMAIL_ENABLED; do
+          for k in CRON_SECRET RESEND_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET STRIPE_TAX_RATE_ID ANTHROPIC_API_KEY ASSISTANT_MODEL ASSISTANT_DAILY_LIMIT APP_URL EMAIL_FROM EMAIL_REPLY_TO EMAIL_ENABLED; do
             v="${!k}"
             if [ -n "$v" ]; then args+=("$k=$v"); echo "→ $k transmis"; fi
           done

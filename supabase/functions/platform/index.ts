@@ -6,7 +6,7 @@
 //  * invite   : invitation d'un utilisateur par e-mail (administrateurs) — l'invité choisit lui-même son mot de passe.
 // Secrets : STRIPE_SECRET_KEY, APP_URL (+ SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY fournis par Supabase).
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { FOUNDER_CODE, stripeRequest, usableFounderPromotion, type StripePromotionCode } from '../_shared/stripe.ts';
+import { FOUNDER_CODE, stripeRequest, taxRateParams, usableFounderPromotion, type StripePromotionCode } from '../_shared/stripe.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const cors = {
@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
       }
       const s = await stripeRequest<{ url: string }>(secret, 'POST', 'checkout/sessions', {
         mode: 'subscription', customer, client_reference_id: user.id,
-        'line_items[0][price]': plan.stripe_price_id, 'line_items[0][quantity]': 1,
+        'line_items[0][price]': plan.stripe_price_id, 'line_items[0][quantity]': 1, ...taxRateParams(env('STRIPE_TAX_RATE_ID')),
         'subscription_data[metadata][user_id]': user.id, ...discount, locale: 'fr',
         success_url: `${appUrl}#/abonnement?retour=ok`, cancel_url: `${appUrl}#/abonnement?retour=annule`,
       });
@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
       if (!paying || !['essentiel', 'patrimoine'].includes(String(tier))) return reply(409, { error: 'Le pack fiscal complète une formule Essentiel ou Patrimoine : abonnez-vous d’abord.' });
       const s = await stripeRequest<{ url: string }>(secret, 'POST', 'checkout/sessions', {
         mode: 'payment', customer: sub.stripe_customer_id, client_reference_id: user.id,
-        'line_items[0][price]': pack.stripe_price_id, 'line_items[0][quantity]': 1,
+        'line_items[0][price]': pack.stripe_price_id, 'line_items[0][quantity]': 1, ...taxRateParams(env('STRIPE_TAX_RATE_ID')),
         'metadata[addon]': 'pack_fiscal', 'metadata[user_id]': user.id, 'payment_intent_data[metadata][addon]': 'pack_fiscal',
         // facture émise pour le pack (envoyée par e-mail et listée dans « Mes factures »)
         'invoice_creation[enabled]': true, 'invoice_creation[invoice_data][metadata][user_id]': user.id,
