@@ -35,8 +35,11 @@ export function createSupabaseRepo(url: string, anonKey: string): Repo {
     }, 0);
   });
 
-  const toSession = (s: { user: { id: string; email?: string } } | null): SessionInfo | null =>
-    s ? { userId: s.user.id, email: s.user.email ?? '' } : null;
+  const toSession = (s: { user: { id: string; email?: string; created_at?: string; app_metadata?: { providers?: string[]; provider?: string } } } | null): SessionInfo | null =>
+    s ? {
+      userId: s.user.id, email: s.user.email ?? '', createdAt: s.user.created_at,
+      providers: s.user.app_metadata?.providers ?? (s.user.app_metadata?.provider ? [s.user.app_metadata.provider] : []),
+    } : null;
 
   function check<R extends { data: unknown; error: { message: string } | null }>(res: R): R['data'] {
     if (res.error) throw new RepoError(res.error.message, res.error, !navigator.onLine);
@@ -95,6 +98,12 @@ export function createSupabaseRepo(url: string, anonKey: string): Repo {
         provider: 'google',
         options: { redirectTo: location.origin + location.pathname, queryParams: { prompt: 'select_account' } },
       }));
+    },
+    async subscribeNewsletter(consentText) {
+      const { data } = await sb.auth.getSession();
+      const email = data.session?.user.email;
+      if (!email) throw new RepoError('Session expirée : reconnectez-vous.');
+      check(await sb.rpc('iz_subscribe', { p_email: email, p_source: 'essai', p_marketing: true, p_consent_text: consentText, p_page: '/app/ (proposition au premier passage)' }));
     },
     async signOut() {
       await sb.auth.signOut({ scope: 'local' });

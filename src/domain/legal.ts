@@ -25,3 +25,6 @@ export const MENTIONS_URL = '../mentions-legales.html';
 
 /** Conditions générales d'utilisation et de vente du site vitrine, vues depuis l'application. */
 export const CGU_URL = '../conditions-generales.html';
+
+/** Texte exact de la case d'accord (conseils et offres par e-mail), conservé comme preuve du consentement. */
+export const MARKETING_CONSENT = 'J’accepte de recevoir les conseils et offres d’Immo-Zen par e-mail (environ un par mois, désinscription en un clic).';

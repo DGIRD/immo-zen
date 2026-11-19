@@ -5,12 +5,12 @@ import { Button, Checkbox, Help, TextInput } from '../ui/components.tsx';
 import { navigate } from '../ui/router.ts';
 import { readInviteCode, rememberInviteCode } from '../domain/tenantPortal.ts';
 import { takeOAuthError } from '../domain/oauthReturn.ts';
-import { editeurLine, MENTIONS_URL, CGU_URL } from '../domain/legal.ts';
+import { markNewsletterAsked } from '../ui/NewsletterPrompt.tsx';
+import { editeurLine, MENTIONS_URL, CGU_URL, MARKETING_CONSENT } from '../domain/legal.ts';
 
 type Mode = 'login' | 'signup' | 'reset';
 
-/** Texte exact de la case d'accord, conservé comme preuve du consentement. */
-export const MARKETING_CONSENT = 'J’accepte de recevoir les conseils et offres d’Immo-Zen par e-mail (environ un par mois, désinscription en un clic).';
+export { MARKETING_CONSENT };
 
 /** Logo « G » de Google pour le bouton de connexion (fichier g-logo.svg du paquet google-signin-button, partie vectorielle). */
 function GoogleMark() {
@@ -53,6 +53,7 @@ export function AuthPage() {
     setMessage(null);
     try {
       rememberInviteCode(readInviteCode()); // l'invitation locataire survit à l'aller-retour chez Google
+      if (mode === 'signup') markNewsletterAsked(); // la case a été proposée : pas de seconde proposition après le retour
       await repo.signInWithGoogle(mode === 'signup' && marketing && !invited ? { consentText: MARKETING_CONSENT } : null);
     } catch (err) {
       setMessage({ text: describeError(err), tone: 'error' });
