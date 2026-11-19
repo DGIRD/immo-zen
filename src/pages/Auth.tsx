@@ -12,6 +12,24 @@ type Mode = 'login' | 'signup' | 'reset';
 /** Texte exact de la case d'accord, conservé comme preuve du consentement. */
 export const MARKETING_CONSENT = 'J’accepte de recevoir les conseils et offres d’Immo-Zen par e-mail (environ un par mois, désinscription en un clic).';
 
+/** Logo « G » de Google pour le bouton de connexion (fichier g-logo.svg du paquet google-signin-button, partie vectorielle). */
+function GoogleMark() {
+  return (
+    <svg className="google-mark" viewBox="0 0 48 48" width="18" height="18" aria-hidden="true">
+      <defs>
+        <path id="iz-g-shape" d="M44.5,20H42h-8.2H24v8.5h11.8C34.7,33.9,30.1,37,24,37c-7.2,0-13-5.8-13-13s5.8-13,13-13c3.1,0,5.9,1.1,8.1,2.9l6.4-6.4C34.6,4.1,29.6,2,24,2C11.8,2,2,11.8,2,24s9.8,22,22,22c11,0,21-8,21-22C45,22.7,44.8,21.3,44.5,20z" />
+        <clipPath id="iz-g-clip"><use href="#iz-g-shape" /></clipPath>
+      </defs>
+      <g clipPath="url(#iz-g-clip)">
+        <polygon fill="#FBBC05" points="0,37 0,11 17,24" />
+        <polygon fill="#EA4335" points="0,11 17,24 24,17.9 48,14 48,0 0,0" />
+        <polygon fill="#34A853" points="0,37 30,14 37.9,15 48,0 48,48 0,48" />
+        <polygon fill="#4285F4" points="48,48 17,24 13,21 48,11" />
+      </g>
+    </svg>
+  );
+}
+
 export function AuthPage() {
   const { repo } = useStore();
   const invited = !!readInviteCode();
@@ -78,7 +96,7 @@ export function AuthPage() {
         {mode !== 'reset' && repo.mode === 'supabase' && (
           <>
             <Button type="button" className="btn-google" disabled={busy} onClick={() => void google()}>
-              {busy ? 'Patientez…' : 'Continuer avec Google'}
+              {!busy && <GoogleMark />}{busy ? 'Patientez…' : 'Continuer avec Google'}
             </Button>
             <p className="muted small">En continuant, vous acceptez les <a href={CGU_URL} target="_blank" rel="noopener">conditions générales</a>.</p>
             <p className="auth-sep" aria-hidden="true"><span>ou avec votre e-mail</span></p>
