@@ -4,6 +4,7 @@ import { usePlan, useStore } from '../data/store.tsx';
 import { ACCESS_REASONS, STATUS_LABELS, type Plan } from '../data/platform.ts';
 import { describeError } from '../data/repo.ts';
 import { date, money2 } from '../domain/format.ts';
+import { CGU_URL } from '../domain/legal.ts';
 import { FISCAL_PACK_PRICE, planUsage, sizeLabel, TIERS, tierDef, type TierDef } from '../domain/plans.ts';
 import { Button, Help, KeyValue, NotAvailable, PageHeader, Pill, Section, Tabs } from '../ui/components.tsx';
 import { useRoute } from '../ui/router.ts';
@@ -164,6 +165,7 @@ export function SubscriptionPage() {
           })}
         </div>
         <TierCompare />
+        <p className="muted small">En vous abonnant, vous acceptez les <a href={CGU_URL} target="_blank" rel="noopener">conditions générales de vente</a> : sans engagement, et 14 jours pour vous rétracter avec remboursement intégral.</p>
         {!plans.some((p) => p.tier && p.active && p.stripe_price_id) && (
           <NotAvailable>Le paiement en ligne n’est pas encore ouvert.{config?.support_email ? <> Contact : <a href={`mailto:${config.support_email}`}>{config.support_email}</a>.</> : null}</NotAvailable>
         )}

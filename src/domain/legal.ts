@@ -22,3 +22,6 @@ export function editeurLine(): string {
 
 /** Page des mentions légales du site vitrine, vue depuis l'application (servie sous /app/). */
 export const MENTIONS_URL = '../mentions-legales.html';
+
+/** Conditions générales d'utilisation et de vente du site vitrine, vues depuis l'application. */
+export const CGU_URL = '../conditions-generales.html';
