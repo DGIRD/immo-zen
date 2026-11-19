@@ -187,6 +187,7 @@ Seules les questions et le nom de la rubrique affichée sont transmis au modèle
 | `RESEND_API_KEY` | secret | `re_…` |
 | `STRIPE_SECRET_KEY` | secret | `sk_test_…` puis `sk_live_…` |
 | `STRIPE_WEBHOOK_SECRET` | secret | `whsec_…` |
+| `STRIPE_TAX_RATE_ID` | variable | `txr_…` : taux Stripe « TVA 20 % incluse », ajouté à chaque paiement pour que la TVA figure sur les factures |
 | `APP_URL` | variable | `https://immo-zen.fr/app/` |
 | `EMAIL_FROM` | variable | `Immo-Zen <contact@immo-zen.fr>` |
 | `EMAIL_REPLY_TO` | variable | `contact@immo-zen.fr` |

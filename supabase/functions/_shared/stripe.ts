@@ -268,3 +268,13 @@ export function usableFounderPromotion(list: StripePromotionCode[], nowSec = Mat
   }
   return null;
 }
+
+/**
+ * TVA appliquée aux paiements : taux fixe Stripe (txr_…, 20 % inclus dans le prix TTC) transmis par la variable
+ * STRIPE_TAX_RATE_ID. Il figure sur chaque facture (abonnements et pack fiscal) sans changer le prix payé.
+ * Sans identifiant valide, aucun paramètre n'est ajouté (comportement antérieur).
+ */
+export function taxRateParams(taxRateId: string | undefined | null): Record<string, string> {
+  const id = (taxRateId ?? '').trim();
+  return /^txr_[A-Za-z0-9]+$/.test(id) ? { 'line_items[0][tax_rates][0]': id } : {};
+}
