@@ -3,7 +3,7 @@ import { useStore } from '../../data/store.tsx';
 import type { ExpenseCategory } from '../../data/types.ts';
 import { downloadBlob, toXlsx } from '../../domain/exporting.ts';
 import { date, money2 } from '../../domain/format.ts';
-import { buildImportRows, IMPORT_COLUMNS, parseDelimited, readImportFile, rentRoute, rowStatus, toExpense, toLeasePayment, type Cell, type ImportRow, type RentContext } from '../../domain/importing.ts';
+import { buildImportRows, likelyDuplicates, IMPORT_COLUMNS, parseDelimited, readImportFile, rentRoute, rowStatus, toExpense, toLeasePayment, type Cell, type ImportRow, type RentContext } from '../../domain/importing.ts';
 import { leaseIncomeIndex } from '../../domain/incomeOverlap.ts';
 import { syncLedgerWith } from './ledgerSync.ts';
 import { EXPENSE_CATEGORY_LABELS, MAIN_EXPENSE_CATEGORIES, OTHER_EXPENSE_CATEGORIES } from '../../domain/rental.ts';
@@ -39,13 +39,15 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [onlyIssues, setOnlyIssues] = useState(false);
+  /** Lignes que l'utilisateur choisit de ne pas importer (index dans `rows`). */
+  const [skipped, setSkipped] = useState<Set<number>>(new Set());
   const { leases, payments } = store.data;
   const rent: RentContext = useMemo(() => ({
     idx: leaseIncomeIndex(leases, payments), leases,
     paymentRefs: new Set(payments.map((p) => p.import_ref).filter((r): r is string => !!r)),
   }), [leases, payments]);
 
-  const reset = () => { setRows(null); setSource(''); setPaste(''); setError(null); setOnlyIssues(false); };
+  const reset = () => { setRows(null); setSource(''); setPaste(''); setError(null); setOnlyIssues(false); setSkipped(new Set()); };
   const close = () => { reset(); onClose(); };
 
   function load(cells: Cell[][], name: string) {
@@ -53,12 +55,15 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
     if (out.error) { setError(out.error); return; }
     if (!out.rows.length) { setError('Aucune ligne à importer sous les en-têtes.'); return; }
     setError(null);
+    // doublons probables (même ligne plus haut, ou dépense semblable déjà enregistrée) : décochés d'office
+    setSkipped(new Set(likelyDuplicates(out.rows, store.data.expenses).keys()));
     setRows(out.rows);
     setSource(name);
   }
 
   const statuses = rows?.map((r) => rowStatus(r, existingRefs, rent)) ?? [];
-  const ready = rows?.filter((_, i) => statuses[i]!.status === 'ok') ?? [];
+  const dupes = useMemo(() => (rows ? likelyDuplicates(rows, store.data.expenses) : new Map<number, string>()), [rows, store.data.expenses]);
+  const ready = rows?.filter((_, i) => statuses[i]!.status === 'ok' && !skipped.has(i)) ?? [];
   const routes = new Map(ready.map((r) => [r, rentRoute(r, rent)]));
   const toPayments = ready.filter((r) => routes.get(r)?.kind === 'paiement');
   const toExpenses = ready.filter((r) => routes.get(r)?.kind !== 'paiement');
@@ -66,7 +71,12 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
   const incomeSum = sumOf(toExpenses.filter((r) => r.category === 'loyer'));
   const expenseSum = sumOf(toExpenses.filter((r) => r.category !== 'loyer'));
   const paymentSum = sumOf(toPayments);
-  const count = (s: string) => statuses.filter((x) => x.status === s).length;
+  const count = (s: string) => statuses.filter((x, i) => x.status === s && !skipped.has(i)).length;
+  // lignes qu'on peut écarter : toutes sauf celles déjà importées ou déjà saisies dans Loyers
+  const skippable = statuses.map((x, i) => (x.status === 'doublon' || x.status === 'deja' ? -1 : i)).filter((i) => i >= 0);
+  const allSkipped = skippable.length > 0 && skippable.every((i) => skipped.has(i));
+  const toggle = (i: number, keep: boolean) => setSkipped((s0) => { const s1 = new Set(s0); if (keep) s1.delete(i); else s1.add(i); return s1; });
+  const toggleAll = (keep: boolean) => setSkipped(keep ? new Set() : new Set(skippable));
   // valeurs distinctes de la colonne « Appartement » : un choix s'applique à toutes leurs lignes
   const places = rows ? [...new Map(rows.map((r) => [r.rawProperty ?? '', r])).keys()] : [];
 
@@ -138,6 +148,8 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
             {count('signe') > 0 && <span className="pill pill-warn">{count('signe')} à vérifier</span>}
             {count('doublon') > 0 && <span className="pill pill-neutral">{count('doublon')} déjà importée(s)</span>}
             {count('deja') > 0 && <span className="pill pill-neutral">{count('deja')} loyer(s) déjà saisi(s) dans Loyers</span>}
+            {dupes.size > 0 && <span className="pill pill-warn">{dupes.size} doublon(s) probable(s)</span>}
+            {skipped.size > 0 && <span className="pill pill-neutral">{skipped.size} écartée(s), non importée(s)</span>}
             {toPayments.length > 0 && <span className="pill pill-ok">dont {toPayments.length} loyer(s) vers Loyers et paiements</span>}
             <span className="muted">Dépenses {money2(expenseSum)}{incomeSum > 0 ? ` · recettes ${money2(incomeSum)}` : ''}{paymentSum > 0 ? ` · loyers vers Loyers et paiements ${money2(paymentSum)}` : ''}</span>
           </div>
@@ -160,37 +172,43 @@ export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose:
           <label className="checkbox"><input type="checkbox" checked={onlyIssues} onChange={(e) => setOnlyIssues(e.target.checked)} /><span>Afficher seulement les lignes à compléter ou vérifier</span></label>
           <div className="dt-scroll tall">
             <table className="dt-table compact import-table">
-              <thead><tr><th>Ligne</th><th>Date</th><th>Libellé</th><th className="num">Montant</th><th>Catégorie</th><th>Logement</th><th>État</th></tr></thead>
+              <thead><tr><th className="col-check"><input type="checkbox" aria-label="Importer toutes les lignes" title="Tout cocher ou décocher"
+                checked={!allSkipped && skipped.size === 0} ref={(el) => { if (el) el.indeterminate = skipped.size > 0 && !allSkipped; }}
+                disabled={!skippable.length} onChange={(e) => toggleAll(e.target.checked)} /></th><th>Ligne</th><th>Date</th><th>Libellé</th><th className="num">Montant</th><th>Catégorie</th><th>Logement</th><th className="col-state">État</th></tr></thead>
               <tbody>
                 {rows.map((r, i) => {
                   const st = statuses[i]!;
                   const done = st.status === 'doublon' || st.status === 'deja';
-                  if (onlyIssues && (st.status === 'ok' || done)) return null;
+                  const off = skipped.has(i);
+                  if (onlyIssues && ((st.status === 'ok' && !dupes.has(i)) || done)) return null;
                   return (
-                    <tr key={r.ref + i} className={st.status === 'ok' ? '' : done ? 'muted' : 'row-warn'}>
+                    <tr key={r.ref + i} className={off ? 'muted row-skipped' : st.status === 'ok' ? '' : done ? 'muted' : 'row-warn'}>
+                      <td className="col-check"><input type="checkbox" aria-label={`Importer la ligne ${r.line}`} checked={!done && !off} disabled={done} onChange={(e) => toggle(i, e.target.checked)} /></td>
                       <td>{r.line}</td>
                       <td>{r.date ? date(r.date) : '—'}</td>
-                      <td className="wrap">{r.label || '—'}{r.notes && <small className="muted"> · {r.notes}</small>}</td>
+                      <td className="wrap">{r.label || '—'}{r.notes && <small className="muted"> · {r.notes}</small>}
+                        {!done && dupes.has(i) && <small className="dupe-hint">Doublon probable : {dupes.get(i)}</small>}</td>
                       <td className={`num ${r.signed !== null && r.signed > 0 ? 'pos' : ''}`}>{r.signed === null ? '—' : money2(r.signed)}</td>
                       <td>
-                        <select aria-label={`Catégorie ligne ${r.line}`} value={r.category ?? ''} disabled={done} onChange={(e) => patch(i, { category: (e.target.value || null) as ExpenseCategory | null })}>
+                        <select aria-label={`Catégorie ligne ${r.line}`} value={r.category ?? ''} disabled={done || off} onChange={(e) => patch(i, { category: (e.target.value || null) as ExpenseCategory | null })}>
                           <option value="">Choisir…</option>
                           {CATEGORY_OPTIONS.map((k) => <option key={k} value={k}>{categoryLabel(k)}</option>)}
                         </select>
                       </td>
                       <td>
-                        <select aria-label={`Logement ligne ${r.line}`} value={r.propertyId ?? ''} disabled={done} onChange={(e) => patch(i, { propertyId: e.target.value || null })}>
+                        <select aria-label={`Logement ligne ${r.line}`} value={r.propertyId ?? ''} disabled={done || off} onChange={(e) => patch(i, { propertyId: e.target.value || null })}>
                           <option value="">Choisir…</option>
                           {owned.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
                         </select>
                       </td>
-                      <td><span className={`pill pill-${st.status === 'ok' ? 'ok' : done ? 'neutral' : 'warn'}`}>{st.message}</span></td>
+                      <td className="col-state">{off ? <span className="pill pill-neutral">Ne pas importer</span> : <span className={`pill pill-${st.status === 'ok' ? 'ok' : done ? 'neutral' : 'warn'}`}>{st.message}</span>}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
+          <p className="muted small">Décochez une ligne pour ne pas l’importer (virement entre vos comptes, dépense personnelle…) : elle est ignorée et pourra être importée plus tard. Les doublons probables (ligne répétée dans le fichier, ou dépense de même montant déjà enregistrée sur le logement à 3 jours près) sont décochés d’office : recochez-les s’il s’agit bien de deux dépenses.</p>
           <Help>Chaque ligne devient une dépense payée à la date du relevé. Un loyer va dans Loyers et paiements : il devient un paiement du bail, ou n’est pas importé s’il y est déjà saisi (sans bail à sa date, créez d’abord le bail). Un relevé réimporté ne crée pas de doublon. Ajoutez ensuite, si besoin, la part récupérable (ex. taxe d’ordures ménagères) et le justificatif en modifiant la dépense.</Help>
         </>
       )}
