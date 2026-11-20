@@ -8,6 +8,9 @@ import type { PdfBlock, PdfDoc, PdfSection } from './docPdf.ts';
 import { money, money2, pct, date } from './format.ts';
 import { estimateTaeg } from './loanRates.ts';
 import { round2, type SimulationInputs, type SimulationResult } from './simulator.ts';
+import { patrimonyTotals, type PatrimonyLine } from './patrimony.ts';
+
+const USAGE_SHORT: Record<PatrimonyLine['usage'], string> = { locatif: 'Locatif', residence_principale: 'Résidence principale', residence_secondaire: 'Résidence secondaire' };
 
 export interface DossierProperty {
   title: string; address?: string | null; zip?: string | null; city?: string | null; property_type?: string | null;
@@ -65,7 +68,7 @@ export interface DossierCover {
 }
 export interface BankDossier extends PdfDoc { cover: DossierCover }
 
-export function bankDossierDoc(o: { property: DossierProperty; inputs: SimulationInputs; result: SimulationResult; borrower?: Borrower; editedOn: string; withSchedule?: boolean }): BankDossier {
+export function bankDossierDoc(o: { property: DossierProperty; inputs: SimulationInputs; result: SimulationResult; borrower?: Borrower; editedOn: string; withSchedule?: boolean; patrimony?: PatrimonyLine[] }): BankDossier {
   const { property: p, inputs: i, result: r, borrower: b = {} } = o;
   const where = [p.address, [p.zip, p.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
   const fees = r.financingFees;
@@ -77,6 +80,7 @@ export function bankDossierDoc(o: { property: DossierProperty; inputs: Simulatio
   const pitch = [
     `Acquisition ${p.property_type ? `d’un ${(TYPE[p.property_type] ?? p.property_type).toLowerCase()}` : 'd’un bien'}${p.rooms ? ` de ${p.rooms} pièce${p.rooms > 1 ? 's' : ''}` : ''}${i.surface ? ` (${String(i.surface).replace('.', ',')} m2)` : ''}${p.city ? ` à ${p.city}` : ''}${p.furnished ? ', destiné à la location meublée' : p.furnished === false ? ', destiné à la location nue' : ', destiné à la location'}.`,
     `Coût total du projet ${money(r.totalCost)}, financé par ${r.equity > 0 ? `un apport de ${money(r.equity)} et ` : ''}un prêt de ${money(r.loanAmount)} sur ${i.loanYears} ans.`,
+    ...(o.patrimony?.length ? (() => { const t = patrimonyTotals(o.patrimony); return [`Patrimoine immobilier actuel : ${t.count} bien${t.count > 1 ? 's' : ''} estimé${t.count > 1 ? 's' : ''} ${money(t.value)}, dont ${money(t.remaining)} de capital restant dû, soit ${money(t.net)} de patrimoine net.`]; })() : []),
     ...(b.presentation?.trim() ? [b.presentation.trim()] : []),
   ];
   const cf = r.cashflowMonthlySteady;
@@ -119,6 +123,40 @@ export function bankDossierDoc(o: { property: DossierProperty; inputs: Simulatio
         ] } as PdfBlock,
         { t: 'p', text: `Méthode usuelle des banques : loyers retenus à ${RENT_WEIGHT * 100} %, mensualités assurance comprise. Plafond recommandé par le Haut Conseil de stabilité financière : ${HCSF_MAX} %${ratio.after > HCSF_MAX ? ' (dépassé : la banque peut accorder une dérogation, dans la limite de 20 % de sa production)' : ''}.` } as PdfBlock,
       ] : []),
+    ] });
+  }
+
+  // 2 bis. bilan patrimonial immobilier : biens détenus, valeur estimée (médiane), capital restant dû, patrimoine net
+  if (o.patrimony?.length) {
+    const lines = o.patrimony;
+    const t = patrimonyTotals(lines);
+    const projectValue = r.offerFai, projectDebt = r.loanAmount;
+    const afterValue = round2(t.value + projectValue), afterDebt = round2(t.remaining + projectDebt);
+    const src = (l: PatrimonyLine) => l.valueSource === 'achat' ? ' (1)' : l.valueSource === 'fourchette' ? ' (2)' : '';
+    const notes = [
+      lines.some((l) => l.valueSource === 'achat') ? '(1) Faute d’estimation, valeur retenue au coût d’acquisition.' : '',
+      lines.some((l) => l.valueSource === 'fourchette') ? '(2) Milieu de la fourchette d’estimation.' : '',
+      lines.some((l) => l.remainingSource === 'initial') ? '(3) Date de début du crédit inconnue : montant emprunté à l’origine.' : '',
+      t.missingValue ? `${t.missingValue} bien${t.missingValue > 1 ? 's' : ''} sans valeur connue, non compté${t.missingValue > 1 ? 's' : ''} dans le total.` : '',
+    ].filter(Boolean);
+    sections.push({ title: 'Bilan patrimonial immobilier', blocks: [
+      { t: 'table', head: ['Bien', 'Usage', 'Valeur estimée', 'Capital restant dû', 'Patrimoine net'], widths: [3, 1.6, 1.4, 1.4, 1.4], align: ['l', 'l', 'r', 'r', 'r'], total: true, rows: [
+        ...lines.map((l) => [
+          `${l.title}${l.city && !l.title.includes(l.city) ? ` (${l.city})` : ''}`, USAGE_SHORT[l.usage],
+          l.value != null ? money(l.value) + src(l) : 'non estimée',
+          l.remaining ? money(l.remaining) + (l.remainingSource === 'initial' ? ' (3)' : '') : 'aucun',
+          l.value != null ? money(round2(l.value - l.remaining)) : '—',
+        ]),
+        ['Total du patrimoine actuel', '', money(t.value), money(t.remaining), money(t.net)],
+      ] },
+      { t: 'table', head: ['Synthèse', 'Aujourd’hui', 'Après le projet'], widths: [3, 1.5, 1.5], align: ['l', 'r', 'r'], rows: [
+        ['Valeur estimée des biens', money(t.value), money(afterValue)],
+        ['Capital restant dû', money(t.remaining), money(afterDebt)],
+        ['Patrimoine immobilier net', money(t.net), money(round2(afterValue - afterDebt))],
+        ['Part financée par la dette', t.ltv == null ? '—' : pct(t.ltv), afterValue > 0 ? pct(round2((afterDebt / afterValue) * 100)) : '—'],
+        ['Mensualités de crédit en cours', money(t.monthlyLoan), money(round2(t.monthlyLoan + r.monthlyPaymentWithInsurance))],
+      ] },
+      { t: 'p', text: [`Valeurs : prix médian de l’estimation de chaque bien (ventes DVF comparables ou saisie du propriétaire). Capital restant dû calculé au ${date(o.editedOn)} d’après les caractéristiques des crédits. « Après le projet » ajoute le prix d’acquisition (${money(projectValue)}) et le prêt demandé (${money(projectDebt)}).`, ...notes].join(' ') },
     ] });
   }
 

@@ -8,6 +8,8 @@ export type PropertyStatus =
   | 'visite' | 'offre_envisagee' | 'offre_transmise' | 'negociation' | 'offre_acceptee' | 'sous_compromis'
   | 'acquis' | 'refuse' | 'abandonne' | 'archive';
 export type OccupationStatus = 'vacant' | 'loue' | 'travaux' | 'usage_personnel';
+/** Usage d'un bien détenu : locatif (géré dans l'application) ou résidence du propriétaire (bilan patrimonial seulement). */
+export type PropertyUsage = 'locatif' | 'residence_principale' | 'residence_secondaire';
 export type PropertyType = 'appartement' | 'maison' | 'immeuble' | 'parking' | 'local' | 'terrain' | 'autre';
 export type OwnershipMode = 'nom_propre' | 'indivision' | 'sci_ir' | 'sci_is' | 'demembrement' | 'autre';
 export type TaxRegime = 'micro_foncier' | 'reel_foncier' | 'micro_bic' | 'reel_bic' | 'is' | 'autre';
@@ -28,6 +30,8 @@ export interface Property extends Versioned {
   status: PropertyStatus;
   status_before_archive: PropertyStatus | null;
   occupation_status: OccupationStatus | null;
+  /** Absent sur une base pas encore migrée : « locatif ». */
+  usage?: PropertyUsage;
   property_type: PropertyType;
   address: string | null;
   zip: string | null;

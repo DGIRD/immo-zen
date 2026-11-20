@@ -23,7 +23,7 @@ export function LeasesPage({ tab: initialTab }: { tab?: 'baux' | 'locataires' })
   const { data } = useStore();
   const [tab, setTab] = useState<'baux' | 'locataires'>(initialTab ?? 'baux');
   const [tenantEdit, setTenantEdit] = useState<Tenant | 'new' | null>(null);
-  const owned = data.properties.filter((p) => p.status === 'acquis');
+  const owned = data.properties.filter((p) => p.status === 'acquis' && (p.usage ?? 'locatif') === 'locatif');
   return (
     <>
       <PageHeader title="Locataires et baux" subtitle="Baux successifs de vos biens détenus, titulaires, colocations et périodes sans occupation."
@@ -80,7 +80,7 @@ function LeaseTable() {
         { label: 'Ouvrir', onSelect: () => navigate(`/baux/${r.l.id}`) },
         { label: 'Modifier', onSelect: () => navigate(`/baux/${r.l.id}/modifier`) },
       ]}
-      empty={<EmptyState title="Aucun bail" action={data.properties.some((p) => p.status === 'acquis') && <Button variant="primary" onClick={() => navigate('/baux/nouveau')}>Créer un bail</Button>}>
+      empty={<EmptyState title="Aucun bail" action={data.properties.some((p) => p.status === 'acquis' && (p.usage ?? 'locatif') === 'locatif') && <Button variant="primary" onClick={() => navigate('/baux/nouveau')}>Créer un bail</Button>}>
         Un bail relie un bien détenu à un ou plusieurs locataires et génère les échéances de loyer chaque mois.
       </EmptyState>} />
   );
@@ -177,7 +177,7 @@ export function LeaseFormPage({ id, propertyId }: { id?: string; propertyId?: st
   const { data } = store;
   const auto = usePlan().features.automations;
   const existing = id ? data.leases.find((l) => l.id === id) : undefined;
-  const owned = data.properties.filter((p) => p.status === 'acquis');
+  const owned = data.properties.filter((p) => p.status === 'acquis' && (p.usage ?? 'locatif') === 'locatif');
   const rs = data.settings?.rental_settings ?? {};
   const initialProperty = existing?.property_id ?? propertyId ?? (owned.length === 1 ? owned[0]!.id : '');
   const prop = data.properties.find((p) => p.id === initialProperty);

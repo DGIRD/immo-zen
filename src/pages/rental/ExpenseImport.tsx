@@ -31,7 +31,7 @@ export async function downloadImportTemplate() {
 
 export function ExpenseImportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const store = useStore();
-  const owned = useMemo(() => store.data.properties.filter((p) => p.status === 'acquis'), [store.data.properties]);
+  const owned = useMemo(() => store.data.properties.filter((p) => p.status === 'acquis' && (p.usage ?? 'locatif') === 'locatif'), [store.data.properties]);
   const existingRefs = useMemo(() => new Set(store.data.expenses.map((e) => e.import_ref).filter((r): r is string => !!r)), [store.data.expenses]);
   const [rows, setRows] = useState<ImportRow[] | null>(null);
   const [source, setSource] = useState('');

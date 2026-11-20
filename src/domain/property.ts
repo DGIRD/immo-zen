@@ -3,6 +3,10 @@ import { amortize, autoProvisionMonthly, autoRecoverableAnnual, normalizeInputs,
 import { todayParis } from './format.ts';
 
 export const isOwned = (p: Pick<Property, 'status'>) => p.status === 'acquis';
+/** Résidence principale ou secondaire : détenue, hors gestion locative (ni bail, ni déclaration, ni limite de formule). */
+export const isResidence = (p: Pick<Property, 'status' | 'usage'>) => p.status === 'acquis' && !!p.usage && p.usage !== 'locatif';
+/** Bien locatif détenu : baux, loyers, dépenses déductibles, déclaration. */
+export const isRental = (p: Pick<Property, 'status' | 'usage'>) => p.status === 'acquis' && (!p.usage || p.usage === 'locatif');
 export const isProspect = (p: Pick<Property, 'status'>) => p.status !== 'acquis';
 
 export interface PropertyMetrics {
@@ -208,6 +212,7 @@ export function applyStatusRules(prev: Property | null, next: Property, scenario
       }
     }
   }
+  if (p.status === 'acquis' && p.usage && p.usage !== 'locatif') { p.occupation_status = 'usage_personnel'; p.tax_regime = null; }
   if (p.status !== 'acquis') p.occupation_status = null;
   return p;
 }

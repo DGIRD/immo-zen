@@ -74,7 +74,7 @@ export function matchLease(rawTenant: string | null, rawProperty: string | null,
   let candidates = c.leases.filter((l) => activeAt(l, date));
   if (!candidates.length) candidates = c.leases;
   if (rawProperty) {
-    const pid = matchProperty(rawProperty, c.properties.filter((p) => p.status === 'acquis'));
+    const pid = matchProperty(rawProperty, c.properties.filter((p) => p.status === 'acquis' && (p.usage ?? 'locatif') === 'locatif'));
     if (pid) candidates = candidates.filter((l) => l.property_id === pid);
     else if (!rawTenant) return null;
   }

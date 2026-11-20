@@ -1,8 +1,8 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useStore } from '../data/store.tsx';
-import type { AcquisitionBreakdown, Contact, Insert, OccupationStatus, OwnershipMode, Property, PropertyStatus, PropertyType, TaxRegime } from '../data/types.ts';
+import type { AcquisitionBreakdown, Contact, Insert, OccupationStatus, OwnershipMode, Property, PropertyStatus, PropertyType, PropertyUsage, TaxRegime } from '../data/types.ts';
 import { acquisitionComponents, breakdownTotal, DEFAULT_TAX_INPUTS } from '../domain/fiscal.ts';
-import { DPE_VALUES, OCCUPATION_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, STATUS_ORDER, TAX_REGIME_LABELS, TYPE_LABELS } from '../domain/labels.ts';
+import { DPE_VALUES, OCCUPATION_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, STATUS_ORDER, TAX_REGIME_LABELS, TYPE_LABELS, USAGE_LABELS } from '../domain/labels.ts';
 import { money2, todayParis } from '../domain/format.ts';
 import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, LOAN_FIELDS, loanInfo, rentWithCharges } from '../domain/property.ts';
 import { Button, Help, NumberInput, PageHeader, Section, Select, TextArea, TextInput } from '../ui/components.tsx';
@@ -19,7 +19,13 @@ const entries = <K extends string>(o: Record<K, string>) => Object.entries(o) as
 export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' | 'owned' }) {
   const { data, create, update } = useStore();
   const existing = id ? data.properties.find((p) => p.id === id) : undefined;
-  const [draft, setDraft] = useState<Draft>(() => existing ? { ...existing } : { title: '', status: mode === 'owned' ? 'acquis' : 'repere', property_type: 'appartement', vigilance: [] });
+  const [draft, setDraft] = useState<Draft>(() => {
+    if (existing) return { ...existing };
+    // « Ajouter ma résidence » (Mes biens) : …?mode=owned&usage=residence_principale
+    const asked = new URLSearchParams(location.hash.split('?')[1] ?? '').get('usage') as PropertyUsage | null;
+    const usage: PropertyUsage = mode === 'owned' && asked && asked in USAGE_LABELS ? asked : 'locatif';
+    return { title: '', status: mode === 'owned' ? 'acquis' : 'repere', property_type: usage === 'locatif' ? 'appartement' : 'maison', vigilance: [], usage, ...(usage !== 'locatif' ? { occupation_status: 'usage_personnel' as const } : {}) };
+  });
   const [newAgency, setNewAgency] = useState('');
   const [newAgent, setNewAgent] = useState('');
   const [agencyChoice, setAgencyChoice] = useState<string>(existing?.agency_id ?? '');
@@ -34,6 +40,8 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
 
   if (id && !existing) return <PageHeader title="Bien introuvable" subtitle="Il a peut-être été supprimé." />;
   const owned = draft.status === 'acquis';
+  /** Résidence principale ou secondaire : pas de loyer, de charges locatives, de régime fiscal ni de bail. */
+  const residence = owned && !!draft.usage && draft.usage !== 'locatif';
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => ({ ...d, [k]: v }));
 
   function validate(): boolean {
@@ -75,6 +83,8 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
       const { id: _i, user_id: _u, version: _v, created_at: _c, updated_at: _up, ...rest } = draft as Partial<Property>;
       const payload: Insert<Property> = { ...rest, title: draft.title.trim(), agency_id: agencyId, agent_id: agentId };
       if (!owned) { payload.occupation_status = null; }
+      // usage : envoyé seulement s'il n'est pas « locatif » ou s'il change (compatibilité avec une base pas encore migrée)
+      if (!payload.usage || (payload.usage === 'locatif' && !existing?.usage)) delete payload.usage;
       // N'envoyer la provision que si elle est renseignée (compatibilité avec une base pas encore migrée)
       for (const k of ['charges_provision', ...ANNUAL_CHARGE_FIELDS.map(([f]) => f), ...LOAN_FIELDS, 'estimate_low', 'estimate_high', 'estimate_median', 'estimate_on', 'estimate_source', 'estimate_details', 'acquisition_breakdown'] as const) if (payload[k] === null || payload[k] === undefined) delete payload[k];
       // tableau d'amortissement : envoyé s'il est importé, ou pour le retirer (null) ; jamais s'il n'a jamais existé (base pas encore migrée)
@@ -109,6 +119,9 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
           <Select label="Type" value={draft.property_type ?? 'appartement'} onChange={(v) => set('property_type', (v ?? 'appartement') as PropertyType)} options={entries(TYPE_LABELS)} />
           <Select label="Statut d’acquisition" value={draft.status ?? 'repere'} onChange={(v) => set('status', (v ?? 'repere') as PropertyStatus)} options={statusOptions}
             hint={!owned && existing ? '« Acquis » transfère le bien dans Mes biens.' : undefined} />
+          {owned && <Select label="Usage du bien" value={draft.usage ?? 'locatif'} onChange={(v) => setDraft((d) => ({ ...d, usage: (v ?? 'locatif') as PropertyUsage,
+            ...(v && v !== 'locatif' ? { occupation_status: 'usage_personnel' as const, tax_regime: null } : d.occupation_status === 'usage_personnel' ? { occupation_status: 'vacant' as const } : {}) }))}
+            options={entries(USAGE_LABELS)} hint={residence ? 'Hors gestion locative : figure dans le bilan patrimonial du dossier banque, avec son crédit.' : undefined} />}
           <AddressFields value={draft} onChange={(a) => setDraft((d) => ({ ...d, ...a }))} />
           <NumberInput label="Surface" suffix="m²" value={draft.surface} onChange={(v) => set('surface', v)} error={errors.surface} />
           <NumberInput label="Pièces" value={draft.rooms} onChange={(v) => set('rooms', v === null ? null : Math.round(v))} error={errors.rooms} />
@@ -117,7 +130,7 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
         </div>
       </Section>
 
-      {owned ? (
+      {owned && !residence ? (
         <Section title="Loyer">
           <div className="grid">
             <NumberInput label="Loyer hors charges" suffix="€/mois" value={draft.estimated_rent} onChange={(v) => set('estimated_rent', v)} error={errors.estimated_rent} />
@@ -131,7 +144,7 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
         </Section>
       ) : null}
 
-      {owned ? (
+      {residence ? null : owned ? (
         <Section title="Charges annuelles">
           <div className="grid">
             {ANNUAL_CHARGE_FIELDS.map(([k, label]) => (
@@ -166,21 +179,21 @@ export function PropertyFormPage({ id, mode }: { id?: string; mode: 'prospect' |
 
       {owned && (
         <Section title="Détention" collapsible defaultOpen={!existing}
-          summary={[draft.ownership_mode ? OWNERSHIP_LABELS[draft.ownership_mode] : null, draft.tax_regime ? TAX_REGIME_LABELS[draft.tax_regime] : 'régime fiscal à choisir', draft.acquired_at ? `acquis le ${draft.acquired_at.split('-').reverse().join('/')}` : null].filter(Boolean).join(' · ')}>
+          summary={[draft.ownership_mode ? OWNERSHIP_LABELS[draft.ownership_mode] : null, residence ? null : draft.tax_regime ? TAX_REGIME_LABELS[draft.tax_regime] : 'régime fiscal à choisir', draft.acquired_at ? `acquis le ${draft.acquired_at.split('-').reverse().join('/')}` : null].filter(Boolean).join(' · ')}>
           <div className="grid">
             <Select label="Mode de détention" value={draft.ownership_mode ?? null} onChange={(v) => set('ownership_mode', v as OwnershipMode | null)} allowEmpty="Non renseigné" options={entries(OWNERSHIP_LABELS)} />
-            <Select label="Régime fiscal renseigné" value={draft.tax_regime ?? null} onChange={(v) => set('tax_regime', v as TaxRegime | null)} allowEmpty="Non renseigné" options={entries(TAX_REGIME_LABELS)}
-              hint="Utilisé par la déclaration fiscale." />
+            {!residence && <Select label="Régime fiscal renseigné" value={draft.tax_regime ?? null} onChange={(v) => set('tax_regime', v as TaxRegime | null)} allowEmpty="Non renseigné" options={entries(TAX_REGIME_LABELS)}
+              hint="Utilisé par la déclaration fiscale." />}
             <TextInput label="Date d’acquisition" type="date" value={draft.acquired_at} onChange={(v) => set('acquired_at', v || null)} />
             <NumberInput label="Coût d’acquisition réel" suffix="€" value={draft.acquisition_cost} onChange={(v) => set('acquisition_cost', v)} error={errors.acquisition_cost}
               hint="Prix + frais réellement payés. Sinon, le coût du scénario acquis est utilisé." />
-            <Select label="Occupation" value={draft.occupation_status ?? 'vacant'} onChange={(v) => set('occupation_status', (v ?? 'vacant') as OccupationStatus)}
-              options={entries(OCCUPATION_LABELS)} hint="« Loué » découle des baux en cours." />
+            {!residence && <Select label="Occupation" value={draft.occupation_status ?? 'vacant'} onChange={(v) => set('occupation_status', (v ?? 'vacant') as OccupationStatus)}
+              options={entries(OCCUPATION_LABELS)} hint="« Loué » découle des baux en cours." />}
           </div>
         </Section>
       )}
 
-      {owned && <BreakdownSection draft={draft} set={set} />}
+      {owned && !residence && <BreakdownSection draft={draft} set={set} />}
 
       <Section title="Agence et agent" collapsible defaultOpen={!owned}
         summary={[agencies.find((a) => a.id === agencyChoice)?.name, agents.find((a) => a.id === agentChoice)?.name].filter(Boolean).join(' · ') || 'Aucun'}>

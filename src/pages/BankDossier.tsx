@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useStore } from '../data/store.tsx';
 import { bankDossierDoc, debtRatio, HCSF_MAX, type Borrower, type DossierProperty } from '../domain/bankDossier.ts';
 import { buildBankDossierPdf } from '../domain/bankDossierPdf.ts';
 import { downloadBlob } from '../domain/exporting.ts';
-import { pct, todayParis } from '../domain/format.ts';
+import { money, pct, todayParis } from '../domain/format.ts';
+import { patrimonyLines, patrimonyTotals } from '../domain/patrimony.ts';
 import type { SimulationInputs, SimulationResult } from '../domain/simulator.ts';
 import { Button, Checkbox, Modal, NumberInput, TextArea, TextInput } from '../ui/components.tsx';
 
@@ -10,9 +12,15 @@ import { Button, Checkbox, Modal, NumberInput, TextArea, TextInput } from '../ui
  * Export « Dossier banque » d'une simulation : PDF de présentation du projet à une banque ou à un courtier.
  * La situation de l'emprunteur est facultative et n'est jamais enregistrée (elle ne sert qu'au document).
  */
-export function BankDossierButton({ property, inputs, result, notify }: {
+export function BankDossierButton({ property, inputs, result, notify, propertyId }: {
   property: DossierProperty; inputs: SimulationInputs; result: SimulationResult | null; notify: (m: string) => void;
+  /** Bien de la simulation, exclu du bilan patrimonial s'il est déjà détenu (pas de double compte). */
+  propertyId?: string | null;
 }) {
+  const { data } = useStore();
+  const lines = useMemo(() => patrimonyLines(data.properties.filter((p) => p.id !== propertyId), todayParis()), [data.properties, propertyId]);
+  const totals = patrimonyTotals(lines);
+  const [withPatrimony, setWithPatrimony] = useState(true);
   const [open, setOpen] = useState(false);
   const [b, setB] = useState<Borrower>({});
   const [schedule, setSchedule] = useState(true);
@@ -25,7 +33,7 @@ export function BankDossierButton({ property, inputs, result, notify }: {
     setBusy(true);
     try {
       const lib = await import('pdf-lib');
-      const doc = bankDossierDoc({ property, inputs, result, borrower: b, editedOn: todayParis(), withSchedule: schedule });
+      const doc = bankDossierDoc({ property, inputs, result, borrower: b, editedOn: todayParis(), withSchedule: schedule, patrimony: withPatrimony ? lines : undefined });
       const bytes = await buildBankDossierPdf(lib as never, doc);
       const slug = (property.title || 'projet').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
       downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), `dossier-financement-${slug || 'projet'}.pdf`);
@@ -53,7 +61,17 @@ export function BankDossierButton({ property, inputs, result, notify }: {
             <NumberInput label="Épargne restante après l’apport" suffix="€" value={b.savingsAfter ?? null} onChange={(v) => set('savingsAfter', v)} hint="Épargne de précaution" />
             <TextArea label="Présentation du projet (facultatif)" value={b.presentation ?? ''} onChange={(v) => set('presentation', v)} rows={3} />
             <Checkbox label="Joindre le tableau d’amortissement annuel" checked={schedule} onChange={setSchedule} />
+            {lines.length > 0 && <Checkbox label="Joindre le bilan patrimonial immobilier" checked={withPatrimony} onChange={setWithPatrimony} />}
           </div>
+          {lines.length > 0 ? withPatrimony && (
+            <p className="note">
+              Bilan patrimonial : {lines.length} bien{lines.length > 1 ? 's' : ''} détenu{lines.length > 1 ? 's' : ''} (résidences comprises), valeur estimée <strong>{money(totals.value)}</strong>,
+              capital restant dû <strong>{money(totals.remaining)}</strong>, patrimoine net <strong>{money(totals.net)}</strong>.
+              {totals.missingValue ? ` ${totals.missingValue} bien${totals.missingValue > 1 ? 's' : ''} sans estimation : lancez l’estimation depuis sa fiche.` : ''}
+            </p>
+          ) : (
+            <p className="muted small">Ajoutez vos biens détenus et votre résidence principale dans « Mes biens » pour joindre un bilan patrimonial.</p>
+          )}
           {ratio && (
             <p className={ratio.after > HCSF_MAX ? 'form-error' : 'note'} role="status">
               Taux d’endettement après le projet : <strong>{pct(ratio.after)}</strong>{ratio.before != null ? ` (aujourd’hui ${pct(ratio.before)})` : ''}, loyers retenus à 70 %.

@@ -40,7 +40,7 @@ const PROPERTY_DEFAULTS: Omit<Property, 'id' | 'user_id' | 'version' | 'created_
   address: null, zip: null, city: null, surface: null, rooms: null, dpe: null, listing_url: null,
   asking_price: null, offer_price: null, works_budget: null, estimated_rent: null, charges_provision: null, property_tax_annual: null, copro_charges_annual: null, pno_annual: null, management_annual: null, gli_annual: null, other_charges_annual: null, agency_id: null, agent_id: null,
   next_action: null, follow_up_date: null, visit_at: null, comments: null, vigilance: [], ownership_mode: null,
-  tax_regime: null, acquired_at: null, acquisition_cost: null, acquisition_snapshot: null, acquisition_breakdown: null, loan_schedule: null, primary_scenario_id: null,
+  usage: 'locatif', tax_regime: null, acquired_at: null, acquisition_cost: null, acquisition_snapshot: null, acquisition_breakdown: null, loan_schedule: null, primary_scenario_id: null,
   legacy_simulation_id: null, legacy_ref: null,
 };
 const DEFAULTS: Partial<Record<TableName, Record<string, unknown>>> = {
@@ -104,6 +104,7 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
     if (table === 'leases') {
       const p = db.properties.find((x) => x.id === rec.property_id);
       if (!p || p.status !== 'acquis') fail('Un bail ne peut concerner qu’un bien détenu (rubrique Mes biens).');
+      if (p?.usage && p.usage !== 'locatif') fail('Une résidence principale ou secondaire ne peut pas être louée : passez-la en « Bien locatif » d’abord.');
       if (rec.end_date && String(rec.end_date) < String(rec.start_date)) fail('La date de fin précède la date de début.');
     }
     if (table === 'lease_tenants' && db.lease_tenants.some((l) => l.lease_id === rec.lease_id && l.tenant_id === rec.tenant_id)) fail('Ce locataire figure déjà sur le bail.');

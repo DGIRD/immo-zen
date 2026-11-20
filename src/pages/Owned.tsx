@@ -32,10 +32,12 @@ export function OwnedPage() {
   const rowActions = (r: PropertyRow) => [
     { label: 'Ouvrir la fiche', onSelect: () => navigate(`/bien/${r.p.id}`) },
     { label: 'Modifier', onSelect: () => navigate(`/bien/${r.p.id}/modifier`) },
+    ...((r.p.usage ?? 'locatif') !== 'locatif' ? [] : [
     { label: 'Nouveau bail', onSelect: () => navigate(`/baux/nouveau?bien=${r.p.id}`) },
     { label: 'Ajouter une dépense', onSelect: () => navigate(`/depenses?bien=${r.p.id}`) },
     ...(Object.keys(OCCUPATION_LABELS) as OccupationStatus[]).filter((o) => o !== r.p.occupation_status && o !== 'loue' && !r.rs.activeLeases.length)
       .map((o) => ({ label: `Occupation : ${OCCUPATION_LABELS[o]}`, onSelect: () => void update('properties', r.p, { occupation_status: o }, `Le bien « ${r.p.title} »`) })),
+    ]),
     { label: 'Revenir en prospection', onSelect: () => void actions.setStatus(r.p, 'sous_compromis') },
     { label: 'Supprimer', danger: true, onSelect: () => void actions.del(r.p) },
   ];
@@ -48,8 +50,11 @@ export function OwnedPage() {
 
   return (
     <>
-      <PageHeader title="Mes biens" subtitle="Les biens que vous détenez : acquis depuis la prospection ou ajoutés directement."
-        actions={<Button variant="primary" onClick={() => navigate('/bien/nouveau?mode=owned')}>Ajouter un bien détenu</Button>} />
+      <PageHeader title="Mes biens" subtitle="Les biens que vous détenez : acquis depuis la prospection ou ajoutés directement, et votre résidence principale ou secondaire pour le bilan patrimonial."
+        actions={<>
+          <Button onClick={() => navigate('/bien/nouveau?mode=owned&usage=residence_principale')}>Ajouter ma résidence</Button>
+          <Button variant="primary" onClick={() => navigate('/bien/nouveau?mode=owned')}>Ajouter un bien détenu</Button>
+        </>} />
       <div className="list-bar">{view === 'cartes' && occFilter}<ViewToggle value={view} onChange={setView} /></div>
       {view === 'cartes' ? (
         <PropertyCards rows={rows} kind="owned" onOpen={(r) => navigate(`/bien/${r.p.id}`)} actions={rowActions} search={search} onSearch={setSearch} empty={empty} />
