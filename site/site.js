@@ -272,6 +272,49 @@
     });
   });
 
+  // ---------- « avec Google » : l'adresse du compte Google remplit le formulaire, qui part aussitôt
+  // (Google Identity Services ; rien d'autre n'est lu, aucun compte Immo-Zen n'est créé ; double confirmation par e-mail inchangée)
+  const GOOGLE_CLIENT_ID = '%IMMOZEN_GOOGLE_CLIENT_ID%';
+  const googleSlots = [...document.querySelectorAll('form.optin .optin-google')];
+  if (googleSlots.length && GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith('%')) {
+    let activeForm = null;
+    const emailOf = (jwt) => {
+      try {
+        const b64 = jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        const p = JSON.parse(decodeURIComponent(atob(b64).split('').map((c) => `%${c.charCodeAt(0).toString(16).padStart(2, '0')}`).join('')));
+        return p.email_verified === false ? '' : String(p.email || '');
+      } catch { return ''; }
+    };
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true;
+    s.onload = () => {
+      const gid = window.google?.accounts?.id;
+      if (!gid) return;
+      gid.initialize({
+        client_id: GOOGLE_CLIENT_ID, auto_select: false, cancel_on_tap_outside: true, itp_support: true,
+        callback: (r) => {
+          const form = activeForm;
+          const email = emailOf(r.credential || '');
+          if (!form || !email) return;
+          const input = form.querySelector('input[name="email"]');
+          input.value = email;
+          form.requestSubmit();
+        },
+      });
+      for (const slot of googleSlots) {
+        const form = slot.closest('form');
+        const w = Math.min(320, Math.max(220, Math.round(slot.parentElement.getBoundingClientRect().width - 2)));
+        gid.renderButton(slot.querySelector('.optin-google-btn'), {
+          type: 'standard', theme: 'outline', size: 'large', text: 'continue_with', shape: 'rectangular', logo_alignment: 'left', locale: 'fr', width: w,
+          click_listener: () => { activeForm = form; },
+        });
+        slot.hidden = false;
+      }
+    };
+    document.head.appendChild(s);
+  }
+
   // ---------- page de confirmation / désinscription
   const box = document.getElementById('inscription');
   if (box) {

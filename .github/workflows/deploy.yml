@@ -35,6 +35,7 @@ jobs:
           # Clé PUBLIQUE (publishable) : sans danger dans le dépôt, protégée par les règles RLS.
           IMMOZEN_SUPABASE_URL: ${{ vars.IMMOZEN_SUPABASE_URL || 'https://sbxnjvjsapnsdeenmvtm.supabase.co' }}
           IMMOZEN_SUPABASE_ANON_KEY: ${{ vars.IMMOZEN_SUPABASE_ANON_KEY || 'sb_publishable_hiwOqpGzB5MTy7lZSNH_Ow_ZYxw85ha' }}
+          IMMOZEN_GOOGLE_CLIENT_ID: ${{ vars.IMMOZEN_GOOGLE_CLIENT_ID || '401872979501-mka6bglibc08rfj54jvn876mi779m1uv.apps.googleusercontent.com' }}
         run: |
           if [ -z "$IMMOZEN_SUPABASE_URL" ]; then echo "Variable IMMOZEN_SUPABASE_URL manquante : refus de publier un site en mode démonstration."; exit 1; fi
           npm run build
