@@ -292,6 +292,31 @@ export function buildImportRows(rows: Cell[][], properties: Pick<Property, 'id' 
 export type ImportStatus = 'ok' | 'doublon' | 'incomplet' | 'signe' | 'deja';
 
 /**
+ * Doublons probables (contrôle souple, en plus de « Déjà importée ») : ligne identique plus haut dans le même fichier
+ * (même date, libellé, montant et compte), ou dépense déjà présente — saisie à la main ou venue d'un autre fichier —
+ * de même montant, sur le même logement, à 3 jours près. Renvoie, par index de ligne, le motif à afficher.
+ * Ces lignes sont décochées par défaut ; l'utilisateur peut les importer quand même.
+ */
+export function likelyDuplicates(rows: ImportRow[], expenses: Pick<Expense, 'property_id' | 'expense_date' | 'amount' | 'label' | 'import_ref'>[]): Map<number, string> {
+  const out = new Map<number, string>();
+  const firstLine = new Map<string, number>();
+  const DAY = 86_400_000;
+  rows.forEach((r, i) => {
+    const base = r.ref.replace(/:\d+$/, '');
+    const first = firstLine.get(base);
+    if (first !== undefined) { out.set(i, `Ligne identique plus haut dans le fichier (ligne ${first})`); return; }
+    firstLine.set(base, r.line);
+    if (!r.date || r.signed === null || r.category === 'loyer') return;
+    const amount = Math.round(Math.abs(r.signed) * 100);
+    const t = Date.parse(r.date);
+    const twin = expenses.find((e) => e.import_ref !== r.ref && Math.round(Math.abs(e.amount) * 100) === amount
+      && (!r.propertyId || e.property_id === r.propertyId) && Math.abs(Date.parse(e.expense_date) - t) <= 3 * DAY);
+    if (twin) out.set(i, `Dépense semblable déjà enregistrée le ${frDate(twin.expense_date)}${twin.label ? ` (« ${twin.label.slice(0, 40)} »)` : ''}`);
+  });
+  return out;
+}
+
+/**
  * Loyers du relevé : ils vont dans Loyers et paiements, jamais dans Dépenses. Rapprochés des paiements
  * saisis sur le bail : déjà saisi → non importé ; sinon enregistré comme paiement du bail ; sans bail → à créer d'abord.
  */

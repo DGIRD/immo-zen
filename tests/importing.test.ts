@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildImportRows, matchCategory, parseAmount, parseDate, parseDelimited, parseXlsx, rowStatus, toExpense } from '../src/domain/importing.ts';
+import { buildImportRows, matchCategory, parseAmount, parseDate, parseDelimited, parseXlsx, rowStatus, toExpense, likelyDuplicates } from '../src/domain/importing.ts';
 import { toXlsx } from '../src/domain/exporting.ts';
 
 const SAMPLE = [
@@ -90,4 +90,21 @@ test('classeur .xlsx : en-têtes, dates Excel et montants numériques', async ()
   assert.equal(rows[0]!.date, '2023-04-27');
   assert.equal(rows[0]!.signed, -319.35);
   assert.equal(rows[0]!.propertyId, 'p1', 'titre du bien reconnu');
+});
+
+test('doublons probables : ligne répétée dans le fichier, dépense semblable déjà saisie à 3 jours près', () => {
+  const text = SAMPLE + '\n' + SAMPLE.split('\n')[1]; // la 1re ligne de données répétée en fin de fichier
+  const { rows } = buildImportRows(parseDelimited(text), PROPS);
+  const existing = [
+    { property_id: 'p1', expense_date: '2024-01-17', amount: 335.33, label: 'Charges T1 saisies à la main', import_ref: null }, // 2 jours après la ligne du 15/01
+    { property_id: 'p2', expense_date: '2023-11-24', amount: 639.08, label: 'Autre logement', import_ref: null }, // autre logement : ignorée
+    { property_id: 'p1', expense_date: '2023-06-30', amount: 535.43, label: 'Trop loin', import_ref: null }, // 17 jours d'écart
+  ];
+  const d = likelyDuplicates(rows, existing);
+  const lines = [...d.keys()].map((i) => rows[i]!.line);
+  assert.deepEqual(lines.sort((a, b) => a - b), [5, 8]);
+  assert.match(d.get(rows.findIndex((r) => r.line === 8))!, /Ligne identique plus haut dans le fichier \(ligne 2\)/);
+  assert.match(d.get(rows.findIndex((r) => r.line === 5))!, /déjà enregistrée le 17\/01\/2024/);
+  // le loyer n'est pas concerné (contrôle propre dans Loyers et paiements) ; deux lignes distinctes de même montant non plus
+  assert.equal(likelyDuplicates(rows.slice(0, 6), []).size, 0);
 });

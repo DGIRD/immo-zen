@@ -840,3 +840,9 @@ h1 .info-tip, h2 .info-tip, h3 .info-tip { margin-left: .5rem; }
 .plan-badges { display: flex; gap: .35rem; min-height: 1.35rem; margin: 0 0 .25rem; }
 .tier-compare { margin-top: 1rem; }
 .tier-compare > summary { cursor: pointer; font-weight: 600; color: var(--sapin); margin-bottom: .5rem; }
+
+/* Import : ligne écartée par l'utilisateur */
+.import-table .col-check { width: 2rem; text-align: center; }
+.import-table tr.row-skipped td:not(.col-check):not(.col-state) { color: var(--ink-soft); }
+.import-table tr.row-skipped .dupe-hint { text-decoration: none; display: block; }
+.import-table .dupe-hint { display: block; margin-top: .2rem; color: var(--ocre); font-size: .8rem; line-height: 1.3; }
