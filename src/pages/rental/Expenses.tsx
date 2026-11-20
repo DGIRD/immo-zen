@@ -45,7 +45,7 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
   const incomeDups = useMemo(() => incomeDuplicates(data.expenses, data.leases, data.payments), [data.expenses, data.leases, data.payments]);
   const [cleanup, setCleanup] = useState(false);
   const titles = new Map(data.properties.map((p) => [p.id, p.title]));
-  const owned = data.properties.filter((p) => p.status === 'acquis');
+  const owned = data.properties.filter((p) => p.status === 'acquis' && (p.usage ?? 'locatif') === 'locatif');
   const years = useMemo(() => [...new Set([todayParis().slice(0, 4), ...data.expenses.map((e) => e.expense_date.slice(0, 4))])].sort().reverse(), [data.expenses]);
   const hasLegacyRent = data.expenses.some(isIncome);
   const catFilter = hasLegacyRent ? [...CATS, LEGACY_LOYER] : CATS;
@@ -199,7 +199,7 @@ export function ExpenseDialog({ expense, onClose, propertyId }: { expense: Expen
   const store = useStore();
   const upload = useUpload();
   const existing = expense && expense !== 'new' ? expense : null;
-  const owned = store.data.properties.filter((p) => p.status === 'acquis');
+  const owned = store.data.properties.filter((p) => p.status === 'acquis' && (p.usage ?? 'locatif') === 'locatif');
   const blank = (): Insert<Expense> => ({ property_id: propertyId ?? (owned.length === 1 ? owned[0]!.id : ''), expense_date: todayParis(), amount: undefined, category: 'copropriete', nature: 'charge', recoverable_amount: 0, payment_status: 'paye', paid_on: todayParis(), supplier: '', label: '' });
   const [d, setD] = useState<Insert<Expense>>(blank);
   const [key, setKey] = useState<string | null>(null);

@@ -594,7 +594,7 @@ export interface FiscalSummary {
 }
 
 export function fiscalSummary(year: number, d: FiscalData, inputs: (propertyId: string, y: number) => TaxPropertyInputs): FiscalSummary {
-  const all = d.properties.filter((p) => p.status === 'acquis');
+  const all = d.properties.filter((p) => p.status === 'acquis' && (p.usage ?? 'locatif') === 'locatif'); // résidences exclues
   const allAmounts = new Map(all.map((p) => [p.id, yearAmounts(p, year, d, inputs(p.id, year))]));
   // biens détenus pendant l'année, ou ayant des mouvements cette année-là (date d'acquisition parfois approximative)
   const owned = all.filter((p) => {

@@ -73,7 +73,7 @@ export function FiscalPage() {
     return { p, items, total: items.reduce((a, i) => a + i.amount, 0) };
   }).filter((x) => x.items.length > 0);
   for (const a of amort) for (const i of a.items) boxes.push({ form: 'Amortissements', code: `${i.years} ans`, label: i.label, amount: i.amount, property: a.p.title });
-  const owned = data.properties.filter((p) => p.status === 'acquis');
+  const owned = data.properties.filter((p) => p.status === 'acquis' && (p.usage ?? 'locatif') === 'locatif');
   const foyer = inputs[String(year)]?.[FOYER] ?? {};
   const reelProps = fiscal.reelBic ? fiscal.reelBic.perProperty.map((r) => data.properties.find((p) => p.id === r.propertyId)!).filter(Boolean) : [];
   const bilanReview = useMemo(() => fiscal.reelBic ? reviewBilan(year, { ...fiscalData, deposits: data.deposits }, reelProps, fiscal.reelBic.liasse, get, foyer) : null,

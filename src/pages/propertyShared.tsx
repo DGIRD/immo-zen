@@ -3,7 +3,7 @@ import { useStore } from '../data/store.tsx';
 import type { Contact, Insert, Property, Scenario } from '../data/types.ts';
 import { downloadBlob, stamp, toCsv, toXlsx, type ExportColumn } from '../domain/exporting.ts';
 import { date, money, number, pct, todayParis } from '../domain/format.ts';
-import { OCCUPATION_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, TYPE_LABELS } from '../domain/labels.ts';
+import { OCCUPATION_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, TYPE_LABELS, USAGE_LABELS } from '../domain/labels.ts';
 import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, isOwned, loanInfo, metrics, ownedCashflow, rentWithCharges, summarize, type CashflowEstimate, type PropertyMetrics, primaryScenario } from '../domain/property.ts';
 import { propertyRentalSummary, type PropertyRentalSummary } from '../domain/rental.ts';
 
@@ -34,7 +34,7 @@ export function usePropertyRows(filter: (p: Property) => boolean): PropertyRow[]
       const m = metrics(p, data.scenarios, simulatorDefaults);
       return {
         rs, p, m,
-        cf: isOwned(p) ? ownedCashflow(p, rs.activeLeases, m.result, today) : null,
+        cf: isOwned(p) && (p.usage ?? 'locatif') === 'locatif' ? ownedCashflow(p, rs.activeLeases, m.result, today) : null,
         agency: p.agency_id ? contacts.get(p.agency_id) ?? null : null,
         agent: p.agent_id ? contacts.get(p.agent_id) ?? null : null,
       };
@@ -107,6 +107,7 @@ export function prospectColumns(): Column<PropertyRow>[] {
 
 /** Occupation affichée : « Loué » dès qu'un bail est en cours, sinon le statut saisi (jamais « Loué » sans bail). */
 export function occupationLabel(r: PropertyRow): string | null {
+  if (r.p.usage && r.p.usage !== 'locatif') return USAGE_LABELS[r.p.usage];
   if (r.rs.activeLeases.length) return OCCUPATION_LABELS.loue;
   if (!r.p.occupation_status) return null;
   return r.p.occupation_status === 'loue' ? OCCUPATION_LABELS.vacant : OCCUPATION_LABELS[r.p.occupation_status];

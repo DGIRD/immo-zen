@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { money, pct, todayParis } from '../domain/format.ts';
 import { simulatedCashflow } from '../domain/simulator.ts';
+import { loanInfo } from '../domain/property.ts';
+import { USAGE_LABELS } from '../domain/labels.ts';
 import { RowMenu, type RowAction } from '../ui/DataTable.tsx';
 import { StatusBadge } from '../ui/components.tsx';
 import { estimateRange, occupationLabel, type PropertyRow } from './propertyShared.tsx';
@@ -41,6 +43,8 @@ export function PropertyCards({ rows, kind, onOpen, actions, search, onSearch, e
         <ul className="prop-cards">
           {list.map((r) => {
             const occ = occupationLabel(r);
+            const residence = kind === 'owned' && !!r.p.usage && r.p.usage !== 'locatif';
+            const remaining = residence ? loanInfo(r.p, todayParis())?.remaining ?? null : null;
             const cf = kind === 'owned' ? r.rs.cashflow : simulatedCashflow(r.m.result);
             return (
               <li key={r.p.id} className="prop-card">
@@ -50,12 +54,16 @@ export function PropertyCards({ rows, kind, onOpen, actions, search, onSearch, e
                 </div>
                 <p className="muted small">{[r.p.address, [r.p.zip, r.p.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') || '—'}</p>
                 <p className="prop-card-tags">
-                  {kind === 'owned' ? (occ && <span className={`pill ${occ === 'Loué' ? 'pill-ok' : 'pill-warn'}`}>{occ}</span>) : <StatusBadge status={r.p.status} />}
+                  {residence ? <span className="pill pill-neutral">{USAGE_LABELS[r.p.usage!]}</span>
+                    : kind === 'owned' ? (occ && <span className={`pill ${occ === 'Loué' ? 'pill-ok' : 'pill-warn'}`}>{occ}</span>) : <StatusBadge status={r.p.status} />}
                   {kind === 'owned' && r.rs.tenantNames && <span className="muted small">{r.rs.tenantNames}</span>}
                   {r.rs.overdue > 0 && <span className="pill pill-bad">Impayé {money(r.rs.overdue)}</span>}
                 </p>
                 <dl className="prop-card-figures">
-                  {kind === 'owned' ? <>
+                  {residence ? <>
+                    <div><dt>Estimation</dt><dd>{estimateRange(r.p)}</dd></div>
+                    <div><dt>Capital restant dû</dt><dd>{r.p.loan_amount ? money(remaining) : 'Sans crédit'}</dd></div>
+                  </> : kind === 'owned' ? <>
                     <div><dt>Loyer</dt><dd>{money(r.rs.activeLeases[0]?.rent_hc ?? r.p.estimated_rent)}</dd></div>
                     <div><dt>Cash-flow {y}</dt><dd className={tone(cf)}>{money(cf)}</dd></div>
                     <div><dt>Estimation</dt><dd>{estimateRange(r.p)}</dd></div>

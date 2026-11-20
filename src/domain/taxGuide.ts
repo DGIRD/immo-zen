@@ -125,7 +125,7 @@ export function declarationGuide(f: FiscalSummary, properties: Property[], opts:
     });
   }
 
-  const sciIr = properties.filter((p) => p.status === 'acquis' && p.ownership_mode === 'sci_ir');
+  const sciIr = properties.filter((p) => p.status === 'acquis' && (p.usage ?? 'locatif') === 'locatif' && p.ownership_mode === 'sci_ir');
   if (sciIr.length) {
     out.push({
       id: 'sci-ir', title: 'SCI à l’impôt sur le revenu : 2072', space: 'professionnel',

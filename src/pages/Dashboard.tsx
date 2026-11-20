@@ -3,7 +3,7 @@ import { usePlan, useStore } from '../data/store.tsx';
 import type { PropertyStatus } from '../data/types.ts';
 import { date, dateTime, money, todayParis } from '../domain/format.ts';
 import { STATUS_LABELS, statusTone } from '../domain/labels.ts';
-import { isOwned, metrics, ownedCashflow } from '../domain/property.ts';
+import { isOwned, isRental, metrics, ownedCashflow } from '../domain/property.ts';
 import { revisionPlan } from '../domain/irl.ts';
 import { chargeViews, propertyRentalSummary } from '../domain/rental.ts';
 import { Button, EmptyState, PageHeader, Section } from '../ui/components.tsx';
@@ -19,7 +19,7 @@ export function DashboardPage() {
 
   const v = useMemo(() => {
     const prospects = data.properties.filter((p) => !isOwned(p) && PIPELINE.includes(p.status));
-    const owned = data.properties.filter(isOwned);
+    const owned = data.properties.filter(isRental); // résidences hors tableau de bord locatif
     const counts = PIPELINE.map((s) => [s, prospects.filter((p) => p.status === s).length] as const).filter(([, n]) => n > 0);
     const followUps = data.properties.filter((p) => p.follow_up_date && p.follow_up_date <= today && p.status !== 'archive' && !isOwned(p))
       .sort((a, b) => a.follow_up_date!.localeCompare(b.follow_up_date!));

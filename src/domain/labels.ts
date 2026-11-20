@@ -1,4 +1,4 @@
-import type { Channel, ContactKind, EventKind, OccupationStatus, OwnershipMode, PropertyStatus, PropertyType, TaxRegime } from '../data/types.ts';
+import type { Channel, ContactKind, EventKind, OccupationStatus, OwnershipMode, PropertyStatus, PropertyType, TaxRegime, PropertyUsage } from '../data/types.ts';
 
 /** Statuts d'acquisition, dans l'ordre du parcours. */
 export const STATUS_LABELS: Record<PropertyStatus, string> = {
@@ -30,6 +30,12 @@ export function statusTone(s: PropertyStatus): StatusTone {
   if (['visite_a_programmer', 'visite_programmee', 'visite', 'offre_envisagee'].includes(s)) return 'active';
   return 'early';
 }
+
+export const USAGE_LABELS: Record<PropertyUsage, string> = {
+  locatif: 'Bien locatif',
+  residence_principale: 'Résidence principale',
+  residence_secondaire: 'Résidence secondaire',
+};
 
 export const OCCUPATION_LABELS: Record<OccupationStatus, string> = {
   vacant: 'Vacant',

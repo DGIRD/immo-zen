@@ -71,7 +71,7 @@ export const countsAsProspect = (status: string | null | undefined) => !!status 
 export interface PlanUsage { owned: number; prospects: number; storage_bytes: number }
 export function planUsage(data: Snapshot): PlanUsage {
   return {
-    owned: data.properties.filter((p) => p.status === 'acquis').length,
+    owned: data.properties.filter((p) => p.status === 'acquis' && (p.usage ?? 'locatif') === 'locatif').length, // résidences non comptées
     prospects: data.properties.filter((p) => countsAsProspect(p.status)).length,
     storage_bytes: data.documents.reduce((a, d) => a + Number(d.size_bytes ?? 0), 0),
   };
@@ -100,14 +100,15 @@ export function planViolation(plan: PlanInfo | null | undefined, data: Snapshot,
 
   if (op.table === 'properties') {
     const others = data.properties.filter((p) => !items.some((i) => i.before && i.before.id === p.id));
-    let owned = others.filter((p) => p.status === 'acquis').length;
+    const rentalOwned = (r: Row | null) => !!r && r.status === 'acquis' && (r.usage ?? 'locatif') === 'locatif';
+    let owned = others.filter((p) => p.status === 'acquis' && (p.usage ?? 'locatif') === 'locatif').length;
     let prospects = others.filter((p) => countsAsProspect(p.status)).length;
     for (const { before, after } of items) {
       const st = String(after.status ?? 'repere');
-      if (st === 'acquis' && before?.status !== 'acquis') {
+      if (rentalOwned(after) && !rentalOwned(before)) {
         if (l.owned !== null && owned >= l.owned) return refusal(plan, l.owned === 1 ? '1 bien détenu au plus' : `${l.owned} biens détenus au plus`);
         owned++;
-      } else if (st === 'acquis') owned++;
+      } else if (rentalOwned(after)) owned++;
       if (countsAsProspect(st) && !countsAsProspect(before?.status as string)) {
         if (l.prospects !== null && prospects >= l.prospects) return refusal(plan, `${l.prospects} biens en prospection au plus (hors biens archivés, refusés ou abandonnés)`);
         prospects++;

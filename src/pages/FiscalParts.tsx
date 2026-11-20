@@ -36,11 +36,11 @@ export function collectChecks(f: FiscalSummary, properties: Property[], go: { pr
   const out: Check[] = [];
   const title = (id: string) => properties.find((p) => p.id === id)?.title ?? 'Bien';
   for (const w of f.warnings) out.push({ level: 'corriger', text: w });
-  for (const p of properties.filter((x) => x.status === 'acquis' && !x.tax_regime && f.amounts.has(x.id))) {
+  for (const p of properties.filter((x) => x.status === 'acquis' && (x.usage ?? 'locatif') === 'locatif' && !x.tax_regime && f.amounts.has(x.id))) {
     out.push({ level: 'corriger', property: p.title, text: 'Régime fiscal à choisir : sans lui, le bien n’est dans aucune déclaration.' });
   }
   // crédit commencé avant la date d'acquisition, une autre année : le bien manque dans cette déclaration (ANO-014)
-  for (const p of properties.filter((x) => x.status === 'acquis' && x.acquired_at && x.loan_start_date && x.loan_start_date < x.acquired_at!)) {
+  for (const p of properties.filter((x) => x.status === 'acquis' && (x.usage ?? 'locatif') === 'locatif' && x.acquired_at && x.loan_start_date && x.loan_start_date < x.acquired_at!)) {
     const loanY = Number(p.loan_start_date!.slice(0, 4)); const acqY = Number(p.acquired_at!.slice(0, 4));
     if (f.year >= loanY && f.year < acqY) {
       const fr = (d: string) => d.split('-').reverse().join('/');

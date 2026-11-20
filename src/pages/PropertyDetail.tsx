@@ -2,13 +2,14 @@ import { useMemo, useState } from 'react';
 import { useStore } from '../data/store.tsx';
 import type { Channel, Insert, PropertyStatus, PropertyTask, Scenario, TimelineEvent } from '../data/types.ts';
 import { date, dateTime, money, money2, number, pct, todayParis } from '../domain/format.ts';
-import { CHANNEL_LABELS, EVENT_LABELS, OCCUPATION_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, STATUS_ORDER, TAX_REGIME_LABELS, TYPE_LABELS } from '../domain/labels.ts';
+import { CHANNEL_LABELS, EVENT_LABELS, OCCUPATION_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, STATUS_ORDER, TAX_REGIME_LABELS, TYPE_LABELS, USAGE_LABELS } from '../domain/labels.ts';
 import { ANNUAL_CHARGE_FIELDS, annualChargesTotal, dpeAlerts, isOwned, loanInfo, metrics, ownedCashflow, rentWithCharges, scenarioResult, primaryScenario } from '../domain/property.ts';
 import { cfTitle } from './propertyShared.tsx';
 import { EstimatePanel } from '../ui/EstimatePanel.tsx';
 import { MarketRentPanel } from '../ui/MarketRentPanel.tsx';
 import { RenegotiationHint } from '../ui/LoanRateHint.tsx';
 import { normalizeInputs, simulate, simulatedCashflow } from '../domain/simulator.ts';
+import { PurchaseOfferButton } from './PurchaseOffer.tsx';
 import { Button, EmptyState, Help, KeyValue, PageHeader, Section, StatusBadge, Tabs, TextInput, useConfirm } from '../ui/components.tsx';
 import { href, navigate } from '../ui/router.ts';
 import { usePropertyActions } from './useActions.tsx';
@@ -30,6 +31,7 @@ export function PropertyDetailPage({ id }: { id: string }) {
     return <EmptyState title="Bien introuvable" action={<Button onClick={() => navigate('/prospection')}>Retour à la prospection</Button>}>Il a peut-être été supprimé sur un autre appareil.</EmptyState>;
   }
   const owned = isOwned(p);
+  const residence = owned && !!p.usage && p.usage !== 'locatif';
   const agency = data.contacts.find((c) => c.id === p.agency_id);
   const agent = data.contacts.find((c) => c.id === p.agent_id);
   const scenarios = data.scenarios.filter((s) => s.property_id === p.id);
@@ -44,14 +46,18 @@ export function PropertyDetailPage({ id }: { id: string }) {
   const simCharges = r && r.monthlyRentWithCharges > r.monthlyRent ? Math.round((r.monthlyRentWithCharges - r.monthlyRent) * 100) / 100 : null;
   const loan = owned ? loanInfo(p, today) : null;
 
-  const tabs: [Tab, string][] = owned ? [
+  const tabs: [Tab, string][] = residence ? [
+    ['synthese', 'Vue d’ensemble'], ['finances', 'Crédit et valeur'], ['estimation', 'Estimation'],
+    ['documents', 'Documents'], ['historique', `Historique (${events.length})`], ['taches', `Tâches (${openTasks})`],
+  ] : owned ? [
     ['synthese', 'Vue d’ensemble'], ['location', 'Location'], ['finances', 'Finances'], ['estimation', 'Estimation'],
     ['documents', 'Documents'], ['historique', `Historique (${events.length})`], ['taches', `Tâches (${openTasks})`],
   ] : [
     ['synthese', 'Vue d’ensemble'], ['estimation', 'Estimation et loyer de marché'], ['simulations', 'Simulation'],
     ['historique', `Historique et échanges (${events.length})`], ['taches', `Tâches (${openTasks})`], ['documents', 'Photos et documents'],
   ];
-  const finance: [string, React.ReactNode][] = owned ? [
+  const finance: [string, React.ReactNode][] = owned ? ([
+    ...(residence ? [['Usage', USAGE_LABELS[p.usage!]] as [string, string]] : []),
     ['Loyer hors charges', p.estimated_rent != null ? `${money2(p.estimated_rent)} / mois` : '—'],
     ['Provision sur charges', p.charges_provision != null ? `${money2(p.charges_provision)} / mois` : '—'],
     ['Loyer charges comprises', rentWithCharges(p) != null ? `${money2(rentWithCharges(p))} / mois` : '—'],
@@ -64,7 +70,7 @@ export function PropertyDetailPage({ id }: { id: string }) {
     ] as [string, string][] : [['Crédit', 'Non renseigné']] as [string, string][]),
     ['Coût d’acquisition', money(p.acquisition_cost ?? p.acquisition_snapshot?.results?.totalCost ?? null)],
     ['Régime fiscal', p.tax_regime ? TAX_REGIME_LABELS[p.tax_regime] : 'Non renseigné'],
-  ] : [];
+  ] as [string, React.ReactNode][]).filter(([k]) => !residence || !['Loyer hors charges', 'Provision sur charges', 'Loyer charges comprises', 'Régime fiscal'].includes(String(k)) && !ANNUAL_CHARGE_FIELDS.some(([, l]) => l === k) && k !== 'Total des charges') : [];
   const estimation = <>
     <Section title={owned ? 'Estimation du prix actuel' : 'Estimation DVF'}>
       <EstimatePanel value={p} input={p} onChange={async (patch) => { await update('properties', p, patch, `Le bien « ${p.title} »`); }}
@@ -106,7 +112,8 @@ export function PropertyDetailPage({ id }: { id: string }) {
 
       <div className="status-line">
         <StatusBadge status={p.status} />
-        {owned && p.occupation_status && <span className="pill pill-neutral">{OCCUPATION_LABELS[p.occupation_status]}</span>}
+        {residence && <span className="pill pill-neutral">{USAGE_LABELS[p.usage!]}</span>}
+        {owned && !residence && p.occupation_status && <span className="pill pill-neutral">{OCCUPATION_LABELS[p.occupation_status]}</span>}
         {!owned && (
           <label className="inline-select">Changer le statut
             <select value={p.status} onChange={(e) => void actions.setStatus(p, e.target.value as PropertyStatus)}>
@@ -128,8 +135,14 @@ export function PropertyDetailPage({ id }: { id: string }) {
             <Figure label="Estimation DVF" value={p.estimate_low != null && p.estimate_high != null ? `${money(p.estimate_low)} – ${money(p.estimate_high)}` : '—'} />
           </>
         )}
-        <Figure label="Rendement brut" value={pct(r?.grossYield)} />
-        {owned
+        {residence ? (
+          <>
+            <Figure label="Capital restant dû" value={loan?.remaining != null ? money(loan.remaining) : p.loan_amount ? '—' : 'Sans crédit'} />
+            <Figure label="Patrimoine net estimé" value={p.estimate_median != null || p.estimate_low != null ? money((p.estimate_median ?? ((p.estimate_low! + (p.estimate_high ?? p.estimate_low!)) / 2)) - (loan?.remaining ?? 0)) : '—'}
+              hint="Estimation médiane moins capital restant dû" />
+          </>
+        ) : <Figure label="Rendement brut" value={pct(r?.grossYield)} />}
+        {residence ? null : owned
           ? <Figure label="Cash-flow / mois" value={money(cf?.monthly)} tone={cf ? (cf.monthly >= 0 ? 'pos' : 'neg') : undefined} hint={cfTitle(cf)} />
           : <Figure label="Cash-flow / mois" value={money(simulatedCashflow(r))} tone={simulatedCashflow(r) === null ? undefined : simulatedCashflow(r)! >= 0 ? 'pos' : 'neg'} hint={r && simulatedCashflow(r) === null ? 'renseignez le loyer au m²' : 'avant fiscalité, année 1'} />}
       </div>
@@ -142,7 +155,7 @@ export function PropertyDetailPage({ id }: { id: string }) {
             <KeyValue items={[
               ['Adresse', [p.address, p.zip, p.city].filter(Boolean).join(' ') || '—'],
               ['DPE renseigné', p.dpe ?? 'Non renseigné'],
-              ...(owned ? [
+              ...(residence ? [['Usage', USAGE_LABELS[p.usage!]]] as [string, string][] : owned ? [
                 ['Loyer charges comprises', rentWithCharges(p) != null ? `${money2(rentWithCharges(p))} / mois` : '—'],
               ] as [string, string][] : [
                 ['Surface du logement', p.surface ? `${number(p.surface)} m²` : '—'],
@@ -181,7 +194,7 @@ export function PropertyDetailPage({ id }: { id: string }) {
       {tab === 'location' && <>{owned && <PropertyRental propertyId={p.id} />}{marketRent}</>}
       {tab === 'finances' && (
         <>
-          <Section title="Loyer, charges et crédit">
+          <Section title={residence ? 'Crédit' : 'Loyer, charges et crédit'}>
             <KeyValue items={finance} />
             {loan && !loan.finished && <RenegotiationHint rate={p.loan_rate} years={p.loan_years} start={p.loan_start_date} />}
           </Section>
@@ -195,6 +208,11 @@ export function PropertyDetailPage({ id }: { id: string }) {
       )}
       {tab === 'estimation' && <>{estimation}{!owned && marketRent}</>}
       {tab === 'simulations' && <SimulationPanel propertyId={p.id} main={primaryScenario(p, scenarios) ?? undefined} scenarios={scenarios}
+        offer={!owned ? (main) => {
+          const out = simulate(normalizeInputs(main.inputs));
+          return out.ok ? <PurchaseOfferButton property={p} inputs={normalizeInputs(main.inputs)} result={out.result} notify={notify}
+            recipient={[agent?.name, agency?.name].filter(Boolean).join(', ') || undefined} /> : null;
+        } : undefined}
         onUse={async (s) => { await update('properties', p, { primary_scenario_id: s.id }, `Le bien « ${p.title} »`); notify('Simulation du bien remplacée.'); }}
         onDelete={async (s) => { if (await ask('Supprimer l’ancienne simulation', `« ${s.name} » sera supprimée. La simulation du bien n’est pas modifiée.`, 'Supprimer')) await remove('scenarios', s.id); }}
       />}
@@ -228,14 +246,15 @@ function SnapshotFigures({ inputs }: { inputs: Scenario['inputs'] }) {
 }
 
 /** Simulation unique du bien ; les simulations enregistrées avant ce fonctionnement restent consultables. */
-function SimulationPanel({ propertyId, main, scenarios, onUse, onDelete }: {
+function SimulationPanel({ propertyId, main, scenarios, onUse, onDelete, offer }: {
   propertyId: string; main: Scenario | undefined; scenarios: Scenario[]; onUse: (s: Scenario) => void; onDelete: (s: Scenario) => void;
+  offer?: (main: Scenario) => React.ReactNode;
 }) {
   const others = scenarios.filter((s) => s.id !== main?.id && !s.archived_at);
   const r = main ? scenarioResult(main) : null;
   return (
     <>
-      <Section title="Simulation" actions={<Button variant="primary" size="sm" onClick={() => navigate(`/bien/${propertyId}/modifier`)}>{main ? 'Modifier la simulation' : 'Créer la simulation'}</Button>}>
+      <Section title="Simulation" actions={<>{main && offer?.(main)}<Button variant="primary" size="sm" onClick={() => navigate(`/bien/${propertyId}/modifier`)}>{main ? 'Modifier la simulation' : 'Créer la simulation'}</Button></>}>
         {!main ? <EmptyState title="Aucune simulation">Renseignez prix, financement, loyer et charges pour estimer le coût, le crédit, le rendement et le cash-flow de ce bien.</EmptyState>
           : r ? <KeyValue items={[
             ['Coût total', money(r.totalCost)], ['Emprunt', money(r.loanAmount)], ['Mensualité', money(r.monthlyPaymentWithInsurance)],
