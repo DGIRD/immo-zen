@@ -379,6 +379,10 @@ main > section.apercu { padding: clamp(2rem, 5vw, 3.5rem) 0 clamp(2.5rem, 6vw, 4
 .optin-row { display: flex; gap: .5rem; flex-wrap: wrap; }
 .optin-row input { flex: 1 1 14rem; min-width: 0; font: inherit; color: var(--encre); padding: .6rem .7rem; border: 1px solid var(--trait); border-radius: 4px; background: var(--blanc); }
 .optin-row .btn { flex: 0 0 auto; }
+.optin-google { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .7rem; }
+.optin-google[hidden] { display: none; }
+.optin-or { font-size: .9rem; color: var(--ardoise); }
+.optin-google-btn { min-height: 40px; }
 .optin-check { display: flex; gap: .55rem; align-items: flex-start; font-size: .92rem; color: var(--encre); line-height: 1.4; }
 .optin-check input[type="checkbox"] { margin-top: .2rem; flex: 0 0 auto; width: 1.05rem; height: 1.05rem; accent-color: var(--sapin); }
 .optin-check select { font: inherit; padding: .1rem .3rem; border: 1px solid var(--trait); border-radius: 4px; background: var(--blanc); }

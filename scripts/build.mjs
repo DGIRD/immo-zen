@@ -4,6 +4,7 @@
 // Variables lues depuis l'environnement ou un fichier .env (jamais commité) :
 //   IMMOZEN_ENV                 development | test | production
 //   IMMOZEN_SUPABASE_URL        URL du projet Supabase
+//   IMMOZEN_GOOGLE_CLIENT_ID    ID client OAuth Google (public), bouton « avec Google » des inscriptions du site
 //   IMMOZEN_SUPABASE_ANON_KEY   clé publique (anon / publishable) – JAMAIS la clé service_role
 //   IMMOZEN_BASE_PATH           chemin de publication (ex. /idf-invest/ sur GitHub Pages), défaut ./
 import * as esbuild from 'esbuild';
@@ -32,6 +33,8 @@ const env = {
   IMMOZEN_ENV: process.env.IMMOZEN_ENV || (serve ? 'development' : 'production'),
   IMMOZEN_SUPABASE_URL: process.env.IMMOZEN_SUPABASE_URL || '',
   IMMOZEN_SUPABASE_ANON_KEY: process.env.IMMOZEN_SUPABASE_ANON_KEY || '',
+  // ID client OAuth Google (public) : bouton « avec Google » des formulaires d'inscription du site ; vide = bouton masqué
+  IMMOZEN_GOOGLE_CLIENT_ID: process.env.IMMOZEN_GOOGLE_CLIENT_ID || '',
 };
 
 // Garde-fou : refuser toute clé secrète dans le frontend.
@@ -95,6 +98,8 @@ function writeSite() {
       .replaceAll('%IMMOZEN_SUPABASE_ANON_KEY%', env.IMMOZEN_SUPABASE_ANON_KEY);
     writeFileSync(join(out, f), html);
   }
+  const siteJs = join(out, 'site.js');
+  writeFileSync(siteJs, readFileSync(siteJs, 'utf8').replaceAll('%IMMOZEN_GOOGLE_CLIENT_ID%', env.IMMOZEN_GOOGLE_CLIENT_ID));
   for (const icon of ['icon-192.png', 'icon-512.png']) cpSync(join(root, 'public', icon), join(out, icon));
 }
 
