@@ -16,7 +16,7 @@ const SITE = 'https://immo-zen.fr';
 const DATE = '2026-10-20';
 const DATE_FR = '20 octobre 2026';
 /** Dernière modification des pages pour le plan du site. */
-const SITEMAP_LASTMOD = '2026-11-18';
+const SITEMAP_LASTMOD = '2026-11-20';
 const CATEGORIES = ['Investir', 'Financer et déclarer', 'Gérer'];
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -82,7 +82,7 @@ ${body}
   <footer class="foot">
     <div class="wrap foot-in">
       <p>© 2026 Immo-Zen</p>
-      <nav aria-label="Liens du site"><a href="${prefix}">Accueil</a><a href="${prefix}outils/">Outils gratuits</a><a href="${prefix}guides/">Guides</a><a href="${prefix}mentions-legales.html">Mentions légales</a><a href="mailto:contact@immo-zen.fr">contact@immo-zen.fr</a></nav>
+      <nav aria-label="Liens du site"><a href="${prefix}">Accueil</a><a href="${prefix}outils/">Outils gratuits</a><a href="${prefix}guides/">Guides</a><a href="${prefix}mentions-legales.html">Mentions légales</a><a href="${prefix}conditions-generales.html">Conditions générales</a><a href="mailto:contact@immo-zen.fr">contact@immo-zen.fr</a></nav>
     </div>
   </footer>
   <script src="${prefix}site.js" defer></script>
@@ -95,7 +95,7 @@ const DISCLAIMER = `<p class="small disclaimer">Ce guide donne des repères gén
 
 const TOOL_FOR = {
   'cash-flow-investissement-locatif': 'simulateur-cash-flow',
-  'calculer-rentabilite-locative': 'simulateur-cash-flow',
+  'calculer-rentabilite-locative': 'calcul-rentabilite-locative',
   'financer-investissement-locatif': 'simulateur-cash-flow',
   'premier-investissement-locatif': 'simulateur-cash-flow',
   'revision-loyer-irl': 'revision-loyer-irl',
@@ -203,7 +203,7 @@ for (const t of TOOLS) {
   writeFileSync(join(outilsDir, 'index.html'), shell({ ...p, prefix: '../', current: 'outils', ogType: 'website' }));
 }
 
-const urls = [`${SITE}/`, `${SITE}/outils/`, ...TOOLS.map((t) => `${SITE}/outils/${t.slug}.html`), `${SITE}/guides/`, ...all.map((a) => `${SITE}/guides/${a.slug}.html`), `${SITE}/mentions-legales.html`];
+const urls = [`${SITE}/`, `${SITE}/outils/`, ...TOOLS.map((t) => `${SITE}/outils/${t.slug}.html`), `${SITE}/guides/`, ...all.map((a) => `${SITE}/guides/${a.slug}.html`), `${SITE}/mentions-legales.html`, `${SITE}/conditions-generales.html`];
 writeFileSync(join(root, 'site/sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${u}</loc><lastmod>${SITEMAP_LASTMOD}</lastmod></url>`).join('\n')}\n</urlset>\n`);
 writeFileSync(join(root, 'site/robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${SITE}/sitemap.xml\n`);
 

@@ -1,4 +1,4 @@
-/* Immo-Zen — calculettes gratuites du site vitrine (simulateur de cash-flow, plafond de loyer à Paris, révision IRL).
+/* Immo-Zen — calculettes gratuites du site vitrine (simulateur de cash-flow, rentabilité locative, plafond de loyer à Paris, révision IRL).
    Aucun appel réseau : tout est calculé dans le navigateur. Les champs gardent leurs valeurs dans l'adresse de la page
    pour pouvoir partager une simulation. */
 (() => {
@@ -95,6 +95,31 @@
     set('cf-cta-text', cf < 0
       ? 'Découvrez comment améliorer ce résultat : Immo-Zen compare le prix aux ventes réelles du quartier pour négocier, vérifie le loyer de marché et teste l’effet de l’apport, de la durée ou du meublé.'
       : 'Le bien tient la route. Avant l’offre, Immo-Zen vérifie le prix avec les ventes réelles du quartier et le loyer de marché ; après l’achat, il gère échéances, quittances et déclaration.');
+  });
+
+
+  // ---------- 1 bis. Calcul de rentabilité locative (brut, net, net-net, prix maximal)
+  wire($('calc-rentabilite'), (f) => {
+    const prix = num(f.get('prix')), notaire = num(f.get('notaire')) / 100, agence = num(f.get('agence'));
+    const travaux = num(f.get('travaux')), mobilier = num(f.get('mobilier'));
+    const loyer = num(f.get('loyer')), vacance = Math.min(12, Math.max(0, num(f.get('vacance'))));
+    const charges = num(f.get('tf')) + num(f.get('copro')) + num(f.get('pno')) + num(f.get('entretien'));
+    const gestion = num(f.get('gestion')) / 100, tmi = num(f.get('tmi')) / 100, objectif = num(f.get('objectif')) / 100;
+    const regime = f.get('regime');
+    const r = window.ImmoZenRentabilite.calcul({ prix, notaire, agence, travaux, mobilier, loyer, vacance, charges, gestion, tmi, regime, objectif });
+    set('rt-result', r.cout > 0 ? pct(r.netNet, 2) : '—');
+    $('rt-result')?.classList.toggle('neg', r.netNet < 0);
+    set('rt-verdict', r.cout > 0
+      ? `Sur ${eur.format(Math.round(r.cout))} investis, le bien vous rapporte environ ${eur.format(Math.round(r.apresImpot))} par an après impôts.`
+      : 'Saisissez le prix du bien.');
+    set('rt-cout', eur.format(Math.round(r.cout)));
+    set('rt-brut-prix', pct(r.brutPrix, 2));
+    set('rt-brut', pct(r.brut, 2));
+    set('rt-net', pct(r.net, 2));
+    set('rt-resultat', `${eur.format(Math.round(r.resultat))} / an`);
+    set('rt-impot', `${eur.format(Math.round(r.impot))} / an`);
+    set('rt-prixmax', r.prixMax > 0 ? `${eur.format(Math.round(r.prixMax / 100) * 100)} (${r.ecartPrix >= 0 ? '−' : '+'}${pct(Math.abs(r.ecartPrix), 0)} sur le prix)` : 'objectif hors d’atteinte');
+    set('rt-cta-text', 'Dans Immo-Zen, chaque bien repéré a sa simulation complète (crédit, cash-flow, régime fiscal) et se compare côte à côte avec les autres, avec le prix des ventes réelles du quartier.');
   });
 
   // ---------- 2. Plafond de loyer à Paris

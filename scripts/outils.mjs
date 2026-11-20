@@ -1,4 +1,4 @@
-// Pages « Outils gratuits » du site vitrine : simulateur de cash-flow, plafond de loyer à Paris, révision IRL.
+// Pages « Outils gratuits » du site vitrine : simulateur de cash-flow, calcul de rentabilité, plafond de loyer à Paris, révision IRL.
 // Générées par scripts/guides.mjs (même en-tête, même pied de page). Le calcul est dans site/outils/outils.js.
 import { optinForm } from './optin.mjs';
 
@@ -81,6 +81,86 @@ ${faq([
   ['Pourquoi compter de la vacance locative ?', 'Entre deux locataires, le logement reste souvent vide quelques semaines. Prévoir un demi-mois à un mois par an évite de surestimer les loyers.'],
   ['Les charges récupérables doivent-elles être saisies ?', 'Non : les charges récupérables sont refacturées au locataire. Seule la part non récupérable de la copropriété reste à votre charge.'],
   ['Le calcul tient-il compte des impôts ?', 'Non, le résultat est avant impôts. Dans Immo-Zen, la simulation complète intègre le régime fiscal de chaque bien.'],
+])}`,
+  },
+  {
+    slug: 'calcul-rentabilite-locative',
+    short: 'Calcul de rentabilité locative',
+    title: 'Calcul de rentabilité locative gratuit : rendement brut, net et net-net',
+    h1: 'Calcul de la rentabilité locative',
+    description: 'Calculez gratuitement la rentabilité locative d’un bien : rendement brut, net de charges et net-net après impôts (micro-foncier, réel, micro-BIC), et le prix maximal à payer. Sans inscription.',
+    pitch: 'Les trois rendements d’un bien (brut, net et net-net après impôts) et le prix maximal à payer pour atteindre votre objectif.',
+    card: 'Rendement brut, net et net-net après impôts, et le prix maximal à payer.',
+    script: 'rentabilite.js',
+    guides: [['calculer-rentabilite-locative', 'Calculer la rentabilité : brut, net et net-net'], ['location-nue-ou-meublee-lmnp', 'Location nue ou meublée : quel régime fiscal ?'], ['rentabilite-patrimoine-projet-de-vie', 'Rentabilité, patrimoine et projet de vie']],
+    form: `<form class="calc tool-form" id="calc-rentabilite" aria-labelledby="form-title">
+          <h2 id="form-title">Le coût du bien</h2>
+          <div class="calc-grid">
+            ${field('Prix d’achat', 'prix', '150000', '€')}
+            ${field('Frais de notaire', 'notaire', '7,5', '%')}
+            ${field('Frais d’agence à votre charge', 'agence', '0', '€')}
+            ${field('Travaux', 'travaux', '8000', '€')}
+            ${field('Mobilier (location meublée)', 'mobilier', '0', '€')}
+          </div>
+          <h2>Les loyers et les charges</h2>
+          <div class="calc-grid">
+            ${field('Loyer hors charges', 'loyer', '750', '€ / mois')}
+            ${field('Vacance locative', 'vacance', '1', 'mois / an')}
+            ${field('Taxe foncière', 'tf', '900', '€ / an')}
+            ${field('Copropriété non récupérable', 'copro', '600', '€ / an')}
+            ${field('Assurance propriétaire (PNO)', 'pno', '150', '€ / an')}
+            ${field('Entretien et petits travaux', 'entretien', '300', '€ / an')}
+            ${field('Gestion par une agence', 'gestion', '0', '% des loyers')}
+          </div>
+          <h2>La fiscalité</h2>
+          <div class="calc-grid">
+            ${select('Régime fiscal', 'regime', opt([['micro-foncier', 'Location nue : micro-foncier'], ['reel', 'Location nue : régime réel'], ['micro-bic', 'Location meublée : micro-BIC']], 'micro-foncier'))}
+            ${select('Votre tranche d’imposition', 'tmi', opt([[0, '0 %'], [11, '11 %'], [30, '30 %'], [41, '41 %'], [45, '45 %']], 30))}
+            ${field('Rendement net visé', 'objectif', '4', '%')}
+          </div>
+        </form>`,
+    out: `<div class="tool-out" aria-live="polite">
+          <p class="calc-label">Rendement net-net, après impôts</p>
+          <p class="calc-figure" id="rt-result">—</p>
+          <p class="calc-verdict" id="rt-verdict"></p>
+          <dl class="tool-dl">
+            ${row('Coût total de l’opération', 'rt-cout')}
+            ${row('Rendement brut sur le prix (annonce)', 'rt-brut-prix')}
+            ${row('Rendement brut sur le coût total', 'rt-brut')}
+            ${row('Rendement net de charges', 'rt-net')}
+            ${row('Résultat net annuel', 'rt-resultat')}
+            ${row('Impôt et prélèvements sociaux', 'rt-impot')}
+            ${row('Prix maximal pour le rendement net visé', 'rt-prixmax')}
+          </dl>
+          <div class="calc-cta">
+            <p id="rt-cta-text"></p>
+            <a class="btn btn-main" href="../app/">Essayer Immo-Zen gratuitement 30 jours</a>
+          </div>
+          ${share}
+        </div>`,
+    body: `<h2 id="methode">Comment la rentabilité est calculée</h2>
+<p>Les trois rendements se calculent sur le <strong>coût total de l’opération</strong>, et non sur le seul prix affiché :</p>
+<p class="formula">Coût total = prix + frais de notaire + frais d’agence à votre charge + travaux + mobilier</p>
+<ul>
+<li><strong>Rendement brut</strong> = loyer annuel hors charges ÷ coût total. Utile pour trier des annonces, jamais pour décider. Le rendement « sur le prix » des annonces est plus flatteur.</li>
+<li><strong>Rendement net</strong> = (loyers encaissés − charges non récupérables) ÷ coût total. Les loyers encaissés tiennent compte de la vacance ; les charges sont la taxe foncière, la copropriété non récupérable, l’assurance, l’entretien et la gestion éventuelle.</li>
+<li><strong>Rendement net-net</strong> = (résultat net − impôt sur le revenu − prélèvements sociaux) ÷ coût total. C’est ce que le bien vous rapporte vraiment.</li>
+</ul>
+<h2 id="impots">Les impôts retenus</h2>
+<ul>
+<li><strong>Micro-foncier</strong> (location nue, jusqu’à 15 000 € de loyers par an) : 30 % d’abattement sur les loyers encaissés, puis impôt à votre tranche et 17,2 % de prélèvements sociaux.</li>
+<li><strong>Régime réel</strong> (location nue) : les charges saisies sont déduites des loyers. Les intérêts d’emprunt, aussi déductibles, ne sont pas comptés ici : la rentabilité se mesure indépendamment du financement. Un éventuel déficit n’est pas imputé.</li>
+<li><strong>Micro-BIC</strong> (location meublée de longue durée) : 50 % d’abattement sur les loyers, puis impôt à votre tranche et 18,6 % de prélèvements sociaux depuis la loi de financement de la sécurité sociale pour 2026.</li>
+</ul>
+<p>En location meublée au régime réel (LMNP), l’amortissement du bien efface souvent l’impôt pendant des années : le guide <a href="../guides/location-nue-ou-meublee-lmnp.html">location nue ou meublée</a> compare les quatre régimes sur un même bien.</p>
+<h2 id="prixmax">Le prix maximal à payer</h2>
+<p>Le calcul inverse la formule du rendement net : coût total maximal = résultat net ÷ rendement visé, puis on retire les travaux, les frais d’agence et le mobilier, et on divise par 1 + frais de notaire. C’est le prix d’achat à viser pour atteindre votre objectif, à justifier dans votre offre par les travaux et les ventes comparables.</p>
+<h2 id="faq">Questions fréquentes</h2>
+${faq([
+  ['Quelle est une bonne rentabilité locative ?', 'Il n’y a pas de seuil universel. Une rentabilité brute de 3 à 4 % est courante dans les grandes villes chères, de 6 à 8 % dans de nombreuses villes moyennes. Comparez plutôt la rentabilité nette de biens comparables dans le même secteur, en tenant compte du risque et de la valeur future du bien.'],
+  ['Faut-il inclure les frais de notaire ?', 'Oui. La rentabilité se calcule sur le coût total : prix, frais de notaire, frais d’agence à la charge de l’acheteur, travaux et mobilier. Calculée sur le seul prix, elle paraît plus élevée qu’elle n’est.'],
+  ['Le crédit entre-t-il dans la rentabilité ?', 'Non : la rentabilité mesure ce que rapporte le bien, quel que soit son financement. L’effet du crédit se mesure avec le cash-flow : utilisez le simulateur de cash-flow pour le calculer.'],
+  ['Pourquoi le résultat diffère-t-il de mon impôt réel ?', 'Le calcul applique votre tranche marginale à ce seul revenu, sans tenir compte du quotient familial, des seuils des régimes micro ni des autres revenus du foyer. C’est une estimation pour comparer des biens, pas un calcul d’impôt.'],
 ])}`,
   },
   {
@@ -252,5 +332,5 @@ export function toolsIndex({ site }) {
       </ul>
     </div>`;
   const jsonld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: 'Outils gratuits Immo-Zen', url: canonical, inLanguage: 'fr-FR' };
-  return { canonical, body, title: 'Outils gratuits : cash-flow, plafond de loyer, révision IRL — Immo-Zen', description: 'Calculettes gratuites et sans inscription pour l’investissement locatif : simulateur de cash-flow, plafond de loyer à Paris, révision de loyer avec l’IRL.', jsonld };
+  return { canonical, body, title: 'Outils gratuits : rentabilité, cash-flow, plafond de loyer, révision IRL — Immo-Zen', description: 'Calculettes gratuites et sans inscription pour l’investissement locatif : calcul de rentabilité locative, simulateur de cash-flow, plafond de loyer à Paris, révision de loyer avec l’IRL.', jsonld };
 }
