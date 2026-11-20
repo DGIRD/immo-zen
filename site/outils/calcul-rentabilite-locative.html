@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Calcul de rentabilité locative gratuit : rendement brut, net et net-net — Immo-Zen</title>
+  <meta name="description" content="Calculez gratuitement la rentabilité locative d’un bien : rendement brut, net de charges et net-net après impôts (micro-foncier, réel, micro-BIC), et le prix maximal à payer. Sans inscription.">
+  <link rel="canonical" href="https://immo-zen.fr/outils/calcul-rentabilite-locative.html">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Calcul de rentabilité locative gratuit : rendement brut, net et net-net — Immo-Zen">
+  <meta property="og:description" content="Calculez gratuitement la rentabilité locative d’un bien : rendement brut, net de charges et net-net après impôts (micro-foncier, réel, micro-BIC), et le prix maximal à payer. Sans inscription.">
+  <meta property="og:url" content="https://immo-zen.fr/outils/calcul-rentabilite-locative.html">
+  <meta property="og:locale" content="fr_FR">
+  <meta property="og:site_name" content="Immo-Zen">
+  <meta name="theme-color" content="#1F4A45">
+  <link rel="icon" href="../icon-192.png">
+  <link rel="stylesheet" href="../site.css">
+  <script type="application/ld+json">[{"@context":"https://schema.org","@type":"WebApplication","name":"Calcul de rentabilité locative","description":"Calculez gratuitement la rentabilité locative d’un bien : rendement brut, net de charges et net-net après impôts (micro-foncier, réel, micro-BIC), et le prix maximal à payer. Sans inscription.","url":"https://immo-zen.fr/outils/calcul-rentabilite-locative.html","applicationCategory":"FinanceApplication","operatingSystem":"Tous navigateurs","inLanguage":"fr-FR","offers":{"@type":"Offer","price":"0","priceCurrency":"EUR"},"publisher":{"@type":"Organization","name":"Immo-Zen","url":"https://immo-zen.fr"}},{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Quelle est une bonne rentabilité locative ?","acceptedAnswer":{"@type":"Answer","text":"Il n’y a pas de seuil universel. Une rentabilité brute de 3 à 4 % est courante dans les grandes villes chères, de 6 à 8 % dans de nombreuses villes moyennes. Comparez plutôt la rentabilité nette de biens comparables dans le même secteur, en tenant compte du risque et de la valeur future du bien."}},{"@type":"Question","name":"Faut-il inclure les frais de notaire ?","acceptedAnswer":{"@type":"Answer","text":"Oui. La rentabilité se calcule sur le coût total : prix, frais de notaire, frais d’agence à la charge de l’acheteur, travaux et mobilier. Calculée sur le seul prix, elle paraît plus élevée qu’elle n’est."}},{"@type":"Question","name":"Le crédit entre-t-il dans la rentabilité ?","acceptedAnswer":{"@type":"Answer","text":"Non : la rentabilité mesure ce que rapporte le bien, quel que soit son financement. L’effet du crédit se mesure avec le cash-flow : utilisez le simulateur de cash-flow pour le calculer."}},{"@type":"Question","name":"Pourquoi le résultat diffère-t-il de mon impôt réel ?","acceptedAnswer":{"@type":"Answer","text":"Le calcul applique votre tranche marginale à ce seul revenu, sans tenir compte du quotient familial, des seuils des régimes micro ni des autres revenus du foyer. C’est une estimation pour comparer des biens, pas un calcul d’impôt."}}]}]</script>
+</head>
+<body data-supabase-url="%IMMOZEN_SUPABASE_URL%" data-supabase-key="%IMMOZEN_SUPABASE_ANON_KEY%">
+  <a class="skip" href="#contenu">Aller au contenu</a>
+  <header class="top">
+    <div class="wrap top-in">
+      <a class="brand" href="../" aria-label="Immo-Zen, accueil">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 17 16 6l12 11" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 26h14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="16" cy="19" r="2.4" fill="currentColor"/></svg>
+        Immo-Zen
+      </a>
+      <nav id="nav" class="site-nav" aria-label="Navigation du site">
+        <a href="../#profils">Pour qui</a>
+        <a href="../#decider">Acheter</a>
+        <a href="../#gerer">Gérer</a>
+        <a href="../#declarer">Déclarer</a>
+        <a href="../#tarifs">Tarifs</a>
+        <a href="../outils/" aria-current="page">Outils</a>
+        <a href="../guides/">Guides</a>
+      </nav>
+      <div class="top-actions">
+        <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav">Menu</button>
+        <a class="btn btn-espace" href="../app/">Espace client</a>
+      </div>
+    </div>
+  </header>
+  <main id="contenu" class="page">
+    <div class="wrap tool">
+      <nav class="breadcrumb" aria-label="Fil d'Ariane"><a href="../">Accueil</a> › <a href="./">Outils gratuits</a> › <span>Calcul de rentabilité locative</span></nav>
+      <h1>Calcul de la rentabilité locative</h1>
+      <p class="tool-pitch">Les trois rendements d’un bien (brut, net et net-net après impôts) et le prix maximal à payer pour atteindre votre objectif. Gratuit, sans inscription.</p>
+      <div class="tool-grid">
+        <form class="calc tool-form" id="calc-rentabilite" aria-labelledby="form-title">
+          <h2 id="form-title">Le coût du bien</h2>
+          <div class="calc-grid">
+            <label>Prix d’achat<span class="in"><input inputmode="decimal" name="prix" value="150000" autocomplete="off"><i>€</i></span></label>
+            <label>Frais de notaire<span class="in"><input inputmode="decimal" name="notaire" value="7,5" autocomplete="off"><i>%</i></span></label>
+            <label>Frais d’agence à votre charge<span class="in"><input inputmode="decimal" name="agence" value="0" autocomplete="off"><i>€</i></span></label>
+            <label>Travaux<span class="in"><input inputmode="decimal" name="travaux" value="8000" autocomplete="off"><i>€</i></span></label>
+            <label>Mobilier (location meublée)<span class="in"><input inputmode="decimal" name="mobilier" value="0" autocomplete="off"><i>€</i></span></label>
+          </div>
+          <h2>Les loyers et les charges</h2>
+          <div class="calc-grid">
+            <label>Loyer hors charges<span class="in"><input inputmode="decimal" name="loyer" value="750" autocomplete="off"><i>€ / mois</i></span></label>
+            <label>Vacance locative<span class="in"><input inputmode="decimal" name="vacance" value="1" autocomplete="off"><i>mois / an</i></span></label>
+            <label>Taxe foncière<span class="in"><input inputmode="decimal" name="tf" value="900" autocomplete="off"><i>€ / an</i></span></label>
+            <label>Copropriété non récupérable<span class="in"><input inputmode="decimal" name="copro" value="600" autocomplete="off"><i>€ / an</i></span></label>
+            <label>Assurance propriétaire (PNO)<span class="in"><input inputmode="decimal" name="pno" value="150" autocomplete="off"><i>€ / an</i></span></label>
+            <label>Entretien et petits travaux<span class="in"><input inputmode="decimal" name="entretien" value="300" autocomplete="off"><i>€ / an</i></span></label>
+            <label>Gestion par une agence<span class="in"><input inputmode="decimal" name="gestion" value="0" autocomplete="off"><i>% des loyers</i></span></label>
+          </div>
+          <h2>La fiscalité</h2>
+          <div class="calc-grid">
+            <label>Régime fiscal<span class="in"><select name="regime"><option value="micro-foncier" selected>Location nue : micro-foncier</option><option value="reel">Location nue : régime réel</option><option value="micro-bic">Location meublée : micro-BIC</option></select></span></label>
+            <label>Votre tranche d’imposition<span class="in"><select name="tmi"><option value="0">0 %</option><option value="11">11 %</option><option value="30" selected>30 %</option><option value="41">41 %</option><option value="45">45 %</option></select></span></label>
+            <label>Rendement net visé<span class="in"><input inputmode="decimal" name="objectif" value="4" autocomplete="off"><i>%</i></span></label>
+          </div>
+        </form>
+        <div class="tool-out" aria-live="polite">
+          <p class="calc-label">Rendement net-net, après impôts</p>
+          <p class="calc-figure" id="rt-result">—</p>
+          <p class="calc-verdict" id="rt-verdict"></p>
+          <dl class="tool-dl">
+            <div><dt>Coût total de l’opération</dt><dd id="rt-cout">—</dd></div>
+            <div><dt>Rendement brut sur le prix (annonce)</dt><dd id="rt-brut-prix">—</dd></div>
+            <div><dt>Rendement brut sur le coût total</dt><dd id="rt-brut">—</dd></div>
+            <div><dt>Rendement net de charges</dt><dd id="rt-net">—</dd></div>
+            <div><dt>Résultat net annuel</dt><dd id="rt-resultat">—</dd></div>
+            <div><dt>Impôt et prélèvements sociaux</dt><dd id="rt-impot">—</dd></div>
+            <div><dt>Prix maximal pour le rendement net visé</dt><dd id="rt-prixmax">—</dd></div>
+          </dl>
+          <div class="calc-cta">
+            <p id="rt-cta-text"></p>
+            <a class="btn btn-main" href="../app/">Essayer Immo-Zen gratuitement 30 jours</a>
+          </div>
+          <button type="button" class="btn-link" data-share>Copier le lien de cette simulation</button>
+        </div>
+      </div>
+      
+      <div class="prose tool-prose">
+<h2 id="methode">Comment la rentabilité est calculée</h2>
+<p>Les trois rendements se calculent sur le <strong>coût total de l’opération</strong>, et non sur le seul prix affiché :</p>
+<p class="formula">Coût total = prix + frais de notaire + frais d’agence à votre charge + travaux + mobilier</p>
+<ul>
+<li><strong>Rendement brut</strong> = loyer annuel hors charges ÷ coût total. Utile pour trier des annonces, jamais pour décider. Le rendement « sur le prix » des annonces est plus flatteur.</li>
+<li><strong>Rendement net</strong> = (loyers encaissés − charges non récupérables) ÷ coût total. Les loyers encaissés tiennent compte de la vacance ; les charges sont la taxe foncière, la copropriété non récupérable, l’assurance, l’entretien et la gestion éventuelle.</li>
+<li><strong>Rendement net-net</strong> = (résultat net − impôt sur le revenu − prélèvements sociaux) ÷ coût total. C’est ce que le bien vous rapporte vraiment.</li>
+</ul>
+<h2 id="impots">Les impôts retenus</h2>
+<ul>
+<li><strong>Micro-foncier</strong> (location nue, jusqu’à 15 000 € de loyers par an) : 30 % d’abattement sur les loyers encaissés, puis impôt à votre tranche et 17,2 % de prélèvements sociaux.</li>
+<li><strong>Régime réel</strong> (location nue) : les charges saisies sont déduites des loyers. Les intérêts d’emprunt, aussi déductibles, ne sont pas comptés ici : la rentabilité se mesure indépendamment du financement. Un éventuel déficit n’est pas imputé.</li>
+<li><strong>Micro-BIC</strong> (location meublée de longue durée) : 50 % d’abattement sur les loyers, puis impôt à votre tranche et 18,6 % de prélèvements sociaux depuis la loi de financement de la sécurité sociale pour 2026.</li>
+</ul>
+<p>En location meublée au régime réel (LMNP), l’amortissement du bien efface souvent l’impôt pendant des années : le guide <a href="../guides/location-nue-ou-meublee-lmnp.html">location nue ou meublée</a> compare les quatre régimes sur un même bien.</p>
+<h2 id="prixmax">Le prix maximal à payer</h2>
+<p>Le calcul inverse la formule du rendement net : coût total maximal = résultat net ÷ rendement visé, puis on retire les travaux, les frais d’agence et le mobilier, et on divise par 1 + frais de notaire. C’est le prix d’achat à viser pour atteindre votre objectif, à justifier dans votre offre par les travaux et les ventes comparables.</p>
+<h2 id="faq">Questions fréquentes</h2>
+<details><summary>Quelle est une bonne rentabilité locative ?</summary><p>Il n’y a pas de seuil universel. Une rentabilité brute de 3 à 4 % est courante dans les grandes villes chères, de 6 à 8 % dans de nombreuses villes moyennes. Comparez plutôt la rentabilité nette de biens comparables dans le même secteur, en tenant compte du risque et de la valeur future du bien.</p></details>
+<details><summary>Faut-il inclure les frais de notaire ?</summary><p>Oui. La rentabilité se calcule sur le coût total : prix, frais de notaire, frais d’agence à la charge de l’acheteur, travaux et mobilier. Calculée sur le seul prix, elle paraît plus élevée qu’elle n’est.</p></details>
+<details><summary>Le crédit entre-t-il dans la rentabilité ?</summary><p>Non : la rentabilité mesure ce que rapporte le bien, quel que soit son financement. L’effet du crédit se mesure avec le cash-flow : utilisez le simulateur de cash-flow pour le calculer.</p></details>
+<details><summary>Pourquoi le résultat diffère-t-il de mon impôt réel ?</summary><p>Le calcul applique votre tranche marginale à ce seul revenu, sans tenir compte du quotient familial, des seuils des régimes micro ni des autres revenus du foyer. C’est une estimation pour comparer des biens, pas un calcul d’impôt.</p></details>
+        <p class="small disclaimer">Ce calcul donne une estimation à titre indicatif, à jour au 9 novembre 2026. Vérifiez les règles applicables avec les textes officiels (service-public.fr, paris.fr, insee.fr) ou un professionnel avant de décider.</p>
+        <section class="related" aria-labelledby="related-title">
+          <h2 id="related-title">Pour aller plus loin</h2>
+          <ul><li><a href="../guides/calculer-rentabilite-locative.html"><span class="cat">Guide</span>Calculer la rentabilité : brut, net et net-net</a></li><li><a href="../guides/location-nue-ou-meublee-lmnp.html"><span class="cat">Guide</span>Location nue ou meublée : quel régime fiscal ?</a></li><li><a href="../guides/rentabilite-patrimoine-projet-de-vie.html"><span class="cat">Guide</span>Rentabilité, patrimoine et projet de vie</a></li><li><a href="simulateur-cash-flow.html"><span class="cat">Outil</span>Simulateur de cash-flow</a></li><li><a href="plafond-loyer-paris.html"><span class="cat">Outil</span>Plafond de loyer à Paris</a></li><li><a href="revision-loyer-irl.html"><span class="cat">Outil</span>Révision de loyer (IRL)</a></li></ul>
+        </section>
+      </div>
+    </div>
+    <script src="rentabilite.js" defer></script>
+    <script src="outils.js" defer></script>
+  </main>
+  <footer class="foot">
+    <div class="wrap foot-in">
+      <p>© 2026 Immo-Zen</p>
+      <nav aria-label="Liens du site"><a href="../">Accueil</a><a href="../outils/">Outils gratuits</a><a href="../guides/">Guides</a><a href="../mentions-legales.html">Mentions légales</a><a href="../conditions-generales.html">Conditions générales</a><a href="mailto:contact@immo-zen.fr">contact@immo-zen.fr</a></nav>
+    </div>
+  </footer>
+  <script src="../site.js" defer></script>
+</body>
+</html>

@@ -15,13 +15,13 @@ test('en-tête identique sur toutes les pages du site vitrine', () => {
   assert.ok(guides.length >= 10);
   for (const f of guides) assert.equal(header(readFileSync(join(site, 'guides', f), 'utf8')), siteHeader({ prefix: '../', current: 'guides' }), f);
   const outils = readdirSync(join(site, 'outils')).filter((f) => f.endsWith('.html'));
-  assert.equal(outils.length, 4);
+  assert.equal(outils.length, 5);
   for (const f of outils) assert.equal(header(readFileSync(join(site, 'outils', f), 'utf8')), siteHeader({ prefix: '../', current: 'outils' }), f);
 });
 
 test('outils gratuits : pages au plan du site, indices IRL repris de l’application', () => {
   const sitemap = readFileSync(join(site, 'sitemap.xml'), 'utf8');
-  for (const p of ['outils/', 'outils/simulateur-cash-flow.html', 'outils/plafond-loyer-paris.html', 'outils/revision-loyer-irl.html']) assert.match(sitemap, new RegExp(`immo-zen.fr/${p.replace('.', '\\.')}<`));
+  for (const p of ['outils/', 'outils/simulateur-cash-flow.html', 'outils/calcul-rentabilite-locative.html', 'conditions-generales.html', 'outils/plafond-loyer-paris.html', 'outils/revision-loyer-irl.html']) assert.match(sitemap, new RegExp(`immo-zen.fr/${p.replace('.', '\\.')}<`));
   const irl = readFileSync(join(site, 'outils', 'irl.js'), 'utf8');
   assert.match(irl, /"2026-T3":148\.06/);
   const paris = readFileSync(join(site, 'outils', 'plafonds-paris-2026.js'), 'utf8');
@@ -65,4 +65,24 @@ test('inscriptions : documents à télécharger, page de confirmation et confide
   assert.match(page, /<meta name="robots" content="noindex">/);
   assert.doesNotMatch(readFileSync(join(site, 'sitemap.xml'), 'utf8'), /inscription\.html/);
   assert.match(readFileSync(join(site, 'mentions-legales.html'), 'utf8'), /Calculs, guide, checklist, lettre et alertes/);
+});
+
+test('calcul de rentabilité : l’exemple du guide (5,32 % brut, 3,72 % net, 2,11 % net-net)', async () => {
+  const { createRequire } = await import('node:module');
+  const { calcul } = createRequire(import.meta.url)(join(site, 'outils', 'rentabilite.js'));
+  const base = { prix: 150000, notaire: 0.075, agence: 0, travaux: 8000, mobilier: 0, loyer: 750, vacance: 1, charges: 1950, gestion: 0, tmi: 0.3, regime: 'micro-foncier', objectif: 0.04 };
+  const r = calcul(base);
+  assert.equal(Math.round(r.cout), 169250);
+  assert.equal((r.brutPrix * 100).toFixed(2), '6.00');
+  assert.equal((r.brut * 100).toFixed(2), '5.32');
+  assert.equal((r.net * 100).toFixed(2), '3.72');
+  assert.equal(Math.round(r.impot), 2726);
+  assert.equal((r.netNet * 100).toFixed(2), '2.11');
+  assert.ok(Math.abs(r.prixMax - 139070) < 10, String(r.prixMax));
+  // réel : charges déduites ; micro-BIC : 50 % d'abattement et 18,6 % de prélèvements sociaux
+  assert.equal(Math.round(calcul({ ...base, regime: 'reel' }).impot), Math.round(6300 * 0.472));
+  assert.equal(Math.round(calcul({ ...base, regime: 'micro-bic' }).impot), Math.round(8250 * 0.5 * 0.486));
+  // gestion par une agence : frais sur les loyers encaissés
+  assert.equal(Math.round(calcul({ ...base, gestion: 0.08 }).resultat), 6300 - 660);
+  assert.equal(calcul({ ...base, prix: 0, travaux: 0 }).brut, 0, 'pas de division par zéro');
 });
