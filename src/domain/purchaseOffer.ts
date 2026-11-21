@@ -250,13 +250,14 @@ export function purchaseOfferDoc(o: { property: OfferProperty; inputs: Simulatio
   sections.push({ title: 'Signatures', blocks: [
     { t: 'p', text: `Fait à ${t.place?.trim() || '……………………'}, le ${date(o.editedOn)}, en deux exemplaires.` },
     { t: 'sign', parties: [`${plural ? 'Les acquéreurs' : 'L’acquéreur'} — « Bon pour offre d’achat »`, 'Le vendeur — « Bon pour acceptation », date'] },
+    { t: 'p', text: 'Offre d’achat générée à l’aide d’Immo-Zen (immo-zen.fr).' },
   ] });
 
   return {
     title: 'Offre d’achat',
     subtitle: [p.title, where].filter(Boolean).join(' · '),
     sections,
-    footer: 'Offre d’achat — modèle Immo-Zen, à relire avant envoi',
+    footer: 'Offre d’achat générée à l’aide d’Immo-Zen',
     warnings,
   };
 }

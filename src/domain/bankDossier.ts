@@ -130,7 +130,10 @@ export function bankDossierDoc(o: { property: DossierProperty; inputs: Simulatio
   if (o.patrimony?.length) {
     const lines = o.patrimony;
     const t = patrimonyTotals(lines);
-    const projectValue = r.offerFai, projectDebt = r.loanAmount;
+    // valeur du bien visé : prix médian de son estimation (on suppose une négociation réussie), à défaut le prix d'achat
+    const est = p.estimate_median != null && p.estimate_median > 0 ? p.estimate_median
+      : p.estimate_low != null && p.estimate_high != null ? Math.round((p.estimate_low + p.estimate_high) / 2) : null;
+    const projectValue = est ?? r.offerFai, projectDebt = r.loanAmount;
     const afterValue = round2(t.value + projectValue), afterDebt = round2(t.remaining + projectDebt);
     const src = (l: PatrimonyLine) => l.valueSource === 'achat' ? ' (1)' : l.valueSource === 'fourchette' ? ' (2)' : '';
     const notes = [
@@ -156,7 +159,7 @@ export function bankDossierDoc(o: { property: DossierProperty; inputs: Simulatio
         ['Part financée par la dette', t.ltv == null ? '—' : pct(t.ltv), afterValue > 0 ? pct(round2((afterDebt / afterValue) * 100)) : '—'],
         ['Mensualités de crédit en cours', money(t.monthlyLoan), money(round2(t.monthlyLoan + r.monthlyPaymentWithInsurance))],
       ] },
-      { t: 'p', text: [`Valeurs : prix médian de l’estimation de chaque bien (ventes DVF comparables ou saisie du propriétaire). Capital restant dû calculé au ${date(o.editedOn)} d’après les caractéristiques des crédits. « Après le projet » ajoute le prix d’acquisition (${money(projectValue)}) et le prêt demandé (${money(projectDebt)}).`, ...notes].join(' ') },
+      { t: 'p', text: [`Valeurs : prix médian de l’estimation de chaque bien (ventes DVF comparables ou saisie du propriétaire). Capital restant dû calculé au ${date(o.editedOn)} d’après les caractéristiques des crédits. « Après le projet » ajoute ${est != null ? `la valeur médiane estimée du bien visé (${money(projectValue)})` : `le prix d’acquisition du bien visé (${money(projectValue)}), faute d’estimation`} et le prêt demandé (${money(projectDebt)}).`, ...notes].join(' ') },
     ] });
   }
 
