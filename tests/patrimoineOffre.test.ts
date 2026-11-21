@@ -65,6 +65,11 @@ test('dossier banque : section bilan patrimonial avec « après le projet »', a
   assert.equal(detail!.rows.length, 4, '3 biens + total');
   assert.match(detail!.rows[2]![2]!, /\(1\)/, 'valeur au coût d’acquisition signalée');
   assert.equal(synth!.rows.length, 5);
+  const t0 = patrimonyTotals(lines);
+  const avec = bankDossierDoc({ property: { title: 'T3', estimate_median: 300000 }, inputs, result: out.result, editedOn: today, patrimony: lines });
+  const synth2 = (avec.sections.find((x) => x.title === 'Bilan patrimonial immobilier')!.blocks.filter((b) => b.t === 'table')[1] as { rows: string[][] }).rows;
+  assert.equal(synth2[0]![2]!.replace(/\D/g, ''), String(t0.value + 300000), 'après le projet : valeur médiane du bien visé, pas le prix d’achat');
+  assert.match(JSON.stringify(avec.sections), /valeur médiane estimée du bien visé/);
   assert.ok(doc.cover.pitch.some((x) => x.startsWith('Patrimoine immobilier actuel : 3 biens')));
   const sans = bankDossierDoc({ property: { title: 'T3' }, inputs, result: out.result, editedOn: today });
   assert.ok(!sans.sections.some((x) => x.title.startsWith('Bilan')));
@@ -108,6 +113,7 @@ test('offre d’achat : arguments pré-remplis, prix suggéré, conditions et PD
   assert.match(offre, /Nous soussignés/); assert.match(offre, /cent soixante-quinze mille euros/); assert.match(offre, /net vendeur de 165/);
   assert.match(JSON.stringify(doc.sections[4]), /L313-40/);
   assert.match(JSON.stringify(doc.sections[5]), /1589-1/);
+  assert.match(JSON.stringify(doc.sections[6]), /générée à l’aide d’Immo-Zen/); assert.match(doc.footer ?? '', /Immo-Zen/);
   // sans prêt : mention de renonciation ; délai trop court : avertissement
   const cash = purchaseOfferDoc({ property, inputs, editedOn: today, args: [], parties: { buyers: 'Paul' },
     terms: { priceFai: 300000, agencyFees: 0, equity: 0, loan: null, validUntil: '2026-11-27', compromisDays: 30, loanDays: 45 } });
