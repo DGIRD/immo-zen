@@ -10,6 +10,7 @@ import { Button, Checkbox, KeyValue, NumberInput, PageHeader, Section, Select, T
 import { navigate } from '../ui/router.ts';
 import { AddressFields } from '../ui/AddressFields.tsx';
 import { round2 } from '../domain/simulator.ts';
+import { RENT_WEIGHT } from '../domain/bankDossier.ts';
 import type { IncomePeriod } from '../domain/personalInfo.ts';
 
 type AccountTab = 'infos' | 'abonnement';
@@ -92,6 +93,7 @@ export function PersonalInfoPage() {
   const missing = missingFields(info);
   const income = householdIncome(sanitizeInfo(info));
   const rents = round2(owned.reduce((s, l) => s + l.monthlyRent, 0));
+  const weight = info.rent_weight != null && !Number.isNaN(info.rent_weight) && info.rent_weight >= 0 && info.rent_weight <= 100 ? info.rent_weight : RENT_WEIGHT * 100;
   const otherMonthly = activeOtherLoans(sanitizeInfo(info), today).reduce((s, l) => s + (l.monthly ?? 0), 0);
 
   async function save() {
@@ -145,11 +147,14 @@ export function PersonalInfoPage() {
           <IncomeInput label="Autres revenus réguliers" monthly={info.other_income} period={info.other_income_period}
             onChange={(m, p) => setInfo((x) => ({ ...x, other_income: m, other_income_period: p }))}
             hint="Pensions, allocations, revenus de capitaux… hors loyers de vos biens (repris ci-dessous)" />
+          <NumberInput label="Part des loyers retenue par la banque" suffix="%" value={info.rent_weight ?? null} onChange={(v) => set('rent_weight', v)}
+            error={info.rent_weight != null && (Number.isNaN(info.rent_weight) || info.rent_weight < 0 || info.rent_weight > 100) ? 'Entre 0 et 100 %' : undefined}
+            hint={`Vide : ${RENT_WEIGHT * 100} %, la pratique la plus courante. Certaines banques retiennent 60 %, 80 % ou les loyers nets de charges`} />
           {!!info.other_income && <TextInput label="Nature de ces revenus" value={info.other_income_label} onChange={(v) => set('other_income_label', v)} hint="Ex. : pension alimentaire" />}
 </div>
         <KeyValue items={[
           ['Loyers de vos biens loués', rents > 0 ? `${money(rents)} par mois, soit ${money(rents * 12)} par an (repris de « Mes biens »)` : 'aucun bien loué dans « Mes biens »'],
-          ...(rents > 0 ? [['Loyers retenus par la banque (70 %)', `${money(round2(rents * 0.7))} par mois`] as [string, string]] : []) as [string, string][],
+          ...(rents > 0 ? [[`Loyers retenus par la banque (${weight} %)`, `${money(round2(rents * weight / 100))} par mois`] as [string, string]] : []) as [string, string][],
           ['Revenus du foyer', `${money(income)} par mois hors loyers ; ${money(round2(income + rents))} loyers compris`],
         ]} />
       </Section>

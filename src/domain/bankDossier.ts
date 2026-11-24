@@ -34,6 +34,8 @@ export interface Borrower {
   /** Épargne disponible avant l'apport du projet. */
   savings?: number | null;
   presentation?: string;
+  /** Part des loyers retenue dans les revenus, en % (70 par défaut ; variable selon les banques). */
+  rentWeight?: number | null;
   /** Détail par emprunteur (Mon compte > Informations personnelles). */
   people?: BorrowerPerson[];
   address?: string;
@@ -46,19 +48,25 @@ export interface Borrower {
 export interface BorrowerPerson { name: string; age: number | null; job: string; contract: string; income: number | null }
 export interface BorrowerLoan { label: string; monthly: number; remaining: number | null; end: string | null }
 
-/** Part des loyers retenue dans les revenus, pratique bancaire courante. */
+/** Part des loyers retenue dans les revenus, pratique bancaire courante (modifiable : 60 à 100 % selon les banques). */
 export const RENT_WEIGHT = 0.7;
+/** Part des loyers retenue pour cet emprunteur (fraction), bornée entre 0 et 100 %. */
+export const rentWeightOf = (b: Pick<Borrower, 'rentWeight'>) => {
+  const w = b.rentWeight;
+  return w != null && Number.isFinite(w) && w >= 0 && w <= 100 ? w / 100 : RENT_WEIGHT;
+};
 /** Taux d'effort maximal recommandé par le Haut Conseil de stabilité financière, assurance comprise. */
 export const HCSF_MAX = 35;
 
 export interface DebtRatio { before: number | null; after: number; incomeRetained: number; debt: number; remainingLiving: number }
 
-/** Taux d'endettement avant et après le projet (loyers comptés à 70 %). */
+/** Taux d'endettement avant et après le projet (loyers comptés à 70 % par défaut). */
 export function debtRatio(b: Borrower, newPayment: number, newRent: number): DebtRatio | null {
   if (!(b.income && b.income > 0)) return null;
   const loans = b.currentLoans ?? 0, rents = b.currentRents ?? 0;
-  const incomeBefore = b.income + RENT_WEIGHT * rents;
-  const incomeRetained = b.income + RENT_WEIGHT * (rents + newRent);
+  const w = rentWeightOf(b);
+  const incomeBefore = b.income + w * rents;
+  const incomeRetained = b.income + w * (rents + newRent);
   const debt = loans + newPayment;
   return {
     before: incomeBefore > 0 ? round2((loans / incomeBefore) * 100) : null,
@@ -69,6 +77,7 @@ export function debtRatio(b: Borrower, newPayment: number, newRent: number): Deb
   };
 }
 
+const pctW = (b: Pick<Borrower, 'rentWeight'>) => `${String(Math.round(rentWeightOf(b) * 1000) / 10).replace('.', ',')} %`;
 const kv = (rows: [string, string][]): PdfBlock => ({ t: 'kv', rows: rows.filter(([, v]) => v && v !== '—') });
 const TYPE: Record<string, string> = { appartement: 'Appartement', maison: 'Maison', immeuble: 'Immeuble', local: 'Local', parking: 'Parking', terrain: 'Terrain' };
 
@@ -139,11 +148,11 @@ export function bankDossierDoc(o: { property: DossierProperty; inputs: Simulatio
       ...(ratio ? [
         { t: 'table', head: ['Endettement', 'Avant le projet', 'Après le projet'], widths: [3, 1.5, 1.5], align: ['l', 'r', 'r'], rows: [
           ['Mensualités de crédit', money(b.currentLoans ?? 0), money(ratio.debt)],
-          ['Revenus retenus (loyers à 70 %)', money((b.income ?? 0) + RENT_WEIGHT * (b.currentRents ?? 0)), money(ratio.incomeRetained)],
+          [`Revenus retenus (loyers à ${pctW(b)})`, money((b.income ?? 0) + rentWeightOf(b) * (b.currentRents ?? 0)), money(ratio.incomeRetained)],
           ['Taux d’endettement', ratio.before == null ? '—' : pct(ratio.before), pct(ratio.after)],
-          ['Reste à vivre mensuel', money((b.income ?? 0) + RENT_WEIGHT * (b.currentRents ?? 0) - (b.currentLoans ?? 0)), money(ratio.remainingLiving)],
+          ['Reste à vivre mensuel', money((b.income ?? 0) + rentWeightOf(b) * (b.currentRents ?? 0) - (b.currentLoans ?? 0)), money(ratio.remainingLiving)],
         ] } as PdfBlock,
-        { t: 'p', text: `Méthode usuelle des banques : loyers retenus à ${RENT_WEIGHT * 100} %, mensualités assurance comprise. Plafond recommandé par le Haut Conseil de stabilité financière : ${HCSF_MAX} %${ratio.after > HCSF_MAX ? ' (dépassé : la banque peut accorder une dérogation, dans la limite de 20 % de sa production)' : ''}.` } as PdfBlock,
+        { t: 'p', text: `Méthode des banques : loyers retenus à ${pctW(b)}${rentWeightOf(b) !== RENT_WEIGHT ? ` (pratique courante : ${RENT_WEIGHT * 100} %)` : ''}, mensualités assurance comprise. Plafond recommandé par le Haut Conseil de stabilité financière : ${HCSF_MAX} %${ratio.after > HCSF_MAX ? ' (dépassé : la banque peut accorder une dérogation, dans la limite de 20 % de sa production)' : ''}.` } as PdfBlock,
       ] : []),
     ] });
   }

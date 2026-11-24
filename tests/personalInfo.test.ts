@@ -88,3 +88,21 @@ test('nettoyage avant enregistrement', () => {
   assert.equal(s.savings, null); assert.equal(s.housing_rent, null, 'loyer ignoré si propriétaire');
   assert.deepEqual(s.other_loans?.map((l) => l.id), ['2']); assert.equal(s.other_loans?.[0]?.end_date, null);
 });
+
+test('part des loyers retenue paramétrable', async () => {
+  const { debtRatio } = await import('../src/domain/bankDossier.ts');
+  const base = { income: 4000, currentLoans: 1000, currentRents: 1000 };
+  const r70 = debtRatio(base, 500, 1000)!;
+  assert.equal(r70.incomeRetained, 4000 + 0.7 * 2000);
+  const r80 = debtRatio({ ...base, rentWeight: 80 }, 500, 1000)!;
+  assert.equal(r80.incomeRetained, 4000 + 0.8 * 2000);
+  assert.equal(debtRatio({ ...base, rentWeight: 250 }, 500, 1000)!.incomeRetained, 5400, 'valeur aberrante : 70 %');
+  const b = borrowerFromProfile({ ...info, rent_weight: 60 }, { patrimony: [], equity: 0, today });
+  assert.equal(b.rentWeight, 60);
+  assert.equal(sanitizeInfo({ rent_weight: 120 }).rent_weight, null);
+  const inputs = { ...DEFAULT_INPUTS, askingPrice: 200000, price: 200000, surface: 50, monthlyRent: 900, rentMode: 'manuel' as const, downPayment: 25000 };
+  const out = simulate(inputs); assert.ok(out.ok);
+  const doc = bankDossierDoc({ property: { title: 'T2' }, inputs, result: out.result, borrower: { ...base, rentWeight: 80 }, editedOn: today });
+  assert.match(JSON.stringify(doc.sections), /loyers à 80 %/);
+  assert.match(JSON.stringify(doc.sections), /pratique courante : 70 %/);
+});
