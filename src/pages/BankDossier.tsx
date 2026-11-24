@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../data/store.tsx';
-import { bankDossierDoc, debtRatio, HCSF_MAX, type Borrower, type DossierProperty } from '../domain/bankDossier.ts';
+import { bankDossierDoc, debtRatio, HCSF_MAX, RENT_WEIGHT, rentWeightOf, type Borrower, type DossierProperty } from '../domain/bankDossier.ts';
 import { buildBankDossierPdf } from '../domain/bankDossierPdf.ts';
 import { downloadBlob } from '../domain/exporting.ts';
 import { money, pct, todayParis } from '../domain/format.ts';
@@ -67,6 +67,11 @@ export function BankDossierButton({ property, inputs, result, notify, propertyId
             <NumberInput label="Revenus nets mensuels du foyer" suffix="€" value={b.income ?? null} onChange={(v) => set('income', v)} hint="Avant impôt" />
             <NumberInput label="Crédits en cours" suffix="€ / mois" value={b.currentLoans ?? null} onChange={(v) => set('currentLoans', v)} hint={b.loans?.length ? `Mensualités, assurance comprise : ${b.loans.map((l) => `${l.label.replace(/ \(détail.*\)$/, '')} ${money(l.monthly)}`).join(' ; ')}` : 'Mensualités, assurance comprise'} />
             <NumberInput label="Loyers déjà perçus" suffix="€ / mois" value={b.currentRents ?? null} onChange={(v) => set('currentRents', v)} />
+            <NumberInput label="Part des loyers retenue" suffix="%" value={b.rentWeight ?? null} onChange={(v) => set('rentWeight', v)}
+              hint={`Selon la banque ; vide : ${RENT_WEIGHT * 100} %`} />
+            <NumberInput label="Épargne disponible" suffix="€" value={b.savings ?? null}
+              onChange={(v) => setB((x) => ({ ...x, savings: v, savingsAfter: v != null && !Number.isNaN(v) ? Math.max(0, Math.round(v - (result?.equity ?? 0))) : x.savingsAfter }))}
+              hint={`Avant l’apport du projet (${money(result?.equity ?? 0)})`} />
             <NumberInput label="Épargne restante après l’apport" suffix="€" value={b.savingsAfter ?? null} onChange={(v) => set('savingsAfter', v)} hint="Épargne de précaution" />
             <TextArea label="Présentation du projet (facultatif)" value={b.presentation ?? ''} onChange={(v) => set('presentation', v)} rows={3} />
             <Checkbox label="Joindre le tableau d’amortissement annuel" checked={schedule} onChange={setSchedule} />
@@ -83,7 +88,7 @@ export function BankDossierButton({ property, inputs, result, notify, propertyId
           )}
           {ratio && (
             <p className={ratio.after > HCSF_MAX ? 'form-error' : 'note'} role="status">
-              Taux d’endettement après le projet : <strong>{pct(ratio.after)}</strong>{ratio.before != null ? ` (aujourd’hui ${pct(ratio.before)})` : ''}, loyers retenus à 70 %.
+              Taux d’endettement après le projet : <strong>{pct(ratio.after)}</strong>{ratio.before != null ? ` (aujourd’hui ${pct(ratio.before)})` : ''}, loyers retenus à {Math.round(rentWeightOf(b) * 100)} %.
               {ratio.after > HCSF_MAX ? ` Au-dessus du plafond de ${HCSF_MAX} % recommandé : la banque peut accorder une dérogation, mais il faudra la justifier (épargne, reste à vivre).` : ` Sous le plafond de ${HCSF_MAX} % recommandé.`}
             </p>
           )}

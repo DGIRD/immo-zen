@@ -38,7 +38,11 @@ export interface PersonInfo {
   since?: string | null;
   /** Revenus nets mensuels avant impôt (moyenne sur 12 mois, primes comprises). */
   income?: number | null;
+  /** Saisie des revenus par mois ou par an (le montant enregistré reste mensuel). */
+  income_period?: IncomePeriod;
 }
+
+export type IncomePeriod = 'mois' | 'an';
 
 export interface OtherLoan {
   id: string;
@@ -68,11 +72,14 @@ export interface PersonalInfo {
   /** Autres revenus mensuels réguliers du foyer (pensions, allocations…), hors loyers des biens. */
   other_income?: number | null;
   other_income_label?: string;
+  other_income_period?: IncomePeriod;
   /** Épargne disponible du foyer (livrets, assurance-vie…), avant l'apport du projet. */
   savings?: number | null;
   other_loans?: OtherLoan[];
   /** Présentation reprise en page de garde du dossier banque. */
   presentation?: string;
+  /** Part des loyers retenue par la banque, en % (70 par défaut). */
+  rent_weight?: number | null;
 }
 
 const clean = (s?: string | null) => (s ?? '').trim();
@@ -157,8 +164,10 @@ export function borrowerFromProfile(info: PersonalInfo, o: { patrimony: Patrimon
     income: income > 0 ? income : null,
     currentLoans: propertyLoans + otherMonthly > 0 ? round2(propertyLoans + otherMonthly) : null,
     currentRents: rents > 0 ? rents : null,
+    savings: info.savings != null && info.savings > 0 ? info.savings : null,
     savingsAfter: info.savings != null && info.savings > 0 ? Math.max(0, round2(info.savings - Math.max(0, o.equity))) : null,
     presentation: clean(info.presentation) || undefined,
+    rentWeight: info.rent_weight ?? null,
     people: people.length ? people : undefined,
     address: fullAddress(info) || undefined,
     contact: [clean(info.phone), clean(info.email)].filter(Boolean).join(' · ') || undefined,
@@ -192,6 +201,7 @@ export function sanitizeInfo(i: PersonalInfo): PersonalInfo {
     co_borrower: person(i.co_borrower),
     children: num(i.children), housing_rent: i.housing === 'locataire' ? num(i.housing_rent) : null,
     other_income: num(i.other_income), savings: num(i.savings),
+    rent_weight: num(i.rent_weight) != null && num(i.rent_weight)! >= 0 && num(i.rent_weight)! <= 100 ? num(i.rent_weight) : null,
     other_loans: (i.other_loans ?? []).map((l) => ({ ...l, monthly: num(l.monthly), remaining: num(l.remaining), end_date: l.end_date || null }))
       .filter((l) => l.monthly || l.remaining || l.label?.trim()),
   };

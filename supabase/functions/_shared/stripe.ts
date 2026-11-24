@@ -208,8 +208,8 @@ export function invoiceEmail(inv: InvoiceInfo, offer: { label: string; kind: 'fo
     intro, '',
     ...rows, '',
     'Votre facture est jointe à ce message au format PDF.' + (inv.hostedUrl ? ` Vous pouvez aussi la consulter en ligne : ${inv.hostedUrl}` : ''),
-    'Toutes vos factures restent disponibles dans Immo-Zen, rubrique « Mon abonnement » : {{APP_URL}}#/abonnement',
-    ...(pack ? [] : ['', 'Changement de formule, moyen de paiement ou résiliation : depuis « Mon abonnement », à tout moment. La résiliation prend effet à la fin de la période payée.']),
+    'Toutes vos factures restent disponibles dans Immo-Zen, rubrique « Mon compte › Abonnement » : {{APP_URL}}#/abonnement',
+    ...(pack ? [] : ['', 'Changement de formule, moyen de paiement ou résiliation : depuis « Mon compte › Abonnement », à tout moment. La résiliation prend effet à la fin de la période payée.']),
     '', 'Bonne gestion,', 'L’équipe Immo-Zen',
   ];
   return { subject, body: body.join('\n') };
@@ -224,7 +224,7 @@ export function paymentFailedEmail(inv: InvoiceInfo, label: string | null, nextA
       'Bonjour,', '',
       `Le paiement de ${euros(inv.amountDue ?? inv.amountPaid)} TTC pour votre abonnement${label ? ` Immo-Zen ${label}` : ' Immo-Zen'} n’a pas abouti (carte expirée, plafond atteint ou prélèvement refusé).`,
       nextAttempt ? `Une nouvelle tentative aura lieu automatiquement le ${day(nextAttempt)}.` : 'Sans régularisation, l’abonnement sera suspendu à la fin des nouvelles tentatives.',
-      '', 'Pour éviter toute interruption, mettez à jour votre moyen de paiement depuis « Mon abonnement » → « Ouvrir l’espace client » : {{APP_URL}}#/abonnement',
+      '', 'Pour éviter toute interruption, mettez à jour votre moyen de paiement depuis « Mon compte › Abonnement » → « Ouvrir l’espace client » : {{APP_URL}}#/abonnement',
       '', 'Vos données restent conservées et consultables quoi qu’il arrive.',
       '', 'L’équipe Immo-Zen',
     ].join('\n'),
