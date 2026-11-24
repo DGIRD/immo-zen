@@ -348,6 +348,8 @@ async function main() {
   });
 
   await step('loyer de marché et taux : fourchette automatique, zone encadrée, plafond légal, reprise dans la simulation, taux de référence et usure', async () => {
+    // plafonds de démonstration valables jusqu'au 23/11/2026 (fin de l'expérimentation) : on se place avant cette date
+    await page.clock.install({ time: new Date('2026-11-20T10:00:00+01:00') });
     await page.goto(url + '#/bien/nouveau');
     const panel = page.locator('.market-rent');
     const txt = async (l = panel) => (await l.innerText()).replace(/[  ]/g, ' ');
@@ -414,6 +416,7 @@ async function main() {
     assert.ok(saved.market_rent.cap_hc > 0, 'fourchette et plafond enregistrés avec le bien');
   });
 
+  await page.clock.setSystemTime(new Date());
   await step('tableau prospection : rendement, cash-flow, relance', async () => {
     await page.goto(url + '#/prospection');
     const row = page.locator('tbody tr', { hasText: 'T3 test balcon' });
