@@ -6,8 +6,9 @@ import { describeError } from '../data/repo.ts';
 import { date, money2 } from '../domain/format.ts';
 import { CGU_URL } from '../domain/legal.ts';
 import { FISCAL_PACK_PRICE, planUsage, sizeLabel, TIERS, tierDef, type TierDef } from '../domain/plans.ts';
-import { Button, Help, KeyValue, NotAvailable, PageHeader, Pill, Section, Tabs } from '../ui/components.tsx';
+import { Button, Help, KeyValue, NotAvailable, Pill, Section, Tabs } from '../ui/components.tsx';
 import { useRoute } from '../ui/router.ts';
+import { AccountHeader } from './Account.tsx';
 
 export const planPrice = (p: Plan) => `${money2(p.amount_cents / 100)} / ${p.billing_interval === 'month' ? 'mois' : 'an'}`;
 
@@ -68,11 +69,11 @@ export function SubscriptionPage() {
     }
   }
 
-  if (platform === undefined) return <PageHeader title="Mon abonnement" subtitle="Chargement…" />;
+  if (platform === undefined) return <><AccountHeader tab="abonnement" /><p className="muted">Chargement…</p></>;
   if (platform === null) {
     return (
       <>
-        <PageHeader title="Mon abonnement" />
+        <AccountHeader tab="abonnement" />
         <NotAvailable>La base de données n’est pas encore à jour pour les abonnements (migration du lot 3 à exécuter). Votre accès n’est pas limité.</NotAvailable>
       </>
     );
@@ -94,7 +95,8 @@ export function SubscriptionPage() {
 
   return (
     <>
-      <PageHeader title="Mon abonnement" subtitle="Votre formule, ce qu’elle comprend, et le passage à une autre formule." />
+      <AccountHeader tab="abonnement" />
+      <p className="muted">Votre formule, ce qu’elle comprend, et le passage à une autre formule.</p>
       {back === 'ok' && <p className="note" role="status">Paiement transmis. L’abonnement s’active dès que Stripe le confirme : quelques secondes par carte, jusqu’à quelques jours ouvrés par prélèvement SEPA. Rechargez la page si besoin.</p>}
       {back === 'pack' && <p className="note" role="status">Paiement du pack fiscal transmis : la déclaration fiscale s’ouvre dès que Stripe confirme le paiement.</p>}
       {back === 'annule' && <p className="note" role="status">Paiement annulé : aucun montant n’a été prélevé.</p>}

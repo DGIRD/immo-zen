@@ -26,7 +26,7 @@ export const NAV: NavItem[] = [
   { key: 'contacts', label: 'Contacts', path: '/contacts' },
   { key: 'documents', label: 'Documents', path: '/documents' },
   { key: 'fiscal', label: 'Déclaration fiscale', path: '/declaration' },
-  { key: 'abonnement', label: 'Mon abonnement', path: '/abonnement' },
+  { key: 'compte', label: 'Mon compte', path: '/compte' },
   { key: 'parametres', label: 'Paramètres', path: '/parametres' },
   { key: 'admin', label: 'Administration', path: '/admin', adminOnly: true },
 ];
@@ -88,7 +88,7 @@ export function Layout({ active, children }: { active: string; children: ReactNo
         <div className="topbar-right">
           <AssistantButton page={active} />
           <SyncIndicator />
-          <span className="user-email" title={session?.email}>{session?.email}</span>
+          <a className="user-email" href={href('/compte')} title={`Mon compte (${session?.email ?? ''})`}>{session?.email}</a>
           <Button size="sm" onClick={() => void signOut()}>Déconnexion</Button>
         </div>
       </header>

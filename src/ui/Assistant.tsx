@@ -37,7 +37,7 @@ function Rich({ text }: { text: string }) {
 const PAGE_LABELS: Record<string, string> = {
   dashboard: 'Tableau de bord', prospection: 'Prospection', simulateur: 'Simulateur', biens: 'Mes biens', locataires: 'Locataires et baux',
   loyers: 'Loyers et paiements', depenses: 'Dépenses', contacts: 'Contacts', documents: 'Documents', fiscal: 'Déclaration fiscale',
-  abonnement: 'Mon abonnement', parametres: 'Paramètres', admin: 'Administration',
+  abonnement: 'Mon abonnement', compte: 'Mon compte', parametres: 'Paramètres', admin: 'Administration',
 };
 
 function suggestions(page: string): string[] {

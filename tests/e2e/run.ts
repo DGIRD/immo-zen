@@ -157,7 +157,7 @@ async function main() {
 
   await step('menu complet, sans états des lieux', async () => {
     const labels = await page.locator('#main-nav a').allInnerTexts();
-    for (const l of ['Tableau de bord', 'Prospection', 'Mes biens', 'Locataires et baux', 'Loyers et paiements', 'Dépenses', 'Contacts', 'Documents', 'Déclaration fiscale', 'Mon abonnement', 'Paramètres']) {
+    for (const l of ['Tableau de bord', 'Prospection', 'Mes biens', 'Locataires et baux', 'Loyers et paiements', 'Dépenses', 'Contacts', 'Documents', 'Déclaration fiscale', 'Mon compte', 'Paramètres']) {
       assert.ok(labels.some((x) => x.includes(l)), `menu : ${l}`);
     }
     assert.ok(!labels.some((x) => x.includes('Simulateur')), 'plus de menu Simulateur : la simulation est celle de chaque bien');

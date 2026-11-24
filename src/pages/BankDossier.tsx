@@ -5,12 +5,15 @@ import { buildBankDossierPdf } from '../domain/bankDossierPdf.ts';
 import { downloadBlob } from '../domain/exporting.ts';
 import { money, pct, todayParis } from '../domain/format.ts';
 import { patrimonyLines, patrimonyTotals } from '../domain/patrimony.ts';
+import { borrowerFromProfile, missingFields } from '../domain/personalInfo.ts';
+import { href } from '../ui/router.ts';
 import type { SimulationInputs, SimulationResult } from '../domain/simulator.ts';
 import { Button, Checkbox, Modal, NumberInput, TextArea, TextInput } from '../ui/components.tsx';
 
 /**
  * Export « Dossier banque » d'une simulation : PDF de présentation du projet à une banque ou à un courtier.
- * La situation de l'emprunteur est facultative et n'est jamais enregistrée (elle ne sert qu'au document).
+ * La situation de l'emprunteur est pré-remplie depuis Mon compte > Informations personnelles ; les retouches faites ici
+ * ne servent qu'au document et ne sont pas enregistrées.
  */
 export function BankDossierButton({ property, inputs, result, notify, propertyId }: {
   property: DossierProperty; inputs: SimulationInputs; result: SimulationResult | null; notify: (m: string) => void;
@@ -22,7 +25,11 @@ export function BankDossierButton({ property, inputs, result, notify, propertyId
   const totals = patrimonyTotals(lines);
   const [withPatrimony, setWithPatrimony] = useState(true);
   const [open, setOpen] = useState(false);
+  const info = data.settings?.personal_info ?? {};
+  const fromProfile = () => borrowerFromProfile(info, { patrimony: lines, equity: result?.equity ?? 0, today: todayParis() });
   const [b, setB] = useState<Borrower>({});
+  const openModal = () => { setB(fromProfile()); setOpen(true); };
+  const missing = missingFields(info);
   const [schedule, setSchedule] = useState(true);
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof Borrower>(k: K, v: Borrower[K]) => setB((x) => ({ ...x, [k]: v }));
@@ -46,17 +53,19 @@ export function BankDossierButton({ property, inputs, result, notify, propertyId
 
   return (
     <>
-      <Button onClick={() => setOpen(true)} disabled={!result}>Dossier banque (PDF)</Button>
+      <Button onClick={openModal} disabled={!result}>Dossier banque (PDF)</Button>
       {open && (
         <Modal open wide title="Dossier de financement pour la banque" onClose={() => setOpen(false)}
           footer={<><Button onClick={() => setOpen(false)}>Annuler</Button><Button variant="primary" disabled={busy || !result} onClick={() => void generate()}>{busy ? 'Préparation…' : 'Télécharger le PDF'}</Button></>}>
           <p>Le PDF reprend le bien, le plan de financement, le prêt demandé, la rentabilité locative et le tableau d’amortissement de la simulation. Ajoutez si vous le souhaitez votre situation : la banque calcule d’abord votre taux d’endettement.</p>
-          <p className="muted small">Ces informations ne servent qu’au document : elles ne sont pas enregistrées dans Immo-Zen.</p>
+          {missing.length === 0
+            ? <p className="muted small">Pré-rempli depuis <a href={href('/compte')}>Mon compte › Informations personnelles</a> et « Mes biens ». Vos retouches ici ne servent qu’au document.</p>
+            : <p className="note">Pour remplir ce dossier automatiquement, complétez <a href={href('/compte')}>Mon compte › Informations personnelles</a> (à renseigner : {missing.join(', ')}). Vos retouches ici ne servent qu’au document.</p>}
           <div className="grid">
             <TextInput label="Emprunteur(s)" wide value={b.names ?? ''} onChange={(v) => set('names', v)} hint="Ex. : David et Marie Dupont" />
-            <TextInput label="Situation professionnelle" wide value={b.situation ?? ''} onChange={(v) => set('situation', v)} hint="Ex. : salarié en CDI depuis 2015" />
+            <TextInput label="Situation" wide value={b.situation ?? ''} onChange={(v) => set('situation', v)} hint={b.people?.length ? 'Situation familiale ; profession et contrat de chaque emprunteur sont repris de Mon compte' : 'Ex. : marié, 2 enfants · salarié en CDI depuis 2015'} />
             <NumberInput label="Revenus nets mensuels du foyer" suffix="€" value={b.income ?? null} onChange={(v) => set('income', v)} hint="Avant impôt" />
-            <NumberInput label="Crédits en cours" suffix="€ / mois" value={b.currentLoans ?? null} onChange={(v) => set('currentLoans', v)} hint="Mensualités, assurance comprise" />
+            <NumberInput label="Crédits en cours" suffix="€ / mois" value={b.currentLoans ?? null} onChange={(v) => set('currentLoans', v)} hint={b.loans?.length ? `Mensualités, assurance comprise : ${b.loans.map((l) => `${l.label.replace(/ \(détail.*\)$/, '')} ${money(l.monthly)}`).join(' ; ')}` : 'Mensualités, assurance comprise'} />
             <NumberInput label="Loyers déjà perçus" suffix="€ / mois" value={b.currentRents ?? null} onChange={(v) => set('currentRents', v)} />
             <NumberInput label="Épargne restante après l’apport" suffix="€" value={b.savingsAfter ?? null} onChange={(v) => set('savingsAfter', v)} hint="Épargne de précaution" />
             <TextArea label="Présentation du projet (facultatif)" value={b.presentation ?? ''} onChange={(v) => set('presentation', v)} rows={3} />

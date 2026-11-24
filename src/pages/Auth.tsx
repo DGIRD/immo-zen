@@ -127,7 +127,7 @@ export function AuthPage() {
           {mode === 'login' && <button type="button" className="link" onClick={() => setMode('reset')}>Mot de passe oublié</button>}
           {mode === 'login' && <button type="button" className="link" onClick={() => setMode('signup')}>Créer un compte</button>}
         </div>
-        <p className="muted small">Les offres d’abonnement se consultent dans « Mon abonnement », une fois connecté.</p>
+        <p className="muted small">Les offres d’abonnement se consultent dans « Mon compte › Abonnement », une fois connecté.</p>
         <p className="muted small auth-legal">{editeurLine()} · <a href={MENTIONS_URL}>Mentions légales</a> · <a href={CGU_URL}>Conditions générales</a> · <a href={`${MENTIONS_URL}#confidentialite`}>Confidentialité</a></p>
       </form>
     </div>
