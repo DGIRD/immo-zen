@@ -13,12 +13,13 @@ export const NAV_LINKS = [
   { label: 'Tarifs', anchor: 'tarifs' },
   { label: 'Outils', page: 'outils/' },
   { label: 'Guides', page: 'guides/' },
+  { label: 'Actualités', page: 'actualites/' },
 ];
 
 /**
- * @param {{ prefix?: string, home?: boolean, current?: 'guides' | 'outils' | null }} o
+ * @param {{ prefix?: string, home?: boolean, current?: 'guides' | 'outils' | 'actualites' | null }} o
  *   prefix : chemin vers la racine du site ('' ou '../') ; home : page d'accueil (ancres locales) ;
- *   current : rubrique de la page affichée ('guides' ou 'outils') (lien marqué aria-current="page").
+ *   current : rubrique de la page affichée ('guides', 'outils' ou 'actualites') (lien marqué aria-current="page").
  */
 export function siteHeader({ prefix = '', home = false, current = null } = {}) {
   const links = NAV_LINKS.map((l) => {

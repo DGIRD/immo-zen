@@ -22,8 +22,8 @@ const CATEGORIES = ['Investir', 'Financer et déclarer', 'Gérer'];
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const strip = (s) => s.replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/g, ' ');
 
-function parse(file) {
-  const raw = readFileSync(join(srcDir, file), 'utf8');
+function parse(file, dir = srcDir, kind = 'guide') {
+  const raw = readFileSync(join(dir, file), 'utf8');
   const m = raw.match(/^<!--([\s\S]*?)-->\s*/);
   if (!m) throw new Error(`${file} : en-tête manquant`);
   const meta = {};
@@ -31,8 +31,9 @@ function parse(file) {
     const i = line.indexOf(':');
     if (i > 0) meta[line.slice(0, i).trim()] = line.slice(i + 1).trim();
   }
-  for (const k of ['slug', 'title', 'short', 'description', 'category', 'cta']) if (!meta[k]) throw new Error(`${file} : « ${k} » manquant`);
-  if (!CATEGORIES.includes(meta.category)) throw new Error(`${file} : catégorie inconnue ${meta.category}`);
+  const required = kind === 'guide' ? ['slug', 'title', 'short', 'description', 'category', 'cta'] : ['slug', 'title', 'short', 'description', 'tag', 'date', 'cta'];
+  for (const k of required) if (!meta[k]) throw new Error(`${file} : « ${k} » manquant`);
+  if (kind === 'guide' && !CATEGORIES.includes(meta.category)) throw new Error(`${file} : catégorie inconnue ${meta.category}`);
   meta.related = (meta.related ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   meta.body = raw.slice(m[0].length);
   meta.words = strip(meta.body).split(/\s+/).filter(Boolean).length;
@@ -82,7 +83,7 @@ ${body}
   <footer class="foot">
     <div class="wrap foot-in">
       <p>© 2026 Immo-Zen</p>
-      <nav aria-label="Liens du site"><a href="${prefix}">Accueil</a><a href="${prefix}outils/">Outils gratuits</a><a href="${prefix}guides/">Guides</a><a href="${prefix}mentions-legales.html">Mentions légales</a><a href="${prefix}conditions-generales.html">Conditions générales</a><a href="mailto:contact@immo-zen.fr">contact@immo-zen.fr</a></nav>
+      <nav aria-label="Liens du site"><a href="${prefix}">Accueil</a><a href="${prefix}outils/">Outils gratuits</a><a href="${prefix}guides/">Guides</a><a href="${prefix}actualites/">Actualités</a><a href="${prefix}mentions-legales.html">Mentions légales</a><a href="${prefix}conditions-generales.html">Conditions générales</a><a href="mailto:contact@immo-zen.fr">contact@immo-zen.fr</a></nav>
     </div>
   </footer>
   <script src="${prefix}site.js" defer></script>
@@ -175,11 +176,84 @@ function indexPage(all) {
   return shell({ title: "Guides de l'investissement locatif — Immo-Zen", description: 'Quatorze guides complets et chiffrés : premier investissement, SCI à l’IS, rentabilité, cash-flow, crédit, fiscalité nue ou meublée, déclaration 2044, liasse LMNP, quittance, révision IRL, charges, impayés, gestion.', canonical: `${SITE}/guides/`, body, jsonld, prefix: '../' });
 }
 
-const all = readdirSync(srcDir).filter((f) => f.endsWith('.html')).sort().map(parse);
+const all = readdirSync(srcDir).filter((f) => f.endsWith('.html')).sort().map((f) => parse(f));
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
 for (const a of all) writeFileSync(join(outDir, `${a.slug}.html`), articlePage(a, all));
 writeFileSync(join(outDir, 'index.html'), indexPage(all));
+
+// Actualités : articles datés (content/actualites/*.html), du plus récent au plus ancien.
+const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+const dateFr = (d) => { const [y, m, j] = d.split('-').map(Number); return `${j === 1 ? '1er' : j} ${MOIS[m - 1]} ${y}`; };
+const newsSrc = join(root, 'content/actualites');
+const newsOut = join(root, 'site/actualites');
+const news = readdirSync(newsSrc).filter((f) => f.endsWith('.html')).map((f) => parse(f, newsSrc, 'actualite'))
+  .map((n) => ({ ...n, lastmod: n.updated ?? n.date }))
+  .sort((a, b) => b.date.localeCompare(a.date) || a.slug.localeCompare(b.slug));
+
+function newsPage(n) {
+  const tool = n.tool ? TOOLS.find((t) => t.slug === n.tool) : null;
+  if (n.tool && !tool) throw new Error(`${n.slug} : outil inconnu ${n.tool}`);
+  const toolBox = tool ? `<p class="tool-link"><span class="cat">Outil gratuit</span><a href="../outils/${tool.slug}.html">${esc(tool.short)}</a> : ${esc(tool.card)}</p>` : '';
+  for (const [, href] of n.body.matchAll(/href="\.\.\/guides\/([a-z0-9-]+)\.html(?:#[^"]*)?"/g)) {
+    if (!all.some((x) => x.slug === href)) throw new Error(`${n.slug} : guide inconnu ${href}`);
+  }
+  const related = n.related.map((s) => {
+    const r = all.find((x) => x.slug === s);
+    if (!r) throw new Error(`${n.slug} : guide lié inconnu ${s}`);
+    return `<li><a href="../guides/${r.slug}.html"><span class="cat">Guide</span>${esc(r.short)}</a></li>`;
+  }).join('');
+  const meta = `Publié le ${dateFr(n.date)}${n.updated && n.updated !== n.date ? ` · Mis à jour le ${dateFr(n.updated)}` : ''} · Lecture : ${n.minutes} min`;
+  const canonical = `${SITE}/actualites/${n.slug}.html`;
+  const body = `    <article class="wrap article news">
+      <nav class="breadcrumb" aria-label="Fil d'Ariane"><a href="../">Accueil</a> › <a href="./">Actualités</a> › <span>${esc(n.tag)}</span></nav>
+      <p class="news-tag">${esc(n.tag)}</p>
+      <h1>${esc(n.title)}</h1>
+      <p class="meta">${meta}</p>
+      <div class="prose news-prose">
+${polish(n.body)}
+        ${toolBox}
+        <div class="cta">
+          <p>${esc(n.cta)}</p>
+          <a class="btn btn-main" href="../app/">Essayer Immo-Zen gratuitement</a>
+        </div>
+        ${optinForm({ source: 'lettre', prefix: '../' })}
+        <p class="small disclaimer">Article d'information, à jour au ${dateFr(n.lastmod)}. Il ne constitue pas un conseil fiscal, juridique ou financier personnalisé : vérifiez votre situation avec les textes officiels ou un professionnel avant de décider. Les exemples chiffrés reposent sur des hypothèses d'illustration.</p>
+        ${related ? `<section class="related" aria-labelledby="related-title">
+          <h2 id="related-title">Pour aller plus loin</h2>
+          <ul>${related}</ul>
+        </section>` : ''}
+      </div>
+    </article>`;
+  const jsonld = {
+    '@context': 'https://schema.org', '@type': 'NewsArticle', headline: n.title, description: n.description,
+    inLanguage: 'fr-FR', datePublished: n.date, dateModified: n.lastmod, mainEntityOfPage: canonical, articleSection: n.tag,
+    author: { '@type': 'Organization', name: 'Immo-Zen', url: SITE },
+    publisher: { '@type': 'Organization', name: 'Immo-Zen', url: SITE, logo: { '@type': 'ImageObject', url: `${SITE}/icon-512.png` } },
+  };
+  return shell({ title: `${n.title} — Actualités Immo-Zen`, description: n.description, canonical, body, jsonld, prefix: '../', current: 'actualites' });
+}
+
+function newsIndex() {
+  const items = news.map((n) => `
+          <li class="guide-card news-card"><a href="${n.slug}.html"><span class="news-tag">${esc(n.tag)}</span><h2>${esc(n.short)}</h2><p>${esc(n.description)}</p><span class="small">${dateFr(n.date)} · ${n.minutes} min</span></a></li>`).join('');
+  const body = `    <div class="wrap">
+      <nav class="breadcrumb" aria-label="Fil d'Ariane"><a href="../">Accueil</a> › <span>Actualités</span></nav>
+      <h1>Actualités de l'investissement locatif</h1>
+      <p class="lead">Budget, fiscalité, loyers, crédit : ce qui change pour les propriétaires bailleurs, expliqué simplement et relié aux guides et outils gratuits d'Immo-Zen.</p>
+      <ul class="guide-list news-list">${items}
+      </ul>
+      ${optinForm({ source: 'lettre', prefix: '../' })}
+    </div>`;
+  const jsonld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: "Actualités de l'investissement locatif", inLanguage: 'fr-FR', url: `${SITE}/actualites/`,
+    hasPart: news.map((n) => ({ '@type': 'NewsArticle', headline: n.title, url: `${SITE}/actualites/${n.slug}.html`, datePublished: n.date })) };
+  return shell({ title: "Actualités de l'investissement locatif — Immo-Zen", description: 'Budget 2027 et LMNP, révision des loyers, taux de crédit, statut du bailleur privé : les actualités qui comptent pour les propriétaires bailleurs, avec leurs effets chiffrés.', canonical: `${SITE}/actualites/`, body, jsonld, prefix: '../', current: 'actualites', ogType: 'website' });
+}
+
+rmSync(newsOut, { recursive: true, force: true });
+mkdirSync(newsOut, { recursive: true });
+for (const n of news) writeFileSync(join(newsOut, `${n.slug}.html`), newsPage(n));
+writeFileSync(join(newsOut, 'index.html'), newsIndex());
 
 // Plan du site pour les moteurs de recherche.
 // Outils gratuits : pages, indices IRL repris de l'application (source unique : src/domain/irl.ts).
@@ -203,8 +277,10 @@ for (const t of TOOLS) {
   writeFileSync(join(outilsDir, 'index.html'), shell({ ...p, prefix: '../', current: 'outils', ogType: 'website' }));
 }
 
-const urls = [`${SITE}/`, `${SITE}/outils/`, ...TOOLS.map((t) => `${SITE}/outils/${t.slug}.html`), `${SITE}/guides/`, ...all.map((a) => `${SITE}/guides/${a.slug}.html`), `${SITE}/mentions-legales.html`, `${SITE}/conditions-generales.html`];
-writeFileSync(join(root, 'site/sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${u}</loc><lastmod>${SITEMAP_LASTMOD}</lastmod></url>`).join('\n')}\n</urlset>\n`);
+const urls = [`${SITE}/`, `${SITE}/outils/`, ...TOOLS.map((t) => `${SITE}/outils/${t.slug}.html`), `${SITE}/guides/`, ...all.map((a) => `${SITE}/guides/${a.slug}.html`), `${SITE}/mentions-legales.html`, `${SITE}/conditions-generales.html`]
+  .map((u) => [u, SITEMAP_LASTMOD]);
+urls.push([`${SITE}/actualites/`, news[0]?.lastmod ?? SITEMAP_LASTMOD], ...news.map((n) => [`${SITE}/actualites/${n.slug}.html`, n.lastmod]));
+writeFileSync(join(root, 'site/sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(([u, d]) => `  <url><loc>${u}</loc><lastmod>${d}</lastmod></url>`).join('\n')}\n</urlset>\n`);
 writeFileSync(join(root, 'site/robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${SITE}/sitemap.xml\n`);
 
 // En-tête commun réécrit dans les pages statiques.
@@ -221,3 +297,5 @@ for (const [file, opts] of [['site/index.html', { home: true }], ['site/mentions
 
 for (const a of all) console.log(`${a.slug.padEnd(40)} ${String(a.words).padStart(5)} mots  ${a.minutes} min`);
 console.log(`${all.length} guides générés dans site/guides/`);
+for (const n of news) console.log(`${n.slug.padEnd(40)} ${String(n.words).padStart(5)} mots  ${n.date}`);
+console.log(`${news.length} actualités générées dans site/actualites/`);

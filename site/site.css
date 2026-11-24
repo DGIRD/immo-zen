@@ -236,6 +236,14 @@ details p { margin: .8rem 0 0; color: var(--ardoise); }
 .related a:hover, .guide-card a:hover { border-color: var(--sapin); }
 .cat { display: block; font: 400 .8rem var(--sans); color: var(--ardoise); margin-bottom: .3rem; }
 
+/* actualités */
+.news-tag { display: inline-block; font: 600 .78rem var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--sapin); background: var(--lichen); border-radius: 2px; padding: .2rem .5rem; margin-bottom: .6rem; }
+.news .news-prose { max-width: 46rem; }
+.news-card .news-tag { align-self: flex-start; }
+.news-card h2 { font-size: 1.25rem; margin: 0 0 .5rem; }
+.news-list { margin-top: 2rem; }
+.status { background: var(--blanc); border: 1px solid var(--trait); border-left: 4px solid var(--laiton); border-radius: 4px; padding: 1rem 1.2rem .2rem; margin: 0 0 1.5em; }
+
 /* guides : sommaire */
 .guide-group { margin-top: 2.5rem; }
 .guide-list { grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr)); gap: 1.2rem; }
