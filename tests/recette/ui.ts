@@ -70,7 +70,7 @@ async function main() {
 
   await c('NAV-01', async () => {
     const seen: string[] = [];
-    for (const [label, heading] of [['Tableau de bord', 'Tableau de bord'], ['Prospection', 'Prospection'], ['Mes biens', 'Mes biens'], ['Locataires et baux', /Locataires et baux|Baux/], ['Loyers et paiements', 'Loyers et paiements'], ['Dépenses', 'Dépenses'], ['Contacts', 'Contacts'], ['Documents', 'Documents'], ['Déclaration fiscale', 'Déclaration fiscale'], ['Mon abonnement', 'Mon abonnement'], ['Paramètres', 'Paramètres']] as const) {
+    for (const [label, heading] of [['Tableau de bord', 'Tableau de bord'], ['Prospection', 'Prospection'], ['Mes biens', 'Mes biens'], ['Locataires et baux', /Locataires et baux|Baux/], ['Loyers et paiements', 'Loyers et paiements'], ['Dépenses', 'Dépenses'], ['Contacts', 'Contacts'], ['Documents', 'Documents'], ['Déclaration fiscale', 'Déclaration fiscale'], ['Mon compte', 'Mon compte'], ['Paramètres', 'Paramètres']] as const) {
       await page.locator('#main-nav').getByRole('link', { name: label }).click();
       // attendre le titre de la rubrique ouverte, pas celui de la page précédente encore affichée
       await page.locator('main h1', { hasText: heading }).first().waitFor().catch(() => undefined);

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { href } from './router.ts';
 
-/** Fonction non incluse dans la formule du compte : explication et lien vers « Mon abonnement ». */
+/** Fonction non incluse dans la formule du compte : explication et lien vers « Mon compte › Abonnement ». */
 export function PlanLock({ title, children, compact = false }: { title: string; children: ReactNode; compact?: boolean }) {
   return (
     <div className="locked" role="note">

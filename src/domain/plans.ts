@@ -80,7 +80,7 @@ export function planUsage(data: Snapshot): PlanUsage {
 export const sizeLabel = (mb: number) => (mb >= 1024 ? `${mb / 1024} Go` : `${mb} Mo`);
 export const limitLabel = (n: number | null, unit: string) => (n === null ? `${unit} illimités` : `${n} ${unit}`);
 export const refusal = (plan: PlanInfo, what: string) =>
-  `Formule ${plan.label} : ${what}. Choisissez une formule supérieure dans « Mon abonnement ».`;
+  `Formule ${plan.label} : ${what}. Choisissez une formule supérieure dans « Mon compte › Abonnement ».`;
 
 type Row = Record<string, unknown>;
 /** Écriture envisagée : création (une ou plusieurs lignes) ou modification d'une ligne existante. */

@@ -5,6 +5,9 @@ import { money, pct, todayParis } from '../domain/format.ts';
 import { purchaseOfferDoc, suggestArguments, suggestedPrice, type ArgumentId, type NegotiationArgument, type OfferProperty } from '../domain/purchaseOffer.ts';
 import { round2, type SimulationInputs, type SimulationResult } from '../domain/simulator.ts';
 import { Button, Checkbox, Modal, NumberInput, TextArea, TextInput } from '../ui/components.tsx';
+import { useStore } from '../data/store.tsx';
+import { borrowerNames, fullAddress } from '../domain/personalInfo.ts';
+import { href } from '../ui/router.ts';
 
 const addDays = (iso: string, n: number) => { const d = new Date(`${iso}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 
@@ -33,10 +36,11 @@ function OfferModal({ property, inputs: i, result: r, notify, recipient, onClose
   const base = useMemo(() => suggestArguments({ property, inputs: i, result: r }), [property, i, r]);
   const [args, setArgs] = useState<NegotiationArgument[]>(base);
   const [checked, setChecked] = useState<Set<ArgumentId>>(() => new Set(base.filter((a) => a.relevant).map((a) => a.id)));
-  const [buyers, setBuyers] = useState('');
-  const [address, setAddress] = useState('');
+  const info = useStore().data.settings?.personal_info ?? {};
+  const [buyers, setBuyers] = useState(borrowerNames(info));
+  const [address, setAddress] = useState(fullAddress(info));
   const [to, setTo] = useState(recipient ?? '');
-  const [place, setPlace] = useState('');
+  const [place, setPlace] = useState((info.city ?? '').trim());
   const [price, setPriceRaw] = useState<number | null>(Math.round(r.offerFai));
   // le texte « rentabilité » cite le prix proposé : il suit le prix tant qu'il n'a pas été retouché
   const setPrice = (v: number | null) => {
@@ -90,7 +94,7 @@ function OfferModal({ property, inputs: i, result: r, notify, recipient, onClose
     <Modal open wide title="Offre d’achat" onClose={onClose}
       footer={<><Button onClick={onClose}>Annuler</Button><Button variant="primary" disabled={busy || !price} onClick={() => void generate()}>{busy ? 'Préparation…' : 'Télécharger l’offre'}</Button></>}>
       <p>L’offre reprend le bien, le prix et le financement de la simulation. Cochez les arguments qui justifient votre prix : leur texte est pré-rempli avec vos chiffres et reste modifiable.</p>
-      <p className="muted small">Noms et adresses ne servent qu’au document : ils ne sont pas enregistrés dans Immo-Zen.</p>
+      <p className="muted small">{borrowerNames(info) ? 'Acquéreur et adresse pré-remplis depuis' : 'Pour pré-remplir l’acquéreur et son adresse, complétez'} <a href={href('/compte')}>Mon compte › Informations personnelles</a>. Vos retouches ici ne servent qu’au document.</p>
 
       <h3>Parties</h3>
       <div className="grid">

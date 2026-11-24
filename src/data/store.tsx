@@ -41,7 +41,7 @@ interface StoreValue {
   createMany<T extends TableName>(table: T, rows: Insert<Tables[T]>[]): Promise<Tables[T][] | null>;
   update<T extends VersionedTable>(table: T, current: Tables[T], patch: Patch<Tables[T]>, label?: string): Promise<Tables[T] | null>;
   remove(table: TableName, id: string): Promise<boolean>;
-  saveSettings(patch: Partial<Pick<UserSettings, 'simulator_defaults' | 'ui_prefs' | 'rental_settings' | 'tax_inputs'>>): Promise<boolean>;
+  saveSettings(patch: Partial<Pick<UserSettings, 'simulator_defaults' | 'ui_prefs' | 'rental_settings' | 'tax_inputs' | 'personal_info'>>): Promise<boolean>;
   /** Appel d'une fonction serveur (échéances, quittances, relances…) puis rechargement des données. */
   call<R>(fn: (repo: Repo) => Promise<R>, success?: string): Promise<R | null>;
   removeWhere(table: TableName, match: Record<string, string>): Promise<boolean>;
@@ -309,7 +309,7 @@ export function StoreProvider({ repo, children }: { repo: Repo; children: ReactN
     return out;
   }, [repo, run, notify, refresh]);
 
-  const saveSettings = useCallback(async (patch: Partial<Pick<UserSettings, 'simulator_defaults' | 'ui_prefs' | 'rental_settings' | 'tax_inputs'>>) => {
+  const saveSettings = useCallback(async (patch: Partial<Pick<UserSettings, 'simulator_defaults' | 'ui_prefs' | 'rental_settings' | 'tax_inputs' | 'personal_info'>>) => {
     const version = data.settings?.version ?? 1;
     const res = await run(() => repo.saveSettings(version, patch));
     if (!res) return false;

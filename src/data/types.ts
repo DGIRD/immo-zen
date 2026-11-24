@@ -191,6 +191,8 @@ export interface UserSettings {
   rental_settings?: RentalSettings;
   /** Saisies complémentaires de la déclaration fiscale, par année puis par bien. */
   tax_inputs?: TaxInputs;
+  /** Mon compte > Informations personnelles (dossier banque, offre d'achat). */
+  personal_info?: import('../domain/personalInfo.ts').PersonalInfo;
   version: number;
   updated_at: string;
 }

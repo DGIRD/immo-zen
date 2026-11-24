@@ -32,7 +32,17 @@ export interface Borrower {
   /** Épargne restant disponible après l'apport. */
   savingsAfter?: number | null;
   presentation?: string;
+  /** Détail par emprunteur (Mon compte > Informations personnelles). */
+  people?: BorrowerPerson[];
+  address?: string;
+  contact?: string;
+  housing?: string;
+  otherIncome?: { amount: number; label: string };
+  /** Crédits en cours : biens détenus (total) et autres crédits. */
+  loans?: BorrowerLoan[];
 }
+export interface BorrowerPerson { name: string; age: number | null; job: string; contract: string; income: number | null }
+export interface BorrowerLoan { label: string; monthly: number; remaining: number | null; end: string | null }
 
 /** Part des loyers retenue dans les revenus, pratique bancaire courante. */
 export const RENT_WEIGHT = 0.7;
@@ -104,16 +114,25 @@ export function bankDossierDoc(o: { property: DossierProperty; inputs: Simulatio
   };
 
   // 2. emprunteur
-  if (b.names || b.situation || ratio) {
-    sections.push({ title: 'Emprunteur', blocks: [
+  if (b.names || b.situation || ratio || b.people?.length) {
+    sections.push({ title: b.people && b.people.length > 1 ? 'Emprunteurs' : 'Emprunteur', blocks: [
+      ...(b.people?.length ? [{ t: 'table', head: ['Emprunteur', 'Âge', 'Profession', 'Contrat, ancienneté', 'Revenus nets / mois'], widths: [1.8, 0.6, 2, 2, 1.3], align: ['l', 'r', 'l', 'l', 'r'],
+        rows: b.people.map((x) => [x.name || '—', x.age != null ? `${x.age} ans` : '', x.job, x.contract, x.income ? money(x.income) : '']) } as PdfBlock] : []),
       kv([
-        ['Emprunteur(s)', b.names?.trim() ?? ''],
-        ['Situation professionnelle', b.situation?.trim() ?? ''],
+        ['Emprunteur(s)', b.people?.length ? '' : b.names?.trim() ?? ''],
+        ['Situation', b.situation?.trim() ?? ''],
+        ['Adresse', b.address ?? ''],
+        ['Contact', b.contact ?? ''],
+        ['Logement actuel', b.housing ?? ''],
+        [b.otherIncome?.label ?? '', b.otherIncome ? `${money(b.otherIncome.amount)} par mois` : ''],
         ['Revenus nets mensuels du foyer', b.income ? money(b.income) : ''],
         ['Crédits en cours (mensualités)', b.currentLoans ? money(b.currentLoans) : ''],
         ['Loyers déjà perçus (par mois)', b.currentRents ? money(b.currentRents) : ''],
         ['Épargne disponible après l’apport', b.savingsAfter ? money(b.savingsAfter) : ''],
       ]),
+      ...(b.loans?.length ? [{ t: 'table', head: ['Crédits en cours', 'Mensualité', 'Capital restant dû', 'Fin'], widths: [3.4, 1.2, 1.4, 1], align: ['l', 'r', 'r', 'r'], total: b.loans.length > 1,
+        rows: [...b.loans.map((l) => [l.label, money(l.monthly), l.remaining != null ? money(l.remaining) : '', l.end ? date(l.end) : '']),
+          ...(b.loans.length > 1 ? [['Total', money(round2(b.loans.reduce((s, l) => s + l.monthly, 0))), money(round2(b.loans.reduce((s, l) => s + (l.remaining ?? 0), 0))), '']] : [])] } as PdfBlock] : []),
       ...(ratio ? [
         { t: 'table', head: ['Endettement', 'Avant le projet', 'Après le projet'], widths: [3, 1.5, 1.5], align: ['l', 'r', 'r'], rows: [
           ['Mensualités de crédit', money(b.currentLoans ?? 0), money(ratio.debt)],
