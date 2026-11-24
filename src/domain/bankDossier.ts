@@ -31,6 +31,8 @@ export interface Borrower {
   currentRents?: number | null;
   /** Épargne restant disponible après l'apport. */
   savingsAfter?: number | null;
+  /** Épargne disponible avant l'apport du projet. */
+  savings?: number | null;
   presentation?: string;
   /** Détail par emprunteur (Mon compte > Informations personnelles). */
   people?: BorrowerPerson[];
@@ -128,7 +130,8 @@ export function bankDossierDoc(o: { property: DossierProperty; inputs: Simulatio
         ['Revenus nets mensuels du foyer', b.income ? money(b.income) : ''],
         ['Crédits en cours (mensualités)', b.currentLoans ? money(b.currentLoans) : ''],
         ['Loyers déjà perçus (par mois)', b.currentRents ? money(b.currentRents) : ''],
-        ['Épargne disponible après l’apport', b.savingsAfter ? money(b.savingsAfter) : ''],
+        ['Épargne disponible', b.savings ? money(b.savings) : ''],
+        ['Épargne disponible après l’apport', b.savingsAfter != null && (b.savings || b.savingsAfter) ? money(b.savingsAfter) : ''],
       ]),
       ...(b.loans?.length ? [{ t: 'table', head: ['Crédits en cours', 'Mensualité', 'Capital restant dû', 'Fin'], widths: [3.4, 1.2, 1.4, 1], align: ['l', 'r', 'r', 'r'], total: b.loans.length > 1,
         rows: [...b.loans.map((l) => [l.label, money(l.monthly), l.remaining != null ? money(l.remaining) : '', l.end ? date(l.end) : '']),
@@ -177,6 +180,10 @@ export function bankDossierDoc(o: { property: DossierProperty; inputs: Simulatio
         ['Patrimoine immobilier net', money(t.net), money(round2(afterValue - afterDebt))],
         ['Part financée par la dette', t.ltv == null ? '—' : pct(t.ltv), afterValue > 0 ? pct(round2((afterDebt / afterValue) * 100)) : '—'],
         ['Mensualités de crédit en cours', money(t.monthlyLoan), money(round2(t.monthlyLoan + r.monthlyPaymentWithInsurance))],
+        ...(b.savings != null && b.savings > 0 ? [
+          ['Épargne disponible', money(b.savings), money(b.savingsAfter ?? Math.max(0, round2(b.savings - r.equity)))],
+          ['Patrimoine total (immobilier net + épargne)', money(round2(t.net + b.savings)), money(round2(afterValue - afterDebt + (b.savingsAfter ?? Math.max(0, round2(b.savings - r.equity)))))],
+        ] : []),
       ] },
       { t: 'p', text: [`Valeurs : prix médian de l’estimation de chaque bien (ventes DVF comparables ou saisie du propriétaire). Capital restant dû calculé au ${date(o.editedOn)} d’après les caractéristiques des crédits. « Après le projet » ajoute ${est != null ? `la valeur médiane estimée du bien visé (${money(projectValue)})` : `le prix d’acquisition du bien visé (${money(projectValue)}), faute d’estimation`} et le prêt demandé (${money(projectDebt)}).`, ...notes].join(' ') },
     ] });

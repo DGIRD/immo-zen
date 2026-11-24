@@ -43,6 +43,7 @@ test('emprunteur du dossier banque : crédits des biens + autres crédits, loyer
   assert.equal(b.currentLoans, 900 + 1200 + 250);
   assert.equal(b.currentRents, 800);
   assert.equal(b.savingsAfter, 35000);
+  assert.equal(b.savings, 60000);
   assert.equal(b.people?.length, 2);
   assert.equal(b.people?.[0]?.age, 38);
   assert.match(b.people?.[0]?.job ?? '', /Ingénieur chez Société A/);
@@ -70,6 +71,14 @@ test('PDF : tableau des emprunteurs et des crédits en cours', async () => {
   assert.equal(credits.rows.length, 3, '2 crédits + total');
   const pdf = await PDFDocument.load(await buildBankDossierPdf({ PDFDocument, StandardFonts, rgb } as never, doc));
   assert.ok(pdf.getPageCount() >= 2);
+  // épargne au bilan patrimonial : aujourd'hui et après l'apport, patrimoine total
+  const avecBilan = bankDossierDoc({ property: { title: 'T2' }, inputs, result: out.result, borrower, editedOn: today, patrimony: [line({})] });
+  const synth = (avecBilan.sections.find((x) => x.title === 'Bilan patrimonial immobilier')!.blocks.filter((x) => x.t === 'table')[1] as { rows: string[][] }).rows;
+  const ep = synth.find((r) => r[0] === 'Épargne disponible')!;
+  assert.equal(ep[1]!.replace(/\D/g, ''), '60000');
+  assert.equal(ep[2]!.replace(/\D/g, ''), String(Math.max(0, Math.round(60000 - out.result.equity))));
+  const tot = synth.find((r) => r[0]!.startsWith('Patrimoine total'))!;
+  assert.equal(tot[1]!.replace(/\D/g, ''), String(100000 + 60000));
 });
 
 test('nettoyage avant enregistrement', () => {

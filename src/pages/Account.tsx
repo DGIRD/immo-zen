@@ -6,8 +6,11 @@ import {
   activeOtherLoans, borrowerNames, CONTRACT_LABELS, FAMILY_LABELS, HOUSING_LABELS, householdIncome, LOAN_KIND_LABELS, missingFields, sanitizeInfo,
   type Contract, type Family, type Housing, type LoanKind, type OtherLoan, type PersonalInfo, type PersonInfo,
 } from '../domain/personalInfo.ts';
-import { Button, Checkbox, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput } from '../ui/components.tsx';
+import { Button, Checkbox, KeyValue, NumberInput, PageHeader, Section, Select, Tabs, TextArea, TextInput } from '../ui/components.tsx';
 import { navigate } from '../ui/router.ts';
+import { AddressFields } from '../ui/AddressFields.tsx';
+import { round2 } from '../domain/simulator.ts';
+import type { IncomePeriod } from '../domain/personalInfo.ts';
 
 type AccountTab = 'infos' | 'abonnement';
 
@@ -27,6 +30,26 @@ const FAMILIES = Object.entries(FAMILY_LABELS) as [Family, string][];
 const HOUSINGS = Object.entries(HOUSING_LABELS) as [Housing, string][];
 const LOAN_KINDS = Object.entries(LOAN_KIND_LABELS) as [LoanKind, string][];
 
+const PERIODS: [IncomePeriod, string][] = [['mois', 'Par mois'], ['an', 'Par an']];
+
+/** Montant saisi par mois ou par an (bascule sous le champ) ; la valeur transmise reste mensuelle. */
+function IncomeInput({ label, monthly, period = 'mois', onChange, hint }: {
+  label: string; monthly: number | null | undefined; period?: IncomePeriod; onChange: (monthly: number | null, period: IncomePeriod) => void; hint?: string;
+}) {
+  const shown = monthly == null || Number.isNaN(monthly) ? monthly : round2(period === 'an' ? monthly * 12 : monthly);
+  return (
+    <NumberInput label={label} suffix={period === 'an' ? '€ / an' : '€ / mois'} value={shown ?? null}
+      onChange={(v) => onChange(v == null || Number.isNaN(v) ? v : period === 'an' ? v / 12 : v, period)}
+      hint={<>
+        <span className="period-toggle" role="group" aria-label={`${label} : saisie`}>
+          {PERIODS.map(([p, l]) => <button key={p} type="button" aria-pressed={period === p} className={period === p ? 'on' : ''} onClick={() => onChange(monthly ?? null, p)}>{l}</button>)}
+        </span>
+        {hint && <span className="period-hint">{hint}</span>}
+        {period === 'an' && monthly ? <span className="period-hint">Soit {money(monthly)} par mois</span> : null}
+      </>} />
+  );
+}
+
 function PersonFields({ value, onChange, coBorrower }: { value: PersonInfo; onChange: (p: PersonInfo) => void; coBorrower?: boolean }) {
   const set = <K extends keyof PersonInfo>(k: K, v: PersonInfo[K]) => onChange({ ...value, [k]: v });
   const retired = value.contract === 'retraite' || value.contract === 'sans_activite';
@@ -39,7 +62,8 @@ function PersonFields({ value, onChange, coBorrower }: { value: PersonInfo; onCh
       <TextInput label="Profession" value={value.profession} onChange={(v) => set('profession', v)} hint="Ex. : ingénieur, infirmière" />
       {!retired && <TextInput label="Employeur" value={value.employer} onChange={(v) => set('employer', v)} />}
       {!retired && <TextInput label="Dans cet emploi depuis" type="date" value={value.since ?? ''} onChange={(v) => set('since', v || null)} hint="Ancienneté, regardée par la banque" />}
-      <NumberInput label="Revenus nets mensuels" suffix="€" value={value.income ?? null} onChange={(v) => set('income', v)} hint="Avant impôt, moyenne sur 12 mois (primes, 13e mois compris)" />
+      <IncomeInput label="Revenus nets" monthly={value.income} period={value.income_period} onChange={(m, p) => onChange({ ...value, income: m, income_period: p })}
+        hint="Net avant impôt, primes et 13e mois compris" />
     </div>
   );
 }
@@ -67,6 +91,7 @@ export function PersonalInfoPage() {
   const setLoan = (id: string, patch: Partial<OtherLoan>) => set('other_loans', loans.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   const missing = missingFields(info);
   const income = householdIncome(sanitizeInfo(info));
+  const rents = round2(owned.reduce((s, l) => s + l.monthlyRent, 0));
   const otherMonthly = activeOtherLoans(sanitizeInfo(info), today).reduce((s, l) => s + (l.monthly ?? 0), 0);
 
   async function save() {
@@ -106,9 +131,7 @@ export function PersonalInfoPage() {
         <div className="grid">
           <Select<Family> label="Situation familiale" value={info.family ?? null} onChange={(v) => set('family', v)} options={FAMILIES} allowEmpty="—" />
           <NumberInput label="Enfants à charge" value={info.children ?? null} onChange={(v) => set('children', v)} />
-          <TextInput label="Adresse" wide value={info.address} onChange={(v) => set('address', v)} autoComplete="street-address" />
-          <TextInput label="Code postal" value={info.zip} onChange={(v) => set('zip', v)} autoComplete="postal-code" />
-          <TextInput label="Ville" value={info.city} onChange={(v) => set('city', v)} autoComplete="address-level2" hint="Sert aussi pour « Fait à » de l’offre d’achat" />
+          <AddressFields value={info} onChange={(a) => setInfo((x) => ({ ...x, address: a.address ?? '', zip: a.zip ?? '', city: a.city ?? '' }))} />
           <TextInput label="Téléphone" type="tel" value={info.phone} onChange={(v) => set('phone', v)} autoComplete="tel" />
           <TextInput label="E-mail de contact" type="email" value={info.email} onChange={(v) => set('email', v)} placeholder={session?.email} autoComplete="email" />
           <Select<Housing> label="Logement actuel" value={info.housing ?? null} onChange={(v) => set('housing', v)} options={HOUSINGS} allowEmpty="—"
@@ -117,15 +140,26 @@ export function PersonalInfoPage() {
         </div>
       </Section>
 
-      <Section title="Revenus complémentaires et épargne">
+      <Section title="Revenus complémentaires">
         <div className="grid">
-          <NumberInput label="Autres revenus réguliers" suffix="€ / mois" value={info.other_income ?? null} onChange={(v) => set('other_income', v)}
-            hint="Pensions, allocations, revenus de capitaux… Les loyers de vos biens sont repris de « Mes biens »" />
+          <IncomeInput label="Autres revenus réguliers" monthly={info.other_income} period={info.other_income_period}
+            onChange={(m, p) => setInfo((x) => ({ ...x, other_income: m, other_income_period: p }))}
+            hint="Pensions, allocations, revenus de capitaux… hors loyers de vos biens (repris ci-dessous)" />
           {!!info.other_income && <TextInput label="Nature de ces revenus" value={info.other_income_label} onChange={(v) => set('other_income_label', v)} hint="Ex. : pension alimentaire" />}
+</div>
+        <KeyValue items={[
+          ['Loyers de vos biens loués', rents > 0 ? `${money(rents)} par mois, soit ${money(rents * 12)} par an (repris de « Mes biens »)` : 'aucun bien loué dans « Mes biens »'],
+          ...(rents > 0 ? [['Loyers retenus par la banque (70 %)', `${money(round2(rents * 0.7))} par mois`] as [string, string]] : []) as [string, string][],
+          ['Revenus du foyer', `${money(income)} par mois hors loyers ; ${money(round2(income + rents))} loyers compris`],
+        ]} />
+      </Section>
+
+      <Section title="Épargne disponible">
+        <div className="grid">
           <NumberInput label="Épargne disponible" suffix="€" value={info.savings ?? null} onChange={(v) => set('savings', v)}
-            hint="Livrets, assurance-vie… avant apport. Le dossier banque en déduit l’apport du projet" />
+            hint="Livrets, comptes à terme, assurance-vie, PEA… avant l’apport du projet" />
         </div>
-        {income > 0 && <p className="muted small">Revenus nets du foyer retenus : {money(income)} par mois, hors loyers.</p>}
+        <p className="muted small">Le dossier banque en déduit l’apport de la simulation (épargne restante après l’apport) et l’ajoute au bilan patrimonial (patrimoine total = immobilier net + épargne).</p>
       </Section>
 
       <Section title="Autres crédits en cours" info="Les crédits de vos biens immobiliers sont repris automatiquement de « Mes biens » (mensualité, capital restant dû). Déclarez ici uniquement vos autres crédits : prêt personnel, auto, travaux, étudiant, LOA, crédit renouvelable…">

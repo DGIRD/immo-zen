@@ -853,3 +853,9 @@ h1 .info-tip, h2 .info-tip, h3 .info-tip { margin-left: .5rem; }
 .offer-arg { border: 1px solid var(--line); border-radius: var(--radius); padding: .45rem .7rem; }
 .offer-arg.on { border-color: var(--sapin); background: var(--surface); }
 .offer-arg .grid { margin-top: .5rem; }
+
+/* Mon compte : saisie des revenus par mois ou par an */
+.period-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin: .1rem 0 .2rem; }
+.period-toggle button { border: 0; background: transparent; padding: .1rem .6rem; font: inherit; font-size: .8rem; color: var(--ink-soft); cursor: pointer; }
+.period-toggle button.on { background: var(--sapin); color: #fff; }
+.period-hint { display: block; }

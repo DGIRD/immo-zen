@@ -67,6 +67,9 @@ export function BankDossierButton({ property, inputs, result, notify, propertyId
             <NumberInput label="Revenus nets mensuels du foyer" suffix="€" value={b.income ?? null} onChange={(v) => set('income', v)} hint="Avant impôt" />
             <NumberInput label="Crédits en cours" suffix="€ / mois" value={b.currentLoans ?? null} onChange={(v) => set('currentLoans', v)} hint={b.loans?.length ? `Mensualités, assurance comprise : ${b.loans.map((l) => `${l.label.replace(/ \(détail.*\)$/, '')} ${money(l.monthly)}`).join(' ; ')}` : 'Mensualités, assurance comprise'} />
             <NumberInput label="Loyers déjà perçus" suffix="€ / mois" value={b.currentRents ?? null} onChange={(v) => set('currentRents', v)} />
+            <NumberInput label="Épargne disponible" suffix="€" value={b.savings ?? null}
+              onChange={(v) => setB((x) => ({ ...x, savings: v, savingsAfter: v != null && !Number.isNaN(v) ? Math.max(0, Math.round(v - (result?.equity ?? 0))) : x.savingsAfter }))}
+              hint={`Avant l’apport du projet (${money(result?.equity ?? 0)})`} />
             <NumberInput label="Épargne restante après l’apport" suffix="€" value={b.savingsAfter ?? null} onChange={(v) => set('savingsAfter', v)} hint="Épargne de précaution" />
             <TextArea label="Présentation du projet (facultatif)" value={b.presentation ?? ''} onChange={(v) => set('presentation', v)} rows={3} />
             <Checkbox label="Joindre le tableau d’amortissement annuel" checked={schedule} onChange={setSchedule} />
