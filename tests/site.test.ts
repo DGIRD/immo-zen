@@ -17,6 +17,22 @@ test('en-tête identique sur toutes les pages du site vitrine', () => {
   const outils = readdirSync(join(site, 'outils')).filter((f) => f.endsWith('.html'));
   assert.equal(outils.length, 5);
   for (const f of outils) assert.equal(header(readFileSync(join(site, 'outils', f), 'utf8')), siteHeader({ prefix: '../', current: 'outils' }), f);
+  const actus = readdirSync(join(site, 'actualites')).filter((f) => f.endsWith('.html'));
+  assert.ok(actus.length >= 5);
+  for (const f of actus) assert.equal(header(readFileSync(join(site, 'actualites', f), 'utf8')), siteHeader({ prefix: '../', current: 'actualites' }), f);
+});
+
+test('actualités : articles datés au plan du site, liens vers guides et outils valides', () => {
+  const sitemap = readFileSync(join(site, 'sitemap.xml'), 'utf8');
+  const actus = readdirSync(join(site, 'actualites')).filter((f) => f.endsWith('.html'));
+  for (const f of actus) assert.match(sitemap, new RegExp(`immo-zen.fr/actualites/${f === 'index.html' ? '' : f.replace('.', '\\.')}<`), f);
+  for (const f of actus.filter((x) => x !== 'index.html')) {
+    const html = readFileSync(join(site, 'actualites', f), 'utf8');
+    assert.match(html, /"@type":"NewsArticle"/, f);
+    assert.match(html, /<p class="meta">Publié le /, f);
+    for (const [, dir, file] of html.matchAll(/href="\.\.\/(guides|outils)\/([a-z0-9-]+\.html)/g)) assert.ok(readdirSync(join(site, dir ?? '')).includes(file ?? ''), `${f} : lien cassé ${dir}/${file}`);
+  }
+  assert.match(siteHeader({ prefix: '../', current: 'actualites' }), /<a href="\.\.\/actualites\/" aria-current="page">Actualités<\/a>/);
 });
 
 test('outils gratuits : pages au plan du site, indices IRL repris de l’application', () => {
@@ -39,7 +55,7 @@ test('« Espace client » dans l’en-tête, après le bouton Menu, sur chaque p
 test('inscriptions : formulaires avec case d’accord non cochée, sources reconnues par le serveur', () => {
   const sql = readFileSync(join(import.meta.dirname, '..', 'supabase', 'migrations', '20261112000200_inscriptions_site.sql'), 'utf8');
   const allowed = new Set([...(sql.match(/p_source not in \(([^)]*)\)/)?.[1] ?? '').matchAll(/'([a-z-]+)'/g)].map((m) => m[1]));
-  const pages = [join(site, 'index.html'), ...['guides', 'outils'].flatMap((d) => readdirSync(join(site, d)).filter((f) => f.endsWith('.html')).map((f) => join(site, d, f)))];
+  const pages = [join(site, 'index.html'), ...['guides', 'outils', 'actualites'].flatMap((d) => readdirSync(join(site, d)).filter((f) => f.endsWith('.html')).map((f) => join(site, d, f)))];
   const seen = new Set<string>();
   for (const p of pages) {
     const html = readFileSync(p, 'utf8');
