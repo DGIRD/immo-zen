@@ -524,6 +524,22 @@ export function createDemoRepo(storage: Storage = localStorage): Repo {
       queueReceipt(db, r);
       write(db);
     },
+    async resendReceiptEmail(receiptId) {
+      const db = read();
+      const r = db.receipts.find((x) => x.id === receiptId) ?? fail('Document introuvable.');
+      if (r.cancelled_at) fail('Document supprimé : il ne peut pas être renvoyé.');
+      const current = [...new Set(db.lease_tenants.filter((lt) => lt.lease_id === r.lease_id && (!lt.left_on || lt.left_on >= r.period_start))
+        .map((lt) => db.tenants.find((t) => t.id === lt.tenant_id)?.email?.trim()).filter((e): e is string => !!e))];
+      const emails = current.length ? current : r.tenant_emails;
+      if (!emails.length) fail('Aucune adresse e-mail de locataire : renseignez-la dans la fiche locataire.');
+      const mine = db.email_outbox.filter((o) => o.receipt_id === r.id);
+      // en démonstration, rien ne part : seule la limite de 5 envois par 24 heures s'applique
+      if (mine.filter((o) => Date.parse(o.created_at) > Date.now() - 86_400_000).length >= 5) fail('Ce document a déjà été envoyé 5 fois en 24 heures : réessayez demain.');
+      queueEmail(db, { kind: 'quittance', to_emails: emails, subject: `${r.kind === 'quittance' ? 'Quittance de loyer' : 'Reçu de paiement partiel'} – ${r.period_start.slice(5, 7)}/${r.period_start.slice(0, 4)}`,
+        receipt_id: r.id, reminder_id: null, lease_id: r.lease_id, charge_id: r.charge_id, dedupe: `recu:${r.id}:renvoi:${Date.now()}` });
+      r.tenant_emails = emails; r.send_status = 'a_envoyer'; r.send_error = null;
+      write(db);
+    },
     async queueReminder(reminderId) {
       const db = read();
       const m = db.reminders.find((x) => x.id === reminderId) ?? fail('Relance introuvable.');

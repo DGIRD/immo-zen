@@ -12,7 +12,7 @@ import { GridEditor, type GridColumn } from '../../ui/GridEditor.tsx';
 import { Button, EmptyState, Help, Section } from '../../ui/components.tsx';
 import { navigate } from '../../ui/router.ts';
 import { useChargeEditing } from './ChargeEdit.tsx';
-import { applyPaymentEdit, METHODS, PaymentDialog, ReceiptDialog, receiptsCovering, sendLabel, usePaymentActions, useReceiptActions, useRental } from './common.tsx';
+import { applyPaymentEdit, METHODS, PaymentDialog, ReceiptDialog, receiptsCovering, sendLabel, usePaymentActions, useReceiptActions, useRental, useResendReceipt } from './common.tsx';
 import { saveLedgerGrid } from './gridSave.ts';
 import { previewEdits } from '../../domain/gridEdits.ts';
 import { issueMonthDocs, useExcessDialog } from './monthActions.tsx';
@@ -81,6 +81,7 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
   const chargeEdit = useChargeEditing();
   const payActions = usePaymentActions();
   const docActions = useReceiptActions(setReceipt);
+  const resend = useResendReceipt();
   const excess = useExcessDialog();
 
   const data = store.data;
@@ -258,6 +259,7 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
       { label: `Ouvrir ${docLabel(d)}`, onSelect: () => setReceipt(d) },
       { label: `Modifier ${d.kind === 'quittance' ? 'la quittance' : 'le reçu'} ${d.number}`, onSelect: () => docActions.edit(d) },
       { label: `Rééditer ${d.kind === 'quittance' ? 'la quittance' : 'le reçu'} ${d.number}`, onSelect: () => void docActions.reissue(d) },
+      ...(d.send_status === 'a_envoyer' ? [] : [{ label: `${d.send_status === 'non_envoye' ? 'Envoyer' : 'Renvoyer'} ${d.kind === 'quittance' ? 'la quittance' : 'le reçu'} ${d.number} par e-mail`, onSelect: () => void resend(d) }]),
       { label: `Supprimer ${d.kind === 'quittance' ? 'la quittance' : 'le reçu'} ${d.number}`, danger: true, onSelect: () => docActions.remove(d) },
     );
     for (const d of r.cancelledDocs) out.push({ label: `Voir ${docLabel(d)} (annulé)`, onSelect: () => setReceipt(d) });

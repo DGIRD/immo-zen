@@ -891,7 +891,7 @@ async function main() {
     const fr = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
     const todayIso = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()));
     const [y, m] = todayIso.split('-').map(Number) as [number, number];
-    const next = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-02`;
+    const next = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-20`; // loin des paiements du jour : pas de rapprochement « déjà saisi » (fenêtre de quelques jours)
     // 645,50 € du jour : déjà saisi sur le bail (import de loyers) ; 700 € : autre montant le même mois ; mois suivant : paiement du bail
     const text = [
       T('Date', 'Libellé', 'Montant', 'Catégorie', 'Appartement'),
