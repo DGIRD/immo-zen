@@ -218,6 +218,32 @@ export const sendLabel = (r: Receipt) => (r.cancelled_at ? 'Annulé'
   : r.send_status === 'envoye' && r.sent_at ? `Envoyé le ${dateTime(r.sent_at).replace(' ', ' à ')}`
   : SEND_LABELS[r.send_status]);
 
+/** Adresses actuelles des locataires d'un document (fiche locataire), à défaut celles du document. */
+export function currentTenantEmails(d: Pick<Snapshot, 'leaseTenants' | 'tenants'>, r: Receipt): string[] {
+  const emails = [...new Set(d.leaseTenants.filter((lt) => lt.lease_id === r.lease_id && (!lt.left_on || lt.left_on >= r.period_start))
+    .map((lt) => d.tenants.find((t) => t.id === lt.tenant_id)?.email?.trim()).filter((e): e is string => !!e))];
+  return emails.length ? emails : r.tenant_emails;
+}
+
+/**
+ * Renvoi par e-mail d'une quittance ou d'un reçu déjà envoyé (ou dont l'envoi a échoué), après confirmation,
+ * aux adresses actuelles des locataires. Un document jamais envoyé part par l'envoi normal.
+ */
+export function useResendReceipt() {
+  const store = useStore();
+  return async (r: Receipt, done?: () => void) => {
+    const label = r.kind === 'quittance' ? 'la quittance' : 'le reçu';
+    const to = currentTenantEmails(store.data, r);
+    if (!to.length) { store.notify('Aucune adresse e-mail de locataire : renseignez-la dans la fiche locataire.', 'error'); return false; }
+    const first = r.send_status === 'non_envoye';
+    if (!window.confirm(`${first ? 'Envoyer' : 'Renvoyer'} ${label} ${r.number} à ${to.join(', ')} ?${r.sent_at && !first ? `\nDéjà envoyé le ${date(r.sent_at)}.` : ''}`)) return false;
+    done?.();
+    const demo = store.repo.mode === 'demo' ? ' (mode démonstration : aucun e-mail n’est envoyé)' : '';
+    return store.call((x) => (first ? x.queueReceiptEmail(r.id) : x.resendReceiptEmail(r.id)),
+      `${first ? 'Envoi' : 'Renvoi'} programmé : ${label} ${r.number} part à ${to.join(', ')} dans quelques minutes${demo}.`);
+  };
+}
+
 export function ReceiptDialog({ receipt, onClose, onReplaced }: { receipt: Receipt | null; onClose: () => void; onReplaced?: (r: Receipt) => void }) {
   const store = useStore();
   const actions = useReceiptActions((n) => { if (onReplaced) onReplaced(n); else onClose(); });
@@ -225,6 +251,7 @@ export function ReceiptDialog({ receipt, onClose, onReplaced }: { receipt: Recei
   const [url, setUrl] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState<string | null>(null);
   const live = receipt ? store.data.receipts.find((r) => r.id === receipt.id) ?? receipt : null;
+  const sendDoc = useResendReceipt();
 
   useEffect(() => {
     if (!receipt) return;
@@ -243,14 +270,15 @@ export function ReceiptDialog({ receipt, onClose, onReplaced }: { receipt: Recei
         {!live.cancelled_at && <Button onClick={() => void actions.reissue(live)}>Rééditer</Button>}
         <Button onClick={async () => downloadBlob(await receiptBlob(live, lease), receiptFileName(live))}>Télécharger le PDF</Button>
         {!live.cancelled_at && (
-          <Button variant="primary" disabled={live.send_status === 'envoye' || live.send_status === 'a_envoyer'}
+          <Button variant="primary" disabled={live.send_status === 'a_envoyer'}
             title={live.tenant_emails.length ? `À : ${live.tenant_emails.join(', ')}` : 'Aucun e-mail de locataire'}
             onClick={() => {
+              if (live.send_status === 'envoye' || live.send_status === 'echec') { void sendDoc(live, onClose); return; }
               // la fenêtre se ferme tout de suite ; le résultat (ou l'erreur) s'affiche en message
               onClose();
               void store.call((r) => r.queueReceiptEmail(live.id), store.repo.mode === 'demo' ? 'Mis en file (mode démonstration : aucun e-mail n’est envoyé).' : 'Envoi programmé : la quittance part au locataire dans quelques minutes.');
             }}>
-            {live.send_status === 'envoye' ? (live.sent_at ? `Envoyé le ${date(live.sent_at)}` : 'Envoyé') : live.send_status === 'a_envoyer' ? 'Envoi en attente' : 'Envoyer au locataire'}
+            {live.send_status === 'a_envoyer' ? 'Envoi en attente' : live.send_status === 'envoye' || live.send_status === 'echec' ? 'Renvoyer au locataire' : 'Envoyer au locataire'}
           </Button>
         )}
       </>}>

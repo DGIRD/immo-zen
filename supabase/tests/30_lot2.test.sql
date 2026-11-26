@@ -91,6 +91,33 @@ select public.iz_queue_receipt_email((select id from public.receipts where kind 
 select tests.ok((select count(*) = 1 and bool_and(to_emails = array['lea@example.test']) from public.email_outbox where kind = 'quittance'),
   'envoi : une seule mise en file, aux seuls locataires ayant un e-mail');
 select tests.ok((select send_status = 'a_envoyer' from public.receipts where kind = 'quittance' and cancelled_at is null), 'envoi : statut « à envoyer »');
+-- Renvoi (26/11/2026) : refusé tant qu'un envoi est en attente ; après envoi, renvoi à l'adresse actuelle de la fiche locataire
+select tests.fails($q$ select public.iz_resend_receipt_email((select id from public.receipts where kind = 'quittance' and cancelled_at is null)) $q$,
+  'renvoi : refusé si un envoi est déjà en attente');
+reset role;
+update public.email_outbox set status = 'envoye', sent_at = now() where kind = 'quittance';
+update public.receipts set send_status = 'envoye', sent_at = now() where kind = 'quittance' and cancelled_at is null;
+update public.tenants set email = 'lea.nouvelle@example.test' where email = 'lea@example.test';
+set local role authenticated;
+select public.iz_resend_receipt_email((select id from public.receipts where kind = 'quittance' and cancelled_at is null));
+select tests.ok((select count(*) = 2 from public.email_outbox where kind = 'quittance'), 'renvoi : nouvel envoi mis en file');
+select tests.ok((select to_emails = array['lea.nouvelle@example.test'] and body_text like '%de nouveau%' from public.email_outbox where kind = 'quittance' and status = 'a_envoyer'),
+  'renvoi : adresse actuelle du locataire, texte de renvoi');
+select tests.ok((select send_status = 'a_envoyer' and tenant_emails = array['lea.nouvelle@example.test'] from public.receipts where kind = 'quittance' and cancelled_at is null),
+  'renvoi : statut « à envoyer », adresse du document mise à jour');
+reset role;
+update public.email_outbox set status = 'envoye' where kind = 'quittance';
+update public.email_outbox set created_at = now() - interval '2 hours' where kind = 'quittance';
+insert into public.email_outbox (user_id, kind, to_emails, subject, body_text, receipt_id, dedupe_key, status)
+  select user_id, 'quittance', to_emails, subject, body_text, receipt_id, dedupe_key || ':t' || g, 'envoye' from public.email_outbox, generate_series(1, 3) g
+   where kind = 'quittance' and dedupe_key not like '%renvoi%';
+set local role authenticated;
+select tests.fails($q$ select public.iz_resend_receipt_email((select id from public.receipts where kind = 'quittance' and cancelled_at is null)) $q$,
+  'renvoi : 5 envois au plus par 24 heures');
+reset role;
+delete from public.email_outbox where dedupe_key like '%:t_';
+update public.tenants set email = 'lea@example.test' where email = 'lea.nouvelle@example.test';
+set local role authenticated;
 select tests.fails($q$ insert into public.email_outbox (user_id, kind, to_emails, subject, body_text, dedupe_key)
                       values (auth.uid(), 'relance', array['x@y.z'], 's', 'b', 'k') $q$, 'e-mails : écriture directe interdite');
 select tests.fails($q$ select count(*) from public.job_runs $q$, 'journal des tâches : inaccessible à un utilisateur');

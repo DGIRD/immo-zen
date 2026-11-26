@@ -112,6 +112,8 @@ export interface Repo {
   /** Réédition : annule le document et en émet un nouveau (données actuelles, corrections éventuelles). */
   reissueReceipt(receiptId: string, changes?: ReceiptChanges): Promise<Receipt>;
   queueReceiptEmail(receiptId: string): Promise<void>;
+  /** Renvoie par e-mail un document déjà envoyé (ou en échec), aux adresses actuelles des locataires. */
+  resendReceiptEmail(receiptId: string): Promise<void>;
   queueReminder(reminderId: string): Promise<Reminder>;
   /** Quittance d'une échéance reprenant des rappels de charges réglés. */
   issueReceiptWithExtras(chargeId: string, extraChargeIds: string[]): Promise<Receipt>;

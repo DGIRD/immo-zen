@@ -221,6 +221,9 @@ export function createSupabaseRepo(url: string, anonKey: string): Repo {
     async queueReceiptEmail(receiptId) {
       check(await sb.rpc('iz_queue_receipt_email', { p_receipt: receiptId }));
     },
+    async resendReceiptEmail(receiptId) {
+      check(await sb.rpc('iz_resend_receipt_email', { p_receipt: receiptId }));
+    },
     async queueReminder(reminderId) {
       return check(await sb.rpc('iz_queue_reminder', { p_reminder: reminderId }).single()) as Reminder;
     },
