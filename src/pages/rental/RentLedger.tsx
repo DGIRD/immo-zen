@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
+import { usePersistentState } from '../../ui/usePersistentState.ts';
 import { useStore } from '../../data/store.tsx';
 import type { Payment, Receipt } from '../../data/types.ts';
 import { downloadBlob, stamp, toCsv, toXlsx, type ExportColumn } from '../../domain/exporting.ts';
@@ -70,10 +71,14 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
   inlineEdit?: boolean;
 }) {
   const { viewById, leaseById, propertyById, leaseLabel, today } = useRental();
-  const [filter, setFilter] = useState<Filter>(initialFilter);
+  const FILTERS: Filter[] = ['a_traiter', 'reste_du', 'reglee', 'a_venir', 'anomalies', 'toutes'];
+  // Loyers et paiements : filtre et mois retrouvés au prochain passage ; ?afficher=… (tableau de bord) l'emporte
+  const asked = new URLSearchParams(location.hash.split('?')[1] ?? '').get('afficher') as Filter | null;
+  const [filter, setFilter] = usePersistentState<Filter>(fixedLease ? null : 'loyers-afficher', initialFilter, (v) => FILTERS.includes(v as Filter),
+    !fixedLease && asked && FILTERS.includes(asked) ? asked : undefined);
   // fiche d'un bail : les mois annulés restent visibles (on vient souvent de les annuler) ; Loyers et paiements : sur demande
   const [withCancelled, setWithCancelled] = useState(fixedLease);
-  const [month, setMonth] = useState('');
+  const [month, setMonth] = usePersistentState<string>(fixedLease ? null : 'loyers-mois', '', (v) => typeof v === 'string');
   const [pay, setPay] = useState<{ leaseId?: string; month?: string; mode: 'saisie' | 'confirmation' } | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [grid, setGrid] = useState<null | 'lignes' | 'paiements'>(null);
@@ -198,13 +203,13 @@ export function RentLedger({ leaseFilter = '', onLeaseFilter, fixedLease = false
       render: (r) => <><strong>{money2(r.due)}</strong>{dueDetail(r).length > 1 && <span className="amount-detail">{dueDetail(r).map((l, i) => <span key={i} className="block">{i ? '+ ' : ''}{l}</span>)}</span>}</> },
     { id: 'paid', label: 'Réglé', value: (r) => r.paid, kind: 'money', align: 'right', mobile: true,
       render: (r) => <>{r.paid ? <strong>{money2(r.paid)}</strong> : <span className="muted">{money2(0)}</span>}{r.payments.length > 0 && <div className="pay-lines amount-detail">{r.payments.map(payLine)}</div>}</> },
-    { id: 'gap', label: 'Reste / écart', value: (r) => r.gap, kind: 'money', align: 'right', mobile: true,
+    { id: 'gap', label: 'Reste dû', value: (r) => r.gap, kind: 'money', align: 'right', mobile: true,
       render: (r) => <><span className={r.gap < 0 && r.status !== 'reportee' && r.status !== 'a_venir' ? 'neg' : r.gap > 0 ? 'pos' : ''}>{r.gap > 0 ? '+' : ''}{money2(r.gap)}</span>{gapNote(r) && <small className="muted block">{gapNote(r)}</small>}</> },
     { id: 'status', label: 'Statut', value: (r) => ROW_STATUS_LABELS[r.status], mobile: true,
       render: (r) => <><RowBadge r={r} />{isDupRow(r) && <DupPill title="Paiement ou ligne en double possible" />}
         {r.toConfirm && <div><Button size="sm" variant="ghost" onClick={() => void confirmReceived([r])}>Confirmer la réception</Button></div>}</> },
     // quittance émise, ou la suite à donner (paiement reçu, émettre la quittance, qualifier l'écart) : une seule colonne
-    { id: 'document', label: 'Quittance / suite', value: (r) => [r.quittance, ...r.recus].filter(Boolean).map((d) => docLabel(d!)).join(' ; ') || null, mobile: true, sortable: false,
+    { id: 'document', label: 'Quittance et suite', value: (r) => [r.quittance, ...r.recus].filter(Boolean).map((d) => docLabel(d!)).join(' ; ') || null, mobile: true, sortable: false,
       render: (r) => {
         const docs = [...(r.quittance ? [r.quittance] : []), ...r.recus];
         const next = (() => {

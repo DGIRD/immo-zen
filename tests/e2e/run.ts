@@ -817,9 +817,15 @@ async function main() {
     await page.getByText('Ligne ajoutée.').waitFor();
     const row = page.locator('table.dt-table tbody tr', { hasText: '99,00' });
     await row.waitFor();
+    // suppression immédiate, « Annuler » la rétablit, puis suppression définitive
     await row.getByRole('button', { name: /Supprimer la dépense/ }).click();
-    await page.locator('dialog[open]').getByRole('button', { name: 'Supprimer' }).click();
     await row.waitFor({ state: 'detached' });
+    await page.locator('.toast').getByRole('button', { name: 'Annuler' }).click();
+    await page.getByText('Dépense rétablie.').waitFor();
+    const back = page.locator('table.dt-table tbody tr', { hasText: '99,00' });
+    await back.waitFor();
+    await back.getByRole('button', { name: /Supprimer la dépense/ }).click();
+    await back.waitFor({ state: 'detached' });
   });
 
   await step('import d’un relevé collé depuis Excel : catégories, logement, anti-doublon', async () => {
@@ -1034,7 +1040,7 @@ async function main() {
     // un seul tableau : plus d'onglets Échéances / Paiements / Quittances et reçus
     assert.equal(await page.getByRole('tab', { name: /^(Paiements|Quittances et reçus)/ }).count(), 0, 'onglets supprimés');
     const heads = (await page.locator('table.dt-table thead').first().innerText()).replace(/\s+/g, ' ');
-    for (const h of ['Période', 'Dû', 'Réglé', 'Reste / écart', 'Statut', 'Quittance']) assert.ok(heads.includes(h), `colonne ${h}`);
+    for (const h of ['Période', 'Dû', 'Réglé', 'Reste dû', 'Statut', 'Quittance']) assert.ok(heads.includes(h), `colonne ${h}`);
     for (const h of ['Loyer dû (HC)', 'Charges dues', 'Date de règlement']) assert.ok(!heads.includes(h), `colonne ${h} masquée par défaut`);
     assert.ok(await page.locator('table.dt-table tbody .amount-detail', { hasText: /loyer / }).count() >= 1, 'détail du dû sous le total');
     assert.equal(await page.getByRole('button', { name: /Mettre en cohérence|Répartir les paiements par mois/ }).count(), 0, 'commandes de remise en ordre supprimées');
@@ -1197,7 +1203,6 @@ async function main() {
     await quick.getByRole('button', { name: 'Ajouter quand même' }).click();
     await page.getByText(/semble en double/).waitFor();
     await page.getByRole('button', { name: /Supprimer les doublons/ }).click();
-    await page.locator('dialog[open]').getByRole('button', { name: 'Supprimer' }).click();
     await page.locator('table.dt-table tbody tr', { hasText: '45,00' }).first().waitFor();
     assert.equal(await page.locator('table.dt-table tbody tr', { hasText: '45,00' }).count(), 1, 'un seul exemplaire conservé');
     await page.getByRole('button', { name: 'Modifier en grille' }).click();
@@ -1557,7 +1562,6 @@ async function main() {
     const added = page.getByRole('button', { name: new RegExp(`^Supprimer la dépense du 15/06/${lastYear}`) });
     for (let i = 0; i < 2; i++) {
       await added.first().click();
-      await page.locator('dialog[open]').getByRole('button', { name: 'Supprimer' }).click();
       await page.waitForFunction((n) => document.querySelectorAll(`button[aria-label^="Supprimer la dépense du 15/06/"]`).length === n, 1 - i);
     }
   });
@@ -1995,7 +1999,8 @@ async function main() {
   await step('déconnexion : purge des données locales privées', async () => {
     await page.goto(url);
     await page.evaluate(() => localStorage.setItem('immozen:cache:test', '{"x":1}'));
-    await page.getByRole('button', { name: 'Déconnexion' }).click();
+    await page.getByRole('button', { name: /Mon compte/ }).click(); // menu du compte (en haut à droite)
+    await page.getByRole('menuitem', { name: 'Déconnexion' }).click();
     await page.getByRole('heading', { name: 'Connexion' }).waitFor();
     assert.equal(await page.evaluate(() => localStorage.getItem('immozen:cache:test')), null);
   });

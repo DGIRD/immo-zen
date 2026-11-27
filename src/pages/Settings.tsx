@@ -7,7 +7,7 @@ import { downloadBlob, stamp } from '../domain/exporting.ts';
 import { dateTime } from '../domain/format.ts';
 import { legacyContacts, legacyInputs, legacyProperty, readLegacyLocal, type LegacySimulation } from '../domain/legacy.ts';
 import { DEFAULT_INPUTS, DEFAULT_SETTING_FIELDS, ENGINE_VERSION, type SimulationInputs } from '../domain/simulator.ts';
-import { Button, Help, Modal, NumberInput, PageHeader, Section, Select, TextArea, TextInput, useConfirm } from '../ui/components.tsx';
+import { Button, Checkbox, Help, Modal, NumberInput, PageHeader, Section, Select, TextArea, TextInput, useConfirm } from '../ui/components.tsx';
 import type { ReminderTemplate } from '../data/types.ts';
 import { DEFAULT_REMINDER_TEMPLATES, TEMPLATE_VARIABLES } from '../domain/rental.ts';
 import { EDITEUR, MENTIONS_URL, CGU_URL } from '../domain/legal.ts';
@@ -146,6 +146,8 @@ export function SettingsPage() {
         ) : <p className="muted small">Aucune simulation de l’ancienne version en attente dans ce navigateur.</p>}
       </Section>
 
+      <OwnerAlerts />
+
       <Section title="Compte">
         <p>Connecté avec <strong>{session?.email}</strong>{data.loadedAt && <> — données synchronisées le {dateTime(data.loadedAt)}</>}.</p>
         <div className="row">
@@ -273,6 +275,23 @@ function RentalSettingsSection() {
           </div>
         </details>
       ))}
+    </Section>
+  );
+}
+
+/** Alertes e-mail au propriétaire : révision annuelle du loyer, échéance du bail (date limite pour donner congé). */
+function OwnerAlerts() {
+  const { data, saveSettings, notify } = useStore();
+  const rs = data.settings?.rental_settings ?? {};
+  const a = rs.owner_alerts ?? {};
+  const set = async (k: 'irl' | 'fin_bail', v: boolean) => {
+    if (await saveSettings({ rental_settings: { ...rs, owner_alerts: { ...a, [k]: v } } })) notify(v ? 'Alerte activée.' : 'Alerte désactivée.');
+  };
+  return (
+    <Section title="Alertes par e-mail">
+      <p className="muted small">Immo-Zen vous écrit quand une action est à prévoir sur un bail. Les loyers non confirmés et les relances à valider vous sont déjà signalés après chaque échéance.</p>
+      <Checkbox label="Révision annuelle du loyer : un mois avant la date anniversaire du bail (révision IRL activée dans le bail)" checked={a.irl !== false} onChange={(v) => void set('irl', v)} />
+      <Checkbox label="Échéance du bail : deux mois avant la date limite pour donner congé (6 mois avant l’échéance pour un bail vide, 3 mois pour un meublé)" checked={a.fin_bail !== false} onChange={(v) => void set('fin_bail', v)} />
     </Section>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { usePersistentState } from '../../ui/usePersistentState.ts';
 import { useStore } from '../../data/store.tsx';
 import { buildBackup } from '../../domain/backup.ts';
 import { downloadBlob, stamp } from '../../domain/exporting.ts';
@@ -17,8 +18,9 @@ import { ledgerPlans, syncLedgerWith } from './ledgerSync.ts';
  * après une sauvegarde.
  */
 export function RentsPage() {
-  const [leaseFilter, setLeaseFilter] = useState('');
-  const [pay, setPay] = useState(false);
+  const [leaseFilter, setLeaseFilter] = usePersistentState<string>('loyers-bail', '', (v) => typeof v === 'string');
+  // « + Ajouter › Paiement de loyer » : ouvre directement la saisie
+  const [pay, setPay] = useState(() => new URLSearchParams(location.hash.split('?')[1] ?? '').get('ajout') === 'paiement');
   const [importing, setImporting] = useState(false);
   const [converting, setConverting] = useState(false);
   const [busy, setBusy] = useState(false);

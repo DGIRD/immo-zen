@@ -7,6 +7,9 @@ import { isOwned, isRental, metrics, ownedCashflow } from '../domain/property.ts
 import { revisionPlan } from '../domain/irl.ts';
 import { chargeViews, propertyRentalSummary } from '../domain/rental.ts';
 import { Button, EmptyState, PageHeader, Section } from '../ui/components.tsx';
+import { PaymentDialog } from './rental/common.tsx';
+import { patrimonyLines, patrimonyTotals } from '../domain/patrimony.ts';
+import { missingFields } from '../domain/personalInfo.ts';
 import { href, navigate } from '../ui/router.ts';
 
 const PIPELINE: PropertyStatus[] = ['repere', 'a_contacter', 'informations_demandees', 'visite_a_programmer', 'visite_programmee', 'visite', 'offre_envisagee', 'offre_transmise', 'negociation', 'offre_acceptee', 'sous_compromis'];
@@ -56,12 +59,16 @@ export function DashboardPage() {
 
   const max = Math.max(1, ...v.counts.map(([, n]) => n));
   const [allTodo, setAllTodo] = useState(false);
+  const [pay, setPay] = useState<{ leaseId: string; month: string } | null>(null);
+  const patrimony = useMemo(() => { const lines = patrimonyLines(data.properties, today); return lines.length ? patrimonyTotals(lines) : null; }, [data.properties, today]);
+  const savings = data.settings?.personal_info?.savings ?? null;
   const [hideStart, setHideStart] = useState(() => { try { return localStorage.getItem('immozen:demarrage-masque') === '1'; } catch { return false; } });
   const start: [boolean, string, string][] = [
     [v.owned.length > 0, 'Ajouter un bien détenu', '/bien/nouveau?mode=owned'],
     [data.leases.length > 0, 'Créer le bail de votre locataire', '/baux/nouveau'],
     [data.payments.length > 0 || data.expenses.length > 0, 'Importer un relevé bancaire (loyers et dépenses)', '/loyers'],
     [v.owned.length > 0 && v.owned.every((p) => p.tax_regime), 'Choisir le régime fiscal de chaque bien', '/declaration'],
+    [missingFields(data.settings?.personal_info ?? {}).length === 0, 'Compléter Mon compte (dossier banque et offre d’achat pré-remplis)', '/compte'],
   ];
   const startLeft = start.filter(([done]) => !done).length;
   const empty = data.properties.length === 0;
@@ -85,7 +92,7 @@ export function DashboardPage() {
           )}
           <div className="figures">
             <a className="figure link-figure" href={href('/prospection')}><span className="figure-label">En prospection</span><span className="figure-value">{v.prospects.length}</span><span className="figure-hint">dont {v.offers} offre{v.offers > 1 ? 's' : ''} en cours</span></a>
-            <a className="figure link-figure" href={href('/prospection')}><span className="figure-label">Relances à faire</span><span className={`figure-value ${v.followUps.length ? 'neg' : ''}`}>{v.followUps.length + v.contactFollow.length}</span><span className="figure-hint">biens et contacts</span></a>
+            <a className={`figure link-figure${v.followUps.length + v.contactFollow.length ? '' : ' figure-zero'}`} href={href('/prospection')}><span className="figure-label">Relances à faire</span><span className={`figure-value ${v.followUps.length ? 'neg' : ''}`}>{v.followUps.length + v.contactFollow.length}</span><span className="figure-hint">biens et contacts</span></a>
             <a className="figure link-figure" href={href('/biens')}><span className="figure-label">Biens détenus</span><span className="figure-value">{v.owned.length}</span><span className="figure-hint">loyers estimés {money(v.ownedRent)} / mois</span></a>
             {consolidated ? (
             <a className="figure link-figure" href={href('/biens')}><span className="figure-label">Cash-flow prévisionnel</span>
@@ -100,10 +107,19 @@ export function DashboardPage() {
 
           {data.leases.length > 0 && (
             <div className="figures">
-              <a className="figure link-figure" href={href('/loyers')}><span className="figure-label">Loyers impayés échus</span><span className={`figure-value ${v.overdue.length ? 'neg' : ''}`}>{money(v.overdueSum)}</span><span className="figure-hint">{v.overdue.length} échéance(s) à confirmer ou relancer</span></a>
-              <a className="figure link-figure" href={href('/loyers')}><span className="figure-label">Quittances à émettre</span><span className="figure-value">{v.toReceipt}</span><span className="figure-hint">périodes intégralement réglées</span></a>
-              <a className="figure link-figure" href={href('/locataires')}><span className="figure-label">Relances à valider</span><span className={`figure-value ${v.drafts.length ? 'neg' : ''}`}>{v.drafts.length}</span><span className="figure-hint">rien n’est envoyé sans vous</span></a>
+              <a className={`figure link-figure${v.overdue.length ? '' : ' figure-zero'}`} href={href('/loyers?afficher=reste_du')}><span className="figure-label">Loyers impayés échus</span><span className={`figure-value ${v.overdue.length ? 'neg' : ''}`}>{money(v.overdueSum)}</span><span className="figure-hint">{v.overdue.length} échéance(s) à confirmer ou relancer</span></a>
+              <a className={`figure link-figure${v.toReceipt ? '' : ' figure-zero'}`} href={href('/loyers?afficher=a_traiter')}><span className="figure-label">Quittances à émettre</span><span className="figure-value">{v.toReceipt}</span><span className="figure-hint">périodes intégralement réglées</span></a>
+              <a className={`figure link-figure${v.drafts.length ? '' : ' figure-zero'}`} href={href('/locataires')}><span className="figure-label">Relances à valider</span><span className={`figure-value ${v.drafts.length ? 'neg' : ''}`}>{v.drafts.length}</span><span className="figure-hint">rien n’est envoyé sans vous</span></a>
               <a className="figure link-figure" href={href('/loyers')}><span className="figure-label">Loyers encaissés {today.slice(0, 4)}</span><span className="figure-value">{money(v.received)}</span><span className="figure-hint">dépenses à payer : {v.expensesToPay.length}</span></a>
+            </div>
+          )}
+
+          {patrimony && patrimony.value > 0 && (
+            <div className="figures figures-patrimoine" aria-label="Patrimoine immobilier">
+              <a className="figure link-figure" href={href('/biens')}><span className="figure-label">Valeur estimée du parc</span><span className="figure-value">{money(patrimony.value)}</span><span className="figure-hint">{patrimony.count} bien{patrimony.count > 1 ? 's' : ''} détenu{patrimony.count > 1 ? 's' : ''}, résidences comprises (prix médian)</span></a>
+              <a className="figure link-figure" href={href('/biens')}><span className="figure-label">Capital restant dû</span><span className="figure-value">{money(patrimony.remaining)}</span><span className="figure-hint">{patrimony.ltv != null ? `${String(Math.round(patrimony.ltv)).replace('.', ',')} % de la valeur` : 'crédits des biens'} · {money(patrimony.monthlyLoan)} / mois</span></a>
+              <a className="figure link-figure" href={href('/biens')}><span className="figure-label">Patrimoine immobilier net</span><span className={`figure-value ${patrimony.net >= 0 ? 'pos' : 'neg'}`}>{money(patrimony.net)}</span><span className="figure-hint">valeur − capital restant dû</span></a>
+              <a className="figure link-figure" href={href('/compte')}><span className="figure-label">Patrimoine total</span><span className="figure-value">{savings ? money(patrimony.net + savings) : '—'}</span><span className="figure-hint">{savings ? `dont épargne ${money(savings)}` : 'ajoutez votre épargne dans Mon compte'}</span></a>
             </div>
           )}
 
@@ -111,9 +127,16 @@ export function DashboardPage() {
             <Section title="À faire">
               {v.followUps.length + v.visits.length + v.tasks.length + v.contactFollow.length + v.overdue.length + v.drafts.length + v.revisions.length === 0 ? <p className="muted">Rien d’urgent cette semaine.</p> : (
                 <ul className={`agenda${allTodo ? '' : ' agenda-short'}`}>
-                  {v.overdue.map((c) => <li key={`o${c.charge.id}`}><span className="neg">{date(c.charge.due_date)}</span><a href={href(`/baux/${c.charge.lease_id}`)}>Loyer non confirmé : {v.leaseTitle(c.charge.lease_id)}</a><span className="muted">reste {money(c.remaining)}</span></li>)}
-                  {v.revisions.map((l) => <li key={`r${l.id}`}><span>IRL</span><a href={href(`/baux/${l.id}`)}>Révision du loyer possible : {v.leaseTitle(l.id)}</a></li>)}
-                  {v.drafts.map((r) => <li key={`d${r.id}`}><span>{date(r.created_at)}</span><a href={href(`/baux/${r.lease_id}`)}>Relance à valider : {v.leaseTitle(r.lease_id)}</a></li>)}
+                  {v.overdue.map((c) => <li key={`o${c.charge.id}`}><span className="neg">{date(c.charge.due_date)}</span><a href={href(`/baux/${c.charge.lease_id}`)}>Loyer non confirmé : {v.leaseTitle(c.charge.lease_id)}</a>
+                    <span className="muted">reste {money(c.remaining)}</span>
+                    <span className="todo-actions">
+                      <Button size="sm" onClick={() => setPay({ leaseId: c.charge.lease_id, month: c.charge.period_start.slice(0, 7) })}>Paiement reçu</Button>
+                      <Button size="sm" variant="ghost" onClick={() => navigate(`/baux/${c.charge.lease_id}`)}>Relancer</Button>
+                    </span></li>)}
+                  {v.revisions.map((l) => <li key={`r${l.id}`}><span>IRL</span><a href={href(`/baux/${l.id}`)}>Révision du loyer possible : {v.leaseTitle(l.id)}</a>
+                    <span className="todo-actions"><Button size="sm" onClick={() => navigate(`/baux/${l.id}`)}>Réviser</Button></span></li>)}
+                  {v.drafts.map((r) => <li key={`d${r.id}`}><span>{date(r.created_at)}</span><a href={href(`/baux/${r.lease_id}`)}>Relance à valider : {v.leaseTitle(r.lease_id)}</a>
+                    <span className="todo-actions"><Button size="sm" onClick={() => navigate(`/baux/${r.lease_id}`)}>Relire et envoyer</Button></span></li>)}
                   {v.followUps.map((p) => <li key={`f${p.id}`}><span className={p.follow_up_date! < today ? 'neg' : ''}>{date(p.follow_up_date)}</span><a href={href(`/bien/${p.id}`)}>Relancer : {p.title}</a>{p.next_action && <span className="muted">{p.next_action}</span>}</li>)}
                   {v.contactFollow.map((c) => <li key={`c${c.id}`}><span className={c.next_follow_up! < today ? 'neg' : ''}>{date(c.next_follow_up)}</span><a href={href(`/contacts/${c.id}`)}>Relancer : {c.name}</a></li>)}
                   {v.visits.map((p) => <li key={`v${p.id}`}><span>{dateTime(p.visit_at)}</span><a href={href(`/bien/${p.id}`)}>Visite : {p.title}</a></li>)}
@@ -145,6 +168,7 @@ export function DashboardPage() {
           </div>
         </>
       )}
+      <PaymentDialog open={!!pay} onClose={() => setPay(null)} leaseId={pay?.leaseId} month={pay?.month} mode="confirmation" />
     </>
   );
 }

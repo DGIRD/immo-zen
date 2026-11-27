@@ -1,10 +1,10 @@
 import { NewsletterPrompt } from './NewsletterPrompt.tsx';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useStore } from '../data/store.tsx';
-import { dateTime } from '../domain/format.ts';
 import { Button, Help, Modal } from './components.tsx';
 import { href } from './router.ts';
 import { AssistantButton } from './Assistant.tsx';
+import { AccountMenu, AddMenu, BottomTabs, SearchButton } from './Shell.tsx';
 
 export interface NavItem {
   key: string;
@@ -14,43 +14,29 @@ export interface NavItem {
   plannedLot?: 2 | 3;
   /** Visible des seuls administrateurs. */
   adminOnly?: boolean;
+  /** Rubrique du menu. */
+  group?: 'investir' | 'gerer' | 'papiers' | 'compte';
 }
+
+const GROUPS: [NonNullable<NavItem['group']>, string][] = [['investir', 'Investir'], ['gerer', 'Gérer'], ['papiers', 'Papiers'], ['compte', 'Compte']];
 
 export const NAV: NavItem[] = [
   { key: 'dashboard', label: 'Tableau de bord', path: '/' },
-  { key: 'prospection', label: 'Prospection', path: '/prospection' },
-  { key: 'biens', label: 'Mes biens', path: '/biens' },
-  { key: 'locataires', label: 'Locataires et baux', path: '/locataires' },
-  { key: 'loyers', label: 'Loyers et paiements', path: '/loyers' },
-  { key: 'depenses', label: 'Dépenses', path: '/depenses' },
-  { key: 'contacts', label: 'Contacts', path: '/contacts' },
-  { key: 'documents', label: 'Documents', path: '/documents' },
-  { key: 'fiscal', label: 'Déclaration fiscale', path: '/declaration' },
-  { key: 'compte', label: 'Mon compte', path: '/compte' },
-  { key: 'parametres', label: 'Paramètres', path: '/parametres' },
-  { key: 'admin', label: 'Administration', path: '/admin', adminOnly: true },
+  { key: 'prospection', label: 'Prospection', path: '/prospection', group: 'investir' },
+  { key: 'biens', label: 'Mes biens', path: '/biens', group: 'gerer' },
+  { key: 'locataires', label: 'Locataires et baux', path: '/locataires', group: 'gerer' },
+  { key: 'loyers', label: 'Loyers et paiements', path: '/loyers', group: 'gerer' },
+  { key: 'depenses', label: 'Dépenses', path: '/depenses', group: 'gerer' },
+  { key: 'documents', label: 'Documents', path: '/documents', group: 'papiers' },
+  { key: 'fiscal', label: 'Déclaration fiscale', path: '/declaration', group: 'papiers' },
+  { key: 'contacts', label: 'Contacts', path: '/contacts', group: 'papiers' },
+  { key: 'compte', label: 'Mon compte', path: '/compte', group: 'compte' },
+  { key: 'parametres', label: 'Paramètres', path: '/parametres', group: 'compte' },
+  { key: 'admin', label: 'Administration', path: '/admin', adminOnly: true, group: 'compte' },
 ];
 
-function SyncIndicator() {
-  const { sync, refresh, repo } = useStore();
-  const label = {
-    loading: 'Synchronisation…',
-    saving: 'Enregistrement…',
-    synced: repo.mode === 'demo' ? 'Enregistré dans ce navigateur' : 'Synchronisé',
-    offline: 'Hors connexion',
-    error: 'Erreur de synchronisation',
-  }[sync.state];
-  return (
-    <button type="button" className={`sync sync-${sync.state}`} onClick={() => void refresh()}
-      title={`${sync.message ?? label}${sync.lastSync ? ` — dernière synchronisation ${dateTime(sync.lastSync)}` : ''}. Cliquer pour resynchroniser.`}>
-      <span className="sync-dot" aria-hidden="true" />
-      <span className="sync-label">{label}</span>
-    </button>
-  );
-}
-
 export function Layout({ active, children }: { active: string; children: ReactNode }) {
-  const { session, signOut, repo, toasts, dismissToast, conflict, sync, data, platform, portal } = useStore();
+  const { repo, toasts, dismissToast, conflict, sync, data, platform, portal } = useStore();
   const [open, setOpen] = useState(false);
   useEffect(() => { setOpen(false); }, [active]);
 
@@ -86,35 +72,46 @@ export function Layout({ active, children }: { active: string; children: ReactNo
           <span>Immo-Zen</span>
         </a>
         <div className="topbar-right">
+          <SearchButton />
+          <AddMenu />
           <AssistantButton page={active} />
-          <SyncIndicator />
-          <a className="user-email" href={href('/compte')} title={`Mon compte (${session?.email ?? ''})`}>{session?.email}</a>
-          <Button size="sm" onClick={() => void signOut()}>Déconnexion</Button>
+          <AccountMenu />
         </div>
       </header>
 
       <div className="body">
         <nav id="main-nav" className={`sidenav${open ? ' open' : ''}`} aria-label="Navigation principale">
-          <ul>
-            {NAV.filter((n) => !n.adminOnly || platform?.access.is_admin).map((n) => (
-              <li key={n.key}>
-                <a href={href(n.path)} className={active === n.key ? 'active' : ''} aria-current={active === n.key ? 'page' : undefined}>
-                  <span>{n.label}</span>
-                  {n.plannedLot && <span className="soon" title={`Prévu au lot ${n.plannedLot}`}>lot {n.plannedLot}</span>}
-                </a>
-              </li>
-            ))}
-            {!!portal?.accounts.length && <li><a href={href('/espace-locataire')}><span>Mon espace locataire</span></a></li>}
-          </ul>
+          {[['', ''] as [string, string], ...GROUPS].map(([g, title]) => {
+            const items = NAV.filter((n) => (n.group ?? '') === g && (!n.adminOnly || platform?.access.is_admin));
+            if (!items.length && !(g === 'gerer' && portal?.accounts.length)) return null;
+            return (
+              <div key={g || 'accueil'} className={`nav-group${g === 'compte' && !items.some((n) => n.adminOnly) ? ' nav-mobile-only' : ''}`}>
+                {title && <p className="nav-group-title">{g === 'compte' && items.some((n) => n.adminOnly) ? <><span className="nav-mobile-only">Compte</span><span className="nav-desktop-only">Administration</span></> : title}</p>}
+                <ul>
+                  {items.map((n) => (
+                    <li key={n.key} className={n.group === 'compte' && !n.adminOnly ? 'nav-mobile-only' : undefined}>
+                      <a href={href(n.path)} className={active === n.key ? 'active' : ''} aria-current={active === n.key ? 'page' : undefined}>
+                        <span>{n.label}</span>
+                        {n.plannedLot && <span className="soon" title={`Prévu au lot ${n.plannedLot}`}>lot {n.plannedLot}</span>}
+                      </a>
+                    </li>
+                  ))}
+                  {g === 'gerer' && !!portal?.accounts.length && <li><a href={href('/espace-locataire')}><span>Mon espace locataire</span></a></li>}
+                </ul>
+              </div>
+            );
+          })}
           <p className="tagline">Prospectez, investissez et gérez vos locations sereinement.</p>
         </nav>
         <main className="content" id="contenu"><NewsletterPrompt />{children}</main>
       </div>
+      <BottomTabs active={active} />
 
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast-${t.tone}`} role={t.tone === 'error' ? 'alert' : 'status'}>
             <span>{t.message}</span>
+            {t.action && <button type="button" className="toast-action" onClick={() => { dismissToast(t.id); t.action!.run(); }}>{t.action.label}</button>}
             <button type="button" className="icon-btn" aria-label="Fermer" onClick={() => dismissToast(t.id)}>×</button>
           </div>
         ))}

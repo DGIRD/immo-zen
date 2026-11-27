@@ -6,6 +6,9 @@ import { createDemoRepo } from './data/demoRepo.ts';
 import { createSupabaseRepo } from './data/supabaseRepo.ts';
 import { StoreProvider } from './data/store.tsx';
 import './styles.css';
+import { applyTheme, readTheme } from './ui/Shell.tsx';
+
+applyTheme(readTheme());
 
 const repo = isDemoMode() ? createDemoRepo() : createSupabaseRepo(config.supabaseUrl, config.supabaseAnonKey);
 
