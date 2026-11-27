@@ -17,6 +17,8 @@ export interface Toast {
   id: number;
   message: string;
   tone: 'ok' | 'error' | 'info';
+  /** Action proposée dans le message (ex. « Annuler » après une suppression). */
+  action?: { label: string; run: () => void };
 }
 
 interface StoreValue {
@@ -34,7 +36,7 @@ interface StoreValue {
   /** Espace locataire du compte connecté (undefined : en cours de chargement). */
   portal: TenantPortal | null | undefined;
   refreshPortal(): Promise<void>;
-  notify(message: string, tone?: Toast['tone']): void;
+  notify(message: string, tone?: Toast['tone'], action?: Toast['action']): void;
   dismissToast(id: number): void;
   refresh(): Promise<void>;
   create<T extends TableName>(table: T, row: Insert<Tables[T]>): Promise<Tables[T] | null>;
@@ -78,10 +80,10 @@ export function StoreProvider({ repo, children }: { repo: Repo; children: ReactN
   const sessionRef = useRef<SessionInfo | null>(null);
   sessionRef.current = session;
 
-  const notify = useCallback((message: string, tone: Toast['tone'] = 'ok') => {
+  const notify = useCallback((message: string, tone: Toast['tone'] = 'ok', action?: Toast['action']) => {
     const id = ++toastId.current;
-    setToasts((t) => [...t.slice(-3), { id, message, tone }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), tone === 'error' ? 9000 : 4000);
+    setToasts((t) => [...t.slice(-3), { id, message, tone, action }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), tone === 'error' ? 9000 : action ? 10000 : 4000);
   }, []);
   const dismissToast = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
 

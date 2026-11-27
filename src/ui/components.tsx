@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { Children, Fragment, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactElement, type ReactNode } from 'react';
 import type { PropertyStatus } from '../data/types.ts';
 import { STATUS_LABELS, statusTone } from '../domain/labels.ts';
 
@@ -60,7 +60,36 @@ export function PageHeader({ title, subtitle, actions, info }: { title: ReactNod
         <div className="title-row"><h1>{title}</h1>{tip && <InfoTip label={typeof title === 'string' ? title : 'Cette page'}>{tip}</InfoTip>}</div>
         {subtitle && !isLong(subtitle) && <p className="muted">{subtitle}</p>}
       </div>
-      {actions && <div className="page-actions">{actions}</div>}
+      {actions && <PageActions actions={actions} />}
+    </div>
+  );
+}
+
+/** Éléments d'action à plat (fragments dépliés, valeurs vides retirées). */
+function flatActions(n: ReactNode): ReactNode[] {
+  return Children.toArray(n).flatMap((c) => (isValidElement(c) && c.type === Fragment ? flatActions((c as ReactElement<{ children?: ReactNode }>).props.children) : [c]));
+}
+
+/**
+ * Actions d'une page : sur téléphone, seule la dernière (l'action principale) reste visible,
+ * les autres passent dans un menu « … ». Sur ordinateur, toutes s'affichent côte à côte.
+ */
+function PageActions({ actions }: { actions: ReactNode }) {
+  const items = flatActions(actions);
+  const [more, setMore] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!more) return;
+    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setMore(false); };
+    addEventListener('mousedown', close);
+    return () => removeEventListener('mousedown', close);
+  }, [more]);
+  if (items.length <= 1) return <div className="page-actions">{actions}</div>;
+  return (
+    <div className="page-actions has-more" ref={ref}>
+      <div className={`page-secondary${more ? ' open' : ''}`} onClickCapture={() => setTimeout(() => setMore(false), 0)}>{items.slice(0, -1)}</div>
+      <button type="button" className="btn btn-secondary page-more-toggle" aria-expanded={more} aria-label="Autres actions" onClick={() => setMore(!more)}>…</button>
+      {items[items.length - 1]}
     </div>
   );
 }

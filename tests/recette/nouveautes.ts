@@ -74,8 +74,8 @@ async function main() {
     await sec.waitFor();
     const h = T(await sec.getByRole('heading').innerText());
     const items = await sec.locator('li').count();
-    assert.equal(items, 4, `${items} étapes`);
-    assert.match(h, /Bien démarrer \(\d\/4\)/);
+    assert.equal(items, 5, `${items} étapes`);
+    assert.match(h, /Bien démarrer \(\d\/5\)/);
     const links = await sec.locator('li a').count();
     await sec.getByRole('button', { name: 'Masquer' }).click();
     await page.reload(); await page.getByRole('heading', { name: 'Tableau de bord' }).waitFor();

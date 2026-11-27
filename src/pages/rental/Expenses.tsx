@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { usePersistentState } from '../../ui/usePersistentState.ts';
 import { useStore } from '../../data/store.tsx';
 import type { Expense, ExpenseCategory, ExpenseNature, Insert } from '../../data/types.ts';
 import { downloadBlob, stamp, toCsv, toXlsx, type ExportColumn } from '../../domain/exporting.ts';
@@ -32,12 +33,15 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
   const store = useStore();
   const { data } = store;
   const { ask, dialog } = useConfirm();
-  const [edit, setEdit] = useState<Expense | 'new' | null>(null);
+  const [edit, setEdit] = useState<Expense | 'new' | null>(() => (!propertyId && new URLSearchParams(location.hash.split('?')[1] ?? '').get('ajout') === 'depense' ? 'new' : null));
   const [importing, setImporting] = useState(false);
-  const [property, setProperty] = useState(propertyId ?? '');
-  const [year, setYear] = useState(todayParis().slice(0, 4));
-  const [status, setStatus] = useState<'' | 'paye' | 'a_payer' | 'doublons'>('');
-  const [category, setCategory] = useState<'' | BreakdownKey>('');
+  // filtres de l'écran Dépenses retrouvés au prochain passage (pas dans la fiche d'un bien)
+  const remember = propertyId ? null : 'depenses';
+  const str = (v: unknown) => typeof v === 'string';
+  const [property, setProperty] = usePersistentState<string>(remember && `${remember}-bien`, propertyId ?? '', str);
+  const [year, setYear] = usePersistentState<string>(remember && `${remember}-annee`, todayParis().slice(0, 4), (v) => typeof v === 'string' && /^(\d{4}|)$/.test(v));
+  const [status, setStatus] = usePersistentState<'' | 'paye' | 'a_payer' | 'doublons'>(remember && `${remember}-statut`, '', str);
+  const [category, setCategory] = usePersistentState<'' | BreakdownKey>(remember && `${remember}-categorie`, '', str);
   const [grid, setGrid] = useState(false);
   const dups = useMemo(() => expenseDuplicates(data.expenses), [data.expenses]);
   // recettes de relevé déjà saisies en paiements sur le bail : affichées, non additionnées (ANO-013)
@@ -83,13 +87,16 @@ export function ExpensesPage({ propertyId }: { propertyId?: string }) {
     { id: 'proof', label: 'Justificatif', value: (e) => (e.document_id ? 'oui' : null), sortable: false,
       render: (e) => { const d = data.documents.find((x) => x.id === e.document_id); return d ? <button type="button" className="link" onClick={() => void openDocument(store.repo, d).catch((x: Error) => store.notify(x.message, 'error'))}>Voir</button> : '—'; } },
   ];
+  /** Suppression : immédiate pour une ligne, confirmée pour plusieurs ; « Annuler » rétablit les lignes pendant 10 secondes. */
   async function del(list: Expense[]) {
-    const label = list.length === 1 ? `${money2(list[0]!.amount)} du ${date(list[0]!.expense_date)} sera supprimée.` : `${list.length} lignes seront supprimées.`;
-    if (!(await ask(list.length === 1 ? 'Supprimer la dépense' : 'Supprimer les dépenses', `${label} Les justificatifs restent dans Documents.`, 'Supprimer'))) return false;
-    let n = 0;
-    for (const e of list) if (await store.remove('expenses', e.id)) n++;
-    if (n > 1) store.notify(`${n} lignes supprimées.`);
-    return n > 0;
+    if (list.length > 1 && !(await ask('Supprimer les dépenses', `${list.length} lignes seront supprimées. Les justificatifs restent dans Documents.`, 'Supprimer'))) return false;
+    const gone: Expense[] = [];
+    for (const e of list) if (await store.remove('expenses', e.id)) gone.push(e);
+    if (!gone.length) return false;
+    const restore = () => void store.createMany('expenses', gone.map(({ user_id: _u, version: _v, created_at: _c, updated_at: _m, ...rest }) => rest))
+      .then((r) => { if (r) store.notify(gone.length > 1 ? `${gone.length} lignes rétablies.` : 'Dépense rétablie.'); });
+    store.notify(gone.length > 1 ? `${gone.length} lignes supprimées.` : `Dépense de ${money2(gone[0]!.amount)} du ${date(gone[0]!.expense_date)} supprimée.`, 'ok', { label: 'Annuler', run: restore });
+    return true;
   }
   const gridCols: GridColumn<Expense>[] = [
     { id: 'expense_date', label: 'Date', type: 'date', get: (e) => e.expense_date, validate: (x) => (x ? null : 'Date obligatoire') },

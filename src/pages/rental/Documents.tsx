@@ -115,7 +115,7 @@ export function DocumentList({ filter, scope }: { filter?: { property_id?: strin
   const { data, notify } = store;
   const { leaseById, leaseLabel, propertyById } = useRental();
   const { ask, dialog } = useConfirm();
-  const [upload, setUpload] = useState(false);
+  const [upload, setUpload] = useState(() => new URLSearchParams(location.hash.split('?')[1] ?? '').get('ajout') === 'document');
   const [dropped, setDropped] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [category, setCategory] = useState<DocumentCategory | ''>('');

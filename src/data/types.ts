@@ -267,6 +267,8 @@ export interface RentalSettings {
   ledger_unified_at?: string | null;
   /** Quittances proposées à partir de ce mois (AAAA-MM) : les mois antérieurs réglés ne sont plus signalés « à émettre ». */
   receipts_from?: string | null;
+  /** Alertes envoyées par e-mail au propriétaire (activées par défaut). */
+  owner_alerts?: { irl?: boolean; fin_bail?: boolean };
 }
 
 // ---------------------------------------------------------------------

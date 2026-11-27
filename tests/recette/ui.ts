@@ -71,12 +71,17 @@ async function main() {
   await c('NAV-01', async () => {
     const seen: string[] = [];
     for (const [label, heading] of [['Tableau de bord', 'Tableau de bord'], ['Prospection', 'Prospection'], ['Mes biens', 'Mes biens'], ['Locataires et baux', /Locataires et baux|Baux/], ['Loyers et paiements', 'Loyers et paiements'], ['Dépenses', 'Dépenses'], ['Contacts', 'Contacts'], ['Documents', 'Documents'], ['Déclaration fiscale', 'Déclaration fiscale'], ['Mon compte', 'Mon compte'], ['Paramètres', 'Paramètres']] as const) {
-      await page.locator('#main-nav').getByRole('link', { name: label }).click();
+      // Mon compte et Paramètres : menu du compte (en haut à droite) sur ordinateur
+      if (label === 'Mon compte' || label === 'Paramètres') {
+        await page.getByRole('button', { name: /Mon compte/ }).click();
+        await page.getByRole('menuitem', { name: label }).click();
+      } else await page.locator('#main-nav').getByRole('link', { name: label }).click();
       // attendre le titre de la rubrique ouverte, pas celui de la page précédente encore affichée
       await page.locator('main h1', { hasText: heading }).first().waitFor().catch(() => undefined);
       const h = await page.locator('main h1').first().innerText();
       assert.ok(typeof heading === 'string' ? h.includes(heading) : heading.test(h), `${label} → titre « ${h} »`);
       assert.equal(await page.locator('#main-nav a[aria-current="page"]').count(), 1, `${label} : entrée active`);
+      if (label === 'Mon compte' || label === 'Paramètres') assert.ok(!(await page.locator('#main-nav a[aria-current="page"]').isVisible()), `${label} : entrée du menu mobile, masquée sur ordinateur`);
       seen.push(label);
     }
     return `${seen.length} rubriques ouvertes, entrée active signalée`;
